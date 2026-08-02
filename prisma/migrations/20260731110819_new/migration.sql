@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "Document_classificationStatus_ownershipStatus_integrityStatus_i" RENAME TO "Document_classificationStatus_ownershipStatus_integrityStat_idx";

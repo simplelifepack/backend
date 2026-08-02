@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                         String                      @id @default(cuid())
+  name                       String
+  email                      String                      @unique
+  passwordHash               String?
+  welcomeEmailSentAt         DateTime?
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  refreshTokens              RefreshToken[]
+  identityProfile            UserIdentityProfile?
+  externalIdentities         ExternalIdentity[]
+  externalConnections        ExternalConnection[]
+  externalDocumentCandidates ExternalDocumentCandidate[]
+  externalOAuthStates        ExternalOAuthState[]
+}
+
+model ExternalIdentity {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          String
+  providerAccountId String
+  avatarUrl         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+model UserIdentityProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName              String
+  normalizedNameHash    String
+  dateOfBirth           String
+  dateOfBirthHash       String
+  documentNumber        String
+  createdFromDocumentId String
+  verified              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Document {
+  id                   String   @id @default(cuid())
+  title                String?
+  displayName          String?
+  ownerProfileId       String?
+  targetProfileId      String?
+  uniqueIdentifier     String?
+  uniqueIdentifierHash String?
+  extractedKeyFields   Json?
+  rawText              String?
+  originalName         String
+  storedName           String
+  mimeType             String
+  size                 Int
+  path                 String
+  storageKey           String?
+  storageBucket        String?
+  storageMimeType      String?
+  encryptionVersion    Int?
+  contentAlgorithm     String?
+  keyAlgorithm         String?
+  keyId                String?
+  keyVersion           Int?
+  encryptionIv         String?
+  wrappedKey           String?
+  originalSha256       String?
+  encryptedSha256      String?
+  encryptedSize        Int?
+  ciphertextHash       String?
+  userScopedDedupHash  String?
+  metadataIntegrityHash String?
+  integrityStatus      String   @default("pending")
+  scanStatus           String?
+  scanCompletedAt      DateTime?
+  documentType         String
+  normalizedType       String?
+  documentTypeCode     String?
+  category             String
+  analysisSource       String
+  confidence           Float
+  classificationStatus String   @default("pending")
+  classificationConfidence Float @default(0)
+  classificationSignals Json?
+  ownershipStatus      String   @default("unknown")
+  ownershipConfidence  Float    @default(0)
+  ownershipMatchedFields String[] @default([])
+  ownershipMismatchedFields String[] @default([])
+  readinessEligible    Boolean  @default(false)
+  fields               Json
+  contentHash          String?
+  sourceProvider       String?
+  sourceMessageId      String?
+  sourceAttachmentId   String?
+  driveFileId          String?
+  sourceModifiedTime   DateTime?
+  sourceChecksum       String?
+  lastAnalyzed         DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  deletedAt            DateTime?
+
+  @@unique([ownerProfileId, contentHash])
+  @@index([normalizedType])
+  @@index([documentTypeCode])
+  @@index([ownerProfileId, readinessEligible])
+  @@index([targetProfileId, readinessEligible])
+  @@index([classificationStatus, ownershipStatus, integrityStatus])
+  @@index([userScopedDedupHash])
+  @@index([documentType])
+  @@index([ownerProfileId])
+  @@index([storageKey])
+  @@index([keyId, keyVersion])
+  @@index([uniqueIdentifier])
+  @@index([uniqueIdentifierHash])
+  @@index([sourceProvider, sourceMessageId])
+  @@unique([ownerProfileId, driveFileId])
+  @@index([ownerProfileId, sourceChecksum])
+}
+
+model TemporaryUpload {
+  id                  String    @id @default(uuid())
+  ownerProfileId      String
+  storagePath         String
+  originalName        String
+  detectedMimeType    String
+  size                Int
+  status              String    @default("active")
+  createdAt           DateTime  @default(now())
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  contentHash         String?
+  sourceProvider      String?
+  sourceMessageId     String?
+  sourceAttachmentId  String?
+  externalCandidateId String?
+  encryptionVersion   Int?
+  contentAlgorithm    String?
+  keyAlgorithm        String?
+  keyId               String?
+  keyVersion          Int?
+  encryptionIv        String?
+  wrappedKey          String?
+  originalSha256      String?
+  encryptedSha256     String?
+  encryptedSize       Int?
+  scanStatus          String?
+  scanCompletedAt     DateTime?
+
+  @@index([ownerProfileId, status, expiresAt])
+  @@index([expiresAt])
+}
+
+model ExternalConnection {
+  id                    String                      @id @default(cuid())
+  userId                String
+  user                  User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider              String
+  providerAccountId     String
+  providerEmail         String
+  encryptedRefreshToken String
+  grantedScopes         String[]
+  status                String                      @default("connected")
+  lastScannedAt         DateTime?
+  lastSuccessfulSync    DateTime?
+  scanStartedAt         DateTime?
+  scanPhase             String?
+  scanProcessed         Int                         @default(0)
+  scanTotal             Int                         @default(0)
+  indexedCount          Int                         @default(0)
+  lastScanError         String?
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  candidates            ExternalDocumentCandidate[]
+
+  @@unique([userId, provider])
+  @@index([userId, status])
+}
+
+model ExternalOAuthState {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String
+  stateHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, provider, expiresAt])
+}
+
+model ExternalDocumentCandidate {
+  id                    String             @id @default(cuid())
+  userId                String
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connectionId          String
+  connection            ExternalConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  provider              String
+  sourceKey             String
+  externalMessageId     String
+  externalAttachmentId  String?
+  filename              String
+  mimeType              String
+  size                  Int
+  sender                String
+  subject               String
+  receivedAt            DateTime
+  suggestedCategory     String
+  suggestedDocumentType String
+  relevanceReason       String
+  relevanceScore        Int
+  legitimacyReason      String             @default("Needs review")
+  legitimacyScore       Int                @default(0)
+  reviewRequired        Boolean            @default(false)
+  matchedSignals        String[]           @default([])
+  rejectedSignals       String[]           @default([])
+  ignoredReason         String?
+  externalPartId        String?
+  status                String             @default("candidate")
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@unique([connectionId, sourceKey])
+  @@index([userId, status, receivedAt])
+}
+
+model ReadinessPack {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  title        String
+  category     String
+  aliases      String[]
+  description  String
+  keywords     String[]
+  createdBy    String        @default("seed")
+  version      Int           @default(1)
+  requirements Requirement[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([category])
+  @@index([createdBy])
+}
+
+model Requirement {
+  id                    String        @id @default(cuid())
+  packId                String
+  pack                  ReadinessPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  title                 String
+  documentType          String        @default("unknown")
+  owner                 String        @default("self")
+  metadata              Json?
+  description           String
+  required              Boolean       @default(true)
+  group                 String
+  acceptedDocumentTypes String[]
+  alternativeLabels     String[]
+  sortOrder             Int           @default(0)
+
+  @@index([packId])
+  @@index([documentType, owner])
+}

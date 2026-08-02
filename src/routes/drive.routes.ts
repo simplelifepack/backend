@@ -1,0 +1,76 @@
+import { Router } from "express";
+import { z } from "zod";
+
+import { prisma } from "../lib/prisma";
+import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
+import { driveAuthorizeLimiter, driveScanLimiter } from "../middleware/security";
+import { handleDriveCallback } from "../services/drive/callback";
+import { createDriveAuthorizationUrl, markDriveDisconnectedOnAuthFailure } from "../services/drive/oauth";
+import { scanDrive } from "../services/drive/scanner";
+
+const router = Router();
+
+router.get("/callback", async (req, res) => {
+  const result = await handleDriveCallback(req.query);
+  return res.redirect(302, result.redirectUrl);
+});
+
+router.use(requireAuth);
+
+router.get("/status", async (req, res, next) => {
+  try {
+    const userId = (req as unknown as AuthenticatedRequest).authUser.id;
+    const connection = await prisma.externalConnection.findUnique({ where: { userId_provider: { userId, provider: "google_drive" } } });
+    return res.json({
+      connected: connection?.status === "connected",
+      account: connection?.status === "connected" ? connection.providerEmail : null,
+      lastScannedAt: connection?.lastScannedAt ?? null,
+      lastSuccessfulSync: connection?.lastSuccessfulSync ?? null,
+      scanning: Boolean(connection?.scanStartedAt),
+      phase: connection?.scanPhase ?? null,
+      processed: connection?.scanProcessed ?? 0,
+      total: connection?.scanTotal ?? 0,
+      indexedCount: connection?.indexedCount ?? 0,
+      error: connection?.lastScanError ?? null,
+    });
+  } catch (error) { return next(error); }
+});
+
+router.post("/authorize", driveAuthorizeLimiter, async (req, res, next) => {
+  try {
+    const authUser = (req as unknown as AuthenticatedRequest).authUser;
+    return res.json({ authorizationUrl: await createDriveAuthorizationUrl(authUser.id, authUser.email) });
+  } catch (error) { return next(error); }
+});
+
+router.post("/scan", driveScanLimiter, async (req, res, next) => {
+  const userId = (req as unknown as AuthenticatedRequest).authUser.id;
+  try {
+    const options = z.object({
+      full: z.boolean().optional().default(false),
+      duplicateAction: z.enum(["replace", "keep_both", "ignore"]).optional().default("ignore"),
+    }).parse(req.body ?? {});
+    const running = await prisma.externalConnection.findUnique({
+      where: { userId_provider: { userId, provider: "google_drive" } },
+      select: { scanStartedAt: true },
+    });
+    if (running?.scanStartedAt) return res.status(409).json({ message: "A Google Drive scan is already running." });
+    void scanDrive(userId, options).catch(() => undefined);
+    return res.status(202).json({ started: true });
+  } catch (error) {
+    await markDriveDisconnectedOnAuthFailure(userId, error);
+    return next(error);
+  }
+});
+
+router.delete("/", driveAuthorizeLimiter, async (req, res, next) => {
+  try {
+    const userId = (req as unknown as AuthenticatedRequest).authUser.id;
+    const connection = await prisma.externalConnection.findUnique({ where: { userId_provider: { userId, provider: "google_drive" } } });
+    if (!connection) return res.status(204).send();
+    await prisma.externalConnection.delete({ where: { id: connection.id } });
+    return res.status(204).send();
+  } catch (error) { return next(error); }
+});
+
+export default router;
