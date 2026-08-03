@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import { PDFParse } from "pdf-parse";
 
 import type { DocumentExtractor, ExtractedDocument } from "../types";
 import { logPipelineStage } from "../logger";
@@ -10,6 +9,7 @@ export const pdfExtractor: DocumentExtractor = {
   async extract(file, signature): Promise<ExtractedDocument> {
     const buffer = await fs.readFile(file.path);
     const warnings = [...signature.warnings];
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: buffer });
 
     try {

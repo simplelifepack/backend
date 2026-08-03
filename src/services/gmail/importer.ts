@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import sanitizeHtml from "sanitize-html";
 
 import { prisma } from "../../lib/prisma";
 import { temporaryUploadsDir } from "../../middleware/upload";
@@ -20,6 +19,21 @@ function decode(data: string | null | undefined) {
   return Buffer.from(data ?? "", "base64url");
 }
 
+function htmlToPlainText(html: string) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '\"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function bodyContent(message: Awaited<ReturnType<ReturnType<typeof createOAuthClient>["getTokenInfo"]>> | never): never {
   throw message;
 }
@@ -31,8 +45,7 @@ function extractMessageBody(payload: import("googleapis").gmail_v1.Schema$Messag
   if (plain?.body?.data) return decode(plain.body.data);
   const html = parts.find((part) => part.mimeType === "text/html" && part.body?.data);
   if (html?.body?.data) {
-    const safeText = sanitizeHtml(decode(html.body.data).toString("utf8"), { allowedTags: [], allowedAttributes: {} });
-    return Buffer.from(safeText.replace(/\s+/g, " ").trim(), "utf8");
+    return Buffer.from(htmlToPlainText(decode(html.body.data).toString("utf8")), "utf8");
   }
   if (payload?.body?.data) return decode(payload.body.data);
   return Buffer.alloc(0);

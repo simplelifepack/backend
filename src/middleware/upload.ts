@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
 
-const uploadsDir = path.resolve(process.cwd(), "uploads");
+const defaultUploadsDir = process.env.VERCEL ? path.join("/tmp", "lifepack-uploads") : path.resolve(process.cwd(), "uploads");
+const uploadsDir = path.resolve(process.env.UPLOADS_DIR || defaultUploadsDir);
 const temporaryUploadsDir = path.join(uploadsDir, "tmp");
 const permanentUploadsDir = path.join(uploadsDir, "documents");
 

@@ -1,6 +1,6 @@
 import type { CorsOptions } from "cors";
 import type { Request, Response, NextFunction } from "express";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { HelmetOptions } from "helmet";
 
 function numberFromEnv(name: string, fallback: number) {
@@ -15,6 +15,20 @@ function csvFromEnv(name: string) {
     .filter(Boolean);
 }
 
+function forwardedHeaderClientIp(header: string | string[] | undefined) {
+  const value = Array.isArray(header) ? header[0] : header;
+  if (!value) return null;
+  const firstForwarded = value.split(",")[0]?.trim();
+  const forMatch = firstForwarded?.match(/(?:^|;)\s*for=(?:(?:"([^"]+)")|([^;]+))/i);
+  const raw = (forMatch?.[1] ?? forMatch?.[2])?.trim();
+  return raw?.replace(/^\[/, "").replace(/\]$/, "").replace(/^\"|\"$/g, "") || null;
+}
+
+function clientRateLimitKey(req: Request) {
+  const forwardedIp = forwardedHeaderClientIp(req.headers.forwarded);
+  return ipKeyGenerator(forwardedIp || req.ip || "unknown");
+}
+
 function buildRateLimiter(input: {
   windowMinutes: number;
   max: number;
@@ -25,20 +39,23 @@ function buildRateLimiter(input: {
     max: input.max,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: clientRateLimitKey,
     message: {
       message: input.message,
     },
   });
 }
 
-const defaultDevelopmentOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:5174",
-  "http://127.0.0.1:5175",
-];
+function isAllowedLocalhostOrigin(origin: string) {
+  try {
+    const parsed = new URL(origin);
+    return ["http:", "https:"].includes(parsed.protocol) &&
+      ["localhost", "127.0.0.1"].includes(parsed.hostname) &&
+      Boolean(parsed.port);
+  } catch {
+    return false;
+  }
+}
 
 export const securityHeadersOptions: HelmetOptions = {
   crossOriginResourcePolicy: false,
@@ -50,12 +67,8 @@ export const corsOptions: CorsOptions = {
     if (!origin) return callback(null, true);
 
     const allowedOrigins = csvFromEnv("CORS_ORIGINS");
-    const effectiveAllowedOrigins =
-      allowedOrigins.length > 0 || process.env.NODE_ENV === "production"
-        ? allowedOrigins
-        : defaultDevelopmentOrigins;
 
-    if (effectiveAllowedOrigins.includes(origin)) return callback(null, true);
+    if (allowedOrigins.includes("*") || allowedOrigins.includes(origin) || isAllowedLocalhostOrigin(origin)) return callback(null, true);
 
     return callback(new Error("Origin is not allowed by CORS."));
   },

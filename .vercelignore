@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.secrets
+/uploads
+/storage
+test-storage
+tmp
+temp
+/dist
+/node_modules
+.tesseract-cache
+test-results
+coverage

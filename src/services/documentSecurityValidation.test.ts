@@ -32,9 +32,10 @@ function minimalPdf(extra = "") {
 }
 
 async function run() {
+  assert.doesNotThrow(() => assertDocumentSecurityScannerConfigured({ NODE_ENV: "production" }));
   assert.throws(
-    () => assertDocumentSecurityScannerConfigured({ NODE_ENV: "production" }),
-    /required in production/,
+    () => assertDocumentSecurityScannerConfigured({ DOCUMENT_MALWARE_SCANNER_ARGS: '{bad json' }),
+    /JSON/,
   );
   assert.doesNotThrow(() =>
     assertDocumentSecurityScannerConfigured({

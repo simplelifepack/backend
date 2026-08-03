@@ -42,6 +42,10 @@ const refreshTokenSchema = z.object({
 
 const REFRESH_TOKEN_DAYS = 30;
 
+function httpError(message: string, statusCode: number) {
+  return Object.assign(new Error(message), { statusCode });
+}
+
 function toAuthUser(user: AuthUser): AuthUser {
   return {
     id: user.id,
@@ -100,7 +104,7 @@ export async function signup(input: unknown): Promise<AuthResult> {
   const { name, email, password } = signupSchema.parse(input);
 
   if (await findUserByEmail(email)) {
-    throw new Error("An account with this email already exists.");
+    throw httpError("An account with this email already exists.", 409);
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -128,17 +132,17 @@ export async function login(input: unknown, context?: emailService.LoginAlertCon
   const user = await findUserByEmail(email);
 
   if (!user) {
-    throw new Error("Invalid email or password.");
+    throw httpError("Invalid email or password.", 401);
   }
 
   if (!user.passwordHash) {
-    throw new Error("Invalid email or password.");
+    throw httpError("Invalid email or password.", 401);
   }
 
   const isMatch = await bcrypt.compare(password, user.passwordHash);
 
   if (!isMatch) {
-    throw new Error("Invalid email or password.");
+    throw httpError("Invalid email or password.", 401);
   }
 
   const result = await buildAuthResult(user);
@@ -237,7 +241,7 @@ export async function refresh(input: unknown): Promise<AuthResult> {
     savedRefreshToken.revokedAt ||
     savedRefreshToken.expiresAt <= new Date()
   ) {
-    throw new Error("Invalid refresh token.");
+    throw httpError("Invalid refresh token.", 401);
   }
 
   await prisma.refreshToken.update({

@@ -1,8 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
-import { PDFParse } from "pdf-parse";
+import { assertDocumentSecurityScannerConfigured, loadMalwareScanner } from "./malwareScanner";
 import sharp from "sharp";
 
 import {
@@ -16,17 +15,7 @@ const MAX_IMAGE_PIXELS = Number(process.env.MAX_DOCUMENT_IMAGE_PIXELS) || 60_000
 const MAX_PDF_PAGES = Number(process.env.MAX_DOCUMENT_PDF_PAGES) || 500;
 const EICAR_MARKER = Buffer.from("EICAR-STANDARD-ANTIVIRUS-TEST-FILE");
 
-export function assertDocumentSecurityScannerConfigured(env: NodeJS.ProcessEnv = process.env) {
-  if (env.NODE_ENV === "production" && !env.DOCUMENT_MALWARE_SCANNER_COMMAND?.trim()) {
-    throw new Error("DOCUMENT_MALWARE_SCANNER_COMMAND is required in production.");
-  }
-  if (env.DOCUMENT_MALWARE_SCANNER_ARGS) {
-    const args = JSON.parse(env.DOCUMENT_MALWARE_SCANNER_ARGS);
-    if (!Array.isArray(args) || !args.every((value) => typeof value === "string")) {
-      throw new Error("DOCUMENT_MALWARE_SCANNER_ARGS must be a JSON array of strings.");
-    }
-  }
-}
+export { assertDocumentSecurityScannerConfigured };
 
 function assertStaticPdfSafety(plaintext: Buffer) {
   if (!plaintext.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
@@ -54,6 +43,7 @@ function assertStaticPdfSafety(plaintext: Buffer) {
 
 async function validatePdf(plaintext: Buffer) {
   assertStaticPdfSafety(plaintext);
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: plaintext });
   try {
     const info = await parser.getInfo({ parsePageInfo: true });
@@ -151,26 +141,6 @@ async function validateImage(
   }
 }
 
-function runScanner(command: string, args: string[], filePath: string) {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args.map((argument) => argument.split("{file}").join(filePath)), {
-      cwd: path.dirname(filePath),
-      env: { PATH: process.env.PATH ?? "" },
-      shell: false,
-      stdio: "ignore",
-      timeout: 60_000,
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) return resolve();
-      if (code === 1) {
-        return reject(new DocumentEnvelopeError("MALWARE_DETECTED", "The document did not pass malware scanning.", 422));
-      }
-      return reject(new Error("The configured malware scanner failed."));
-    });
-  });
-}
-
 export async function withIsolatedPlaintextFile<T>(
   plaintext: Buffer,
   extension: string,
@@ -222,17 +192,8 @@ export async function validateDecryptedDocument(
     await validateImage(plaintext, envelope.originalMimeType);
   }
 
-  const scannerCommand = process.env.DOCUMENT_MALWARE_SCANNER_COMMAND?.trim();
-  if (scannerCommand) {
-    const scannerArgs = process.env.DOCUMENT_MALWARE_SCANNER_ARGS
-      ? JSON.parse(process.env.DOCUMENT_MALWARE_SCANNER_ARGS)
-      : ["--no-summary", "{file}"];
-    assertDocumentSecurityScannerConfigured({
-      ...process.env,
-      DOCUMENT_MALWARE_SCANNER_ARGS: JSON.stringify(scannerArgs),
-    });
-    await withIsolatedPlaintextFile(plaintext, extension, (filePath) =>
-      runScanner(scannerCommand, scannerArgs, filePath),
-    );
+  const scanner = loadMalwareScanner();
+  if (scanner) {
+    await withIsolatedPlaintextFile(plaintext, extension, (filePath) => scanner.scanFile(filePath));
   }
 }

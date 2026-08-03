@@ -167,10 +167,42 @@ For Supabase, obtain the endpoint and S3 credentials from the Storage S3 access
 settings. For AWS, leave `STORAGE_ENDPOINT` empty and create a private S3 bucket
 plus an IAM access key restricted to that bucket.
 
+### Vercel backend deployment
+
+This backend deploys to Vercel through `api/index.ts`, which exports the Express app without opening a local listener. Keep `src/index.ts` for local `npm run dev` and `npm start`.
+
+Use the backend directory as the Vercel project root:
+
+```bash
+cd /Users/deepikareddypannala/Code/D/lifepackc/backend
+vercel link
+vercel env add DATABASE_URL production
+vercel env add APP_ENV production
+vercel env add STORAGE_DRIVER production
+vercel env add STORAGE_REGION production
+vercel env add STORAGE_BUCKET production
+vercel env add STORAGE_ACCESS_KEY_ID production
+vercel env add STORAGE_SECRET_ACCESS_KEY production
+vercel env add DOCUMENT_ENCRYPTION_KEY production
+vercel env add DOCUMENT_METADATA_ENCRYPTION_KEY production
+vercel env add DOCUMENT_LOOKUP_HMAC_KEY production
+vercel env add DOCUMENT_DEDUP_HMAC_KEY production
+vercel env add DOCUMENT_RSA_ACTIVE_KEY_ID production
+vercel env add DOCUMENT_RSA_ACTIVE_KEY_VERSION production
+vercel env add DOCUMENT_RSA_PUBLIC_KEY production
+vercel env add DOCUMENT_RSA_PRIVATE_KEY production
+vercel env add DOCUMENT_MALWARE_SCANNER_COMMAND production
+vercel env add CORS_ORIGINS production
+vercel --prod
+```
+
+For Vercel production, set `APP_ENV=production`, `STORAGE_DRIVER=s3`, and use an external database plus S3-compatible object storage. Do not rely on `LOCAL_STORAGE_PATH` or `.secrets/` in Vercel; local uploads use `/tmp` during a function invocation, while permanent encrypted documents must go to S3. Document uploads always validate encrypted envelopes, file size, MIME type, extension, magic bytes, PDF/image structure, and malformed content before storage. `DOCUMENT_MALWARE_SCANNER_COMMAND` is optional and plugs into the same validation flow when ClamAV or a cloud scanner is added later.
+
+Add optional integration env vars only for features you enable: `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, Gmail/Drive redirect URIs, `GOOGLE_TOKEN_ENCRYPTION_KEY`, SMTP settings, and `ADMIN_SEED_TOKEN`.
+
 ### Production document keys and malware scanning
 
-Production must use secret-manager/KMS-backed RSA configuration and a malware
-scanner. It must never use `lifepack-development`:
+Production must use secret-manager/KMS-backed RSA configuration. It must never use `lifepack-development`. External malware scanning is optional until a scanner service is available:
 
 ```env
 NODE_ENV=production
@@ -300,10 +332,7 @@ Store those final values with the `base64:` prefix in
 `DOCUMENT_RSA_ACTIVE_KEY_ID` plus positive version, then securely delete the
 local PEM files after transferring the private key to the secret manager.
 
-Production must configure `DOCUMENT_MALWARE_SCANNER_COMMAND` (for example,
-`clamscan`) and its JSON argument list. Built-in PDF/image parsing, active
-content rejection, dimension limits, and signature checks still run
-independently of that scanner.
+`DOCUMENT_MALWARE_SCANNER_COMMAND` (for example, `clamscan`) and its JSON argument list are optional. Built-in size checks, MIME/extension agreement, magic-byte validation, PDF/image parsing, active content rejection, dimension limits, corruption checks, and EICAR/Windows executable rejection run before encrypted storage even when no external scanner is configured.
 
 For key rotation, retain the old and new private keys in
 `DOCUMENT_RSA_KEYRING_JSON`, switch the active ID/version, then preview and

@@ -1,6 +1,8 @@
-node_modules
-dist
-storage
+/node_modules
+/dist
+/storage
 .env
-.env.example
 .secrets
+.vercel
+.env.*
+!.env.example
