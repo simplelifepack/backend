@@ -3,3 +3,4 @@ dist
 storage
 .env
 .env.example
+.secrets
