@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { AIUnavailableError, analyzeIntent } from "../ai/analyzeIntent";
+import { AIUnavailableError, PackageGenerationRejectedError, analyzeIntent } from "../ai/analyzeIntent";
 import { requireAuth } from "../middleware/requireAuth";
 import type { AuthenticatedRequest } from "../middleware/requireAuth";
 import { getReadinessForSlug } from "../services/readiness/readiness.service";
@@ -27,7 +27,7 @@ router.post("/analyzeIntent", async (req, res, next) => {
     const slug = await saveGeneratedDefaultPack(query, generatedPackage);
     return res.json(await getReadinessForSlug(authUser.id, slug));
   } catch (error) {
-    if (error instanceof AIUnavailableError) {
+    if (error instanceof AIUnavailableError || error instanceof PackageGenerationRejectedError) {
       return res.status(error.statusCode).json({ message: error.message });
     }
     return next(error);

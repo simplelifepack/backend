@@ -1,5 +1,7 @@
+/* eslint-disable max-lines */
 import type { DocumentOwner } from "./metadataTypes";
 import { normalizeDocumentType, slugify } from "./normalization";
+import { sourceMetadataForSeed } from "./readinessPackSources";
 
 export type SeedRequirement = {
   title: string;
@@ -16,10 +18,27 @@ export type SeedRequirement = {
 export type SeedReadinessPack = {
   slug: string;
   title: string;
+  subtitle?: string;
   category: string;
   aliases: string[];
   description: string;
+  sourceType?: string;
+  sourceName?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  lastCheckedAt?: Date;
+  verificationSources?: VerificationSource[];
+  lastVerifiedAt?: Date;
+  verificationStatus?: "verified" | "needs_review";
   requirements: SeedRequirement[];
+};
+
+export type VerificationSource = {
+  title: string;
+  organization: string;
+  url: string;
+  type: "government" | "official" | "bank" | "university" | "insurance" | "authority";
+  retrievedAt: string;
 };
 
 type RequirementTemplate = Omit<SeedRequirement, "required">;
@@ -97,10 +116,15 @@ function req(title: string, description: string, group: string, acceptedDocument
   };
 }
 
-function pack(title: string, category: string, aliases: string[], refs: RequirementRef[], description?: string): SeedReadinessPack {
+function pack(title: string, category: string, aliases: string[], refs: RequirementRef[], description?: string, metadata: Partial<Pick<SeedReadinessPack, "lastCheckedAt" | "lastVerifiedAt" | "sourceName" | "sourceTitle" | "sourceType" | "sourceUrl" | "subtitle" | "verificationSources" | "verificationStatus">> = {}): SeedReadinessPack {
+  const source = metadata.sourceTitle && metadata.sourceUrl
+    ? metadata
+    : sourceMetadataForSeed(title, category);
   return {
     slug: slugify(title),
     title,
+    ...source,
+    ...metadata,
     category,
     aliases,
     description: description ?? `${title} readiness pack with the commonly requested Indian-context documents.`,
@@ -183,7 +207,23 @@ export const readinessPackSeeds: SeedReadinessPack[] = [
   pack("Schengen Visa", "Travel & Visa", ["europe visa"], ["passport", "photo", "bank", "income", "insurance", "employment"]),
   pack("US Visa", "Travel & Visa", ["usa visa", "b1 b2 visa"], ["passport", "photo", "bank", "income", "employment", { key: "academic", required: false }]),
   pack("UK Visa", "Travel & Visa", ["britain visa"], ["passport", "photo", "bank", "income", "employment", { key: "insurance", required: false }]),
-  pack("Canada Visa", "Travel & Visa", ["canadian visa"], ["passport", "photo", "bank", "income", "employment", "academic"]),
+  pack("Canada visa", "Travel & Visa", ["canadian visa", "visitor visa"], ["passport", "photo", "bank", "income", "employment", "academic"], undefined, {
+    subtitle: "Visitor visa",
+    sourceType: "curated",
+    sourceName: "IRCC",
+    sourceTitle: "IRCC visitor visa document checklist",
+    sourceUrl: "https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm5484.html",
+    lastCheckedAt: new Date("2026-07-25T00:00:00.000Z"),
+    verificationSources: [{
+      title: "IRCC visitor visa document checklist",
+      organization: "Immigration, Refugees and Citizenship Canada (IRCC)",
+      url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm5484.html",
+      type: "government",
+      retrievedAt: "2026-07-25T00:00:00.000Z",
+    }],
+    lastVerifiedAt: new Date("2026-07-25T00:00:00.000Z"),
+    verificationStatus: "verified",
+  }),
   pack("Australia Visa", "Travel & Visa", ["australian visa"], ["passport", "photo", "bank", "income", "insurance", { key: "employment", required: false }]),
   pack("International Driving Permit", "Travel & Visa", ["idp", "international dl"], ["passport", "drivingLicence", "identity", "address", "photo"]),
   pack("Travel Insurance", "Travel & Visa", ["travel cover", "overseas insurance"], ["identity", "passport", "insurance", { key: "medical", required: false }]),

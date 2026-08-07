@@ -10,8 +10,16 @@ import { readinessPackSeeds } from "./readinessPackData";
 import { scorePack } from "./readinessScoring";
 import type { DocumentForReadiness, PackWithRequirements, RequirementWithPack } from "./readinessModels";
 async function ensureSeeded() {
-  const [count, passportApplicationPack, photographRequirement] = await Promise.all([
+  const [count, sourcedCount, passportApplicationPack, photographRequirement] = await Promise.all([
     prisma.readinessPack.count({ where: { createdBy: "seed" } }),
+    prisma.readinessPack.count({
+      where: {
+        createdBy: "seed",
+        sourceTitle: { not: null },
+        sourceUrl: { not: null },
+        lastCheckedAt: { not: null },
+      },
+    }),
     prisma.readinessPack.findUnique({
       where: { slug: "passport-application-pack" },
       select: { id: true },
@@ -25,7 +33,7 @@ async function ensureSeeded() {
     photographRequirement?.acceptedDocumentTypes.includes("passport_photo") &&
     photographRequirement.acceptedDocumentTypes.includes("photo") &&
     photographRequirement.documentType !== "unknown";
-  if (count !== readinessPackSeeds.length || !passportApplicationPack || !hasFreshPhotoRequirement) {
+  if (count !== readinessPackSeeds.length || sourcedCount !== readinessPackSeeds.length || !passportApplicationPack || !hasFreshPhotoRequirement) {
     await seedReadinessPacks();
   }
 }
@@ -37,10 +45,19 @@ export async function seedReadinessPacks() {
       data: readinessPackSeeds.map((seed) => ({
         slug: seed.slug,
         title: seed.title,
+        subtitle: seed.subtitle,
         category: seed.category,
         aliases: seed.aliases,
         description: seed.description,
         keywords: packageKeywords(seed.title, seed.aliases),
+        sourceType: seed.sourceType ?? "curated",
+        sourceName: seed.sourceName,
+        sourceTitle: seed.sourceTitle,
+        sourceUrl: seed.sourceUrl,
+        lastCheckedAt: seed.lastCheckedAt,
+        verificationSources: seed.verificationSources,
+        lastVerifiedAt: seed.lastVerifiedAt,
+        verificationStatus: seed.verificationStatus ?? (seed.verificationSources?.length ? "verified" : "needs_review"),
         createdBy: "seed",
         version: 1,
       })),

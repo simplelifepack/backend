@@ -4,15 +4,22 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { driveAuthorizeLimiter, driveScanLimiter } from "../middleware/security";
-import { handleDriveCallback } from "../services/drive/callback";
-import { createDriveAuthorizationUrl, markDriveDisconnectedOnAuthFailure } from "../services/drive/oauth";
-import { scanDrive } from "../services/drive/scanner";
+import { completeDriveAuthorization, consumeDriveOAuthState, createDriveAuthorizationUrl, DriveOAuthError, markDriveDisconnectedOnAuthFailure } from "../services/drive/oauth";
+import { DRIVE_SCOPE } from "../services/drive/config";
+import { hasGrantedScope } from "../services/googleIntegrationStatus";
+import { scanDrive, type DriveScanResult } from "../services/drive/scanner";
+import { completeOAuthPopupCallback, sendOAuthPopupCallback } from "../services/oauthPopupCallback";
 
 const router = Router();
 
 router.get("/callback", async (req, res) => {
-  const result = await handleDriveCallback(req.query);
-  return res.redirect(302, result.redirectUrl);
+  const result = await completeOAuthPopupCallback(req.query, {
+    provider: "drive",
+    authorize: completeDriveAuthorization,
+    consumeDeniedState: consumeDriveOAuthState,
+    mapError: (error) => error instanceof DriveOAuthError ? error.safeCode : "authorization_failed",
+  });
+  return sendOAuthPopupCallback(res, result);
 });
 
 router.use(requireAuth);
@@ -21,9 +28,12 @@ router.get("/status", async (req, res, next) => {
   try {
     const userId = (req as unknown as AuthenticatedRequest).authUser.id;
     const connection = await prisma.externalConnection.findUnique({ where: { userId_provider: { userId, provider: "google_drive" } } });
+    const connected = hasGrantedScope(connection, DRIVE_SCOPE);
+    const scanStatus = connection?.scanStartedAt ? "scanning" : connection?.lastScanError ? "failed" : connection?.lastScannedAt ? "completed" : "idle";
     return res.json({
-      connected: connection?.status === "connected",
-      account: connection?.status === "connected" ? connection.providerEmail : null,
+      connected,
+      account: connected ? connection!.providerEmail : null,
+      scanStatus,
       lastScannedAt: connection?.lastScannedAt ?? null,
       lastSuccessfulSync: connection?.lastSuccessfulSync ?? null,
       scanning: Boolean(connection?.scanStartedAt),
@@ -55,8 +65,8 @@ router.post("/scan", driveScanLimiter, async (req, res, next) => {
       select: { scanStartedAt: true },
     });
     if (running?.scanStartedAt) return res.status(409).json({ message: "A Google Drive scan is already running." });
-    void scanDrive(userId, options).catch(() => undefined);
-    return res.status(202).json({ started: true });
+    const result: DriveScanResult = await scanDrive(userId, options);
+    return res.json(result);
   } catch (error) {
     await markDriveDisconnectedOnAuthFailure(userId, error);
     return next(error);

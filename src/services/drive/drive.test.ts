@@ -33,6 +33,11 @@ async function main() {
   assert.match(calls[0].q ?? "", /mimeType = 'application\/pdf'/);
   assert.match(calls[0].q ?? "", /modifiedTime > '2026-07-19T00:00:00.000Z'/);
   assert.equal(calls[0].fields, "nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size,webViewLink)");
+  calls.length = 0;
+  await listDrivePdfs(drive, null);
+  assert.match(calls[0].q ?? "", /mimeType = 'application\/pdf'/);
+  assert.match(calls[0].q ?? "", /trashed = false/);
+  assert.doesNotMatch(calls[0].q ?? "", /modifiedTime >/);
   console.log("Google Drive pagination and PDF-only discovery tests passed.");
 }
 

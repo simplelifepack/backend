@@ -255,10 +255,19 @@ model ReadinessPack {
   id           String        @id @default(cuid())
   slug         String        @unique
   title        String
+  subtitle     String?
   category     String
   aliases      String[]
   description  String
   keywords     String[]
+  sourceType   String        @default("curated")
+  sourceName   String?
+  sourceTitle  String?
+  sourceUrl    String?
+  lastCheckedAt DateTime?
+  verificationSources Json?
+  lastVerifiedAt DateTime?
+  verificationStatus String @default("needs_review")
   createdBy    String        @default("seed")
   version      Int           @default(1)
   requirements Requirement[]

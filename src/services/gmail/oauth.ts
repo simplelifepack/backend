@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { google } from "googleapis";
 
 import { prisma } from "../../lib/prisma";
+import { hasGrantedScope } from "../googleIntegrationStatus";
 import { gmailConfig, GMAIL_SCOPE } from "./config";
 import { decryptGmailToken, encryptGmailToken } from "./tokenEncryption";
 
@@ -82,19 +83,6 @@ export async function completeAuthorization(code: string, state: string) {
     try { existingRefreshToken = decryptGmailToken(existing.encryptedRefreshToken); }
     catch { throw new GmailOAuthError("token_storage_failed"); }
   }
-  if (!existingRefreshToken) {
-    const driveConnection = await prisma.externalConnection.findUnique({
-      where: { userId_provider: { userId: savedState.userId, provider: "google_drive" } },
-    }).catch(() => { throw new GmailOAuthError("database_error"); });
-    if (
-      driveConnection?.status === "connected"
-      && driveConnection.providerEmail.toLowerCase() === email
-      && driveConnection.encryptedRefreshToken
-    ) {
-      try { existingRefreshToken = decryptGmailToken(driveConnection.encryptedRefreshToken); }
-      catch { throw new GmailOAuthError("token_storage_failed"); }
-    }
-  }
   const refreshToken = tokens.refresh_token ?? existingRefreshToken;
   if (!refreshToken) throw new GmailOAuthError("missing_refresh_token");
   const scopes = (tokens.scope ?? GMAIL_SCOPE).split(" ").filter(Boolean);
@@ -119,7 +107,7 @@ export async function authorizedGmail(userId: string) {
   const connection = await prisma.externalConnection.findUnique({
     where: { userId_provider: { userId, provider: "gmail" } },
   });
-  if (!connection || connection.status !== "connected") throw Object.assign(new Error("Gmail is not connected."), { statusCode: 409 });
+  if (!connection || !hasGrantedScope(connection, GMAIL_SCOPE)) throw Object.assign(new Error("Gmail is not connected."), { statusCode: 409 });
   const client = createOAuthClient();
   client.setCredentials({ refresh_token: decryptGmailToken(connection.encryptedRefreshToken) });
   return { connection, client, gmail: google.gmail({ version: "v1", auth: client }) };

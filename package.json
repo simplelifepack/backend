@@ -22,6 +22,7 @@
     "test:storage": "tsx src/infrastructure/storage/storage.test.ts",
     "keys:rewrap": "tsx src/scripts/rewrapDocumentKeys.ts",
     "documents:migrate-trust-state": "tsx src/scripts/migrateDocumentTrustState.ts",
+    "packages:backfill-sources": "tsx -r dotenv/config src/scripts/backfillPackageSources.ts",
     "email:verify-gmail": "tsx src/scripts/verifyGmailSmtp.ts",
     "email:send-test": "tsx src/scripts/sendAuthTestEmail.ts",
     "prisma:generate": "prisma generate",

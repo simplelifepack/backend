@@ -3,6 +3,7 @@ import { google } from "googleapis";
 
 import { prisma } from "../../lib/prisma";
 import { decryptGmailToken, encryptGmailToken } from "../gmail/tokenEncryption";
+import { hasGrantedScope } from "../googleIntegrationStatus";
 import { DRIVE_SCOPE, driveConfig } from "./config";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -37,13 +38,14 @@ export async function createDriveAuthorizationUrl(userId: string, loginHint?: st
   return createDriveOAuthClient().generateAuthUrl({
     access_type: "offline",
     include_granted_scopes: true,
-    scope: [DRIVE_SCOPE],
+    prompt: "consent select_account",
+    scope: [DRIVE_SCOPE, "openid", "email"],
     state,
     login_hint: loginHint,
   });
 }
 
-async function consumeState(state: string) {
+export async function consumeDriveOAuthState(state: string) {
   try {
     return await prisma.$transaction(async (tx) => {
       const saved = await tx.externalOAuthState.findUnique({ where: { stateHash: hashState(state) } });
@@ -59,13 +61,13 @@ async function consumeState(state: string) {
 }
 
 export async function completeDriveAuthorization(code: string, state: string) {
-  const saved = await consumeState(state);
+  const saved = await consumeDriveOAuthState(state);
   const client = createDriveOAuthClient();
   const { tokens } = await client.getToken(code).catch(() => { throw new DriveOAuthError("token_exchange_failed"); });
   client.setCredentials(tokens);
-  const user = await prisma.user.findUnique({ where: { id: saved.userId }, select: { email: true } })
-    .catch(() => { throw new DriveOAuthError("database_error"); });
-  const email = user?.email.trim().toLowerCase();
+  const userInfo = await google.oauth2({ version: "v2", auth: client }).userinfo.get()
+    .catch(() => { throw new DriveOAuthError("account_lookup_failed"); });
+  const email = userInfo.data.email?.trim().toLowerCase();
   if (!email) throw new DriveOAuthError("account_lookup_failed");
   const accountId = email;
   const existing = await prisma.externalConnection.findUnique({
@@ -75,23 +77,9 @@ export async function completeDriveAuthorization(code: string, state: string) {
     try { return existing?.encryptedRefreshToken ? decryptGmailToken(existing.encryptedRefreshToken) : null; }
     catch { throw new DriveOAuthError("token_storage_failed"); }
   })();
-  let sharedToken: string | null = null;
-  if (!priorToken) {
-    const gmailConnection = await prisma.externalConnection.findUnique({
-      where: { userId_provider: { userId: saved.userId, provider: "gmail" } },
-    }).catch(() => { throw new DriveOAuthError("database_error"); });
-    if (
-      gmailConnection?.status === "connected"
-      && gmailConnection.providerEmail.toLowerCase() === email
-      && gmailConnection.encryptedRefreshToken
-    ) {
-      try { sharedToken = decryptGmailToken(gmailConnection.encryptedRefreshToken); }
-      catch { throw new DriveOAuthError("token_storage_failed"); }
-    }
-  }
-  const refreshToken = tokens.refresh_token ?? priorToken ?? sharedToken;
+  const refreshToken = tokens.refresh_token ?? priorToken;
   if (!refreshToken) throw new DriveOAuthError("missing_refresh_token");
-  const scopes = (tokens.scope ?? DRIVE_SCOPE).split(" ").filter(Boolean);
+  const scopes = (tokens.scope ?? "").split(" ").filter(Boolean);
   if (!scopes.includes(DRIVE_SCOPE)) throw new DriveOAuthError("missing_scope");
   let encryptedRefreshToken: string;
   try { encryptedRefreshToken = encryptGmailToken(refreshToken); }
@@ -114,6 +102,9 @@ export async function authorizedDrive(userId: string) {
     where: { userId_provider: { userId, provider: "google_drive" } },
   });
   if (!connection || connection.status !== "connected") throw Object.assign(new Error("Google Drive is not connected."), { statusCode: 409 });
+  if (!hasGrantedScope(connection, DRIVE_SCOPE)) {
+    throw Object.assign(new Error("Google Drive read-only permission is missing. Reconnect Google Drive and allow Drive access."), { statusCode: 409 });
+  }
   const client = createDriveOAuthClient();
   client.setCredentials({ refresh_token: decryptGmailToken(connection.encryptedRefreshToken) });
   return { connection, client, drive: google.drive({ version: "v3", auth: client }) };

@@ -6,9 +6,9 @@ import type { gmail_v1 } from "googleapis";
 import { prisma } from "../../lib/prisma";
 import { deleteTemporaryUploadFile } from "../documentFileStorage";
 import { candidatesFromMessage, flattenParts, GMAIL_RELEVANCE_THRESHOLDS, gmailSearchQueries } from "./candidates";
-import { handleGmailCallback } from "./callback";
 import { importGmailCandidates } from "./importer";
-import { createAuthorizationUrl, consumeOAuthState, GmailOAuthError } from "./oauth";
+import { completeAuthorization, createAuthorizationUrl, consumeOAuthState, GmailOAuthError } from "./oauth";
+import { completeOAuthPopupCallback } from "../oauthPopupCallback";
 import { scanGmail } from "./scanner";
 import { decryptGmailToken, encryptGmailToken } from "./tokenEncryption";
 
@@ -69,24 +69,36 @@ async function run() {
   assert.equal(gmailSearchQueries.length, 3);
   assert.ok(gmailSearchQueries.every(({ query }) => query.includes("-in:spam") && query.includes("-in:trash")));
   assert.ok(gmailSearchQueries.every(({ query }) => !/passport|ticket|invoice|shopping/i.test(query)));
-  const callbackSuccess = await handleGmailCallback(
+  const callbackSuccess = await completeOAuthPopupCallback(
     { code: "mock-code", state: "mock-state" },
-    async (code, state) => { assert.equal(code, "mock-code"); assert.equal(state, "mock-state"); },
+    {
+      provider: "gmail",
+      authorize: async (code, state) => { assert.equal(code, "mock-code"); assert.equal(state, "mock-state"); },
+      mapError: (error) => error instanceof GmailOAuthError ? error.safeCode : "authorization_failed",
+    },
   );
-  assert.equal(callbackSuccess.redirectUrl, "http://localhost:5173/google-gmail-callback.html?gmail=connected");
+  assert.deepEqual(callbackSuccess, { provider: "gmail", status: "connected" });
   for (const reason of ["invalid_state", "token_exchange_failed", "missing_refresh_token", "database_error"] as const) {
-    const failed = await handleGmailCallback(
+    const failed = await completeOAuthPopupCallback(
       { code: "mock-code", state: "mock-state" },
-      async () => { throw new GmailOAuthError(reason); },
+      {
+        provider: "gmail",
+        authorize: async () => { throw new GmailOAuthError(reason); },
+        mapError: (error) => error instanceof GmailOAuthError ? error.safeCode : "authorization_failed",
+      },
     );
-    assert.equal(failed.redirectUrl, `http://localhost:5173/google-gmail-callback.html?gmail=error&reason=${reason}`);
+    assert.deepEqual(failed, { provider: "gmail", status: "error", reason });
   }
-  const denied = await handleGmailCallback(
+  const denied = await completeOAuthPopupCallback(
     { error: "access_denied", state: "mock-state" },
-    async () => undefined,
-    async () => undefined,
+    {
+      provider: "gmail",
+      authorize: completeAuthorization,
+      consumeDeniedState: async () => undefined,
+      mapError: (error) => error instanceof GmailOAuthError ? error.safeCode : "authorization_failed",
+    },
   );
-  assert.equal(denied.redirectUrl, "http://localhost:5173/google-gmail-callback.html?gmail=error&reason=access_denied");
+  assert.deepEqual(denied, { provider: "gmail", status: "error", reason: "access_denied" });
 
   const encrypted = encryptGmailToken("refresh-token-value");
   assert.equal(decryptGmailToken(encrypted), "refresh-token-value");

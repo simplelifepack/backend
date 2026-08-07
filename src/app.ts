@@ -1,5 +1,4 @@
 import cors from "cors";
-import dotenv from "dotenv";
 import express from "express";
 import helmet from "helmet";
 import authRouter from "./routes/auth.routes";
@@ -15,11 +14,12 @@ import { assertDocumentEncryptionConfigured } from "./utils/documentEncryption";
 import { errorHandler } from "./middleware/errorHandling";
 import { assertDatabaseConfigured } from "./config/database";
 import { loadEmailConfig } from "./config/email";
+import { loadBackendEnv } from "./config/env";
 import { loadStorageConfig } from "./config/storage";
 import { getActiveDocumentEncryptionKey } from "./services/documentHybridEncryption";
 import { assertDocumentSecurityScannerConfigured } from "./services/documentSecurityValidation";
 
-dotenv.config();
+loadBackendEnv();
 assertDatabaseConfigured();
 loadEmailConfig();
 loadStorageConfig();
@@ -51,6 +51,7 @@ app.use("/auth", authRouter);
 app.use("/documents", documentsRouter);
 app.use("/packs", packsRouter);
 app.use("/packages", packsRouter);
+app.use("/api/packages", packsRouter);
 app.use("/readiness", readinessRouter);
 app.use("/admin/readiness", adminReadinessRouter);
 app.use("/api/ai", aiRouter);

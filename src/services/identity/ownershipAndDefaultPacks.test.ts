@@ -8,6 +8,7 @@ import { createIdentityProfile, detectIdentityOwnership, normalizeName } from ".
 
 const email = `ownership-default-pack-${crypto.randomUUID()}@example.test`;
 const generatedTitle = `Telangana Farm Purchase ${crypto.randomUUID().slice(0, 8)}`;
+const checkedAt = new Date("2026-08-06T00:00:00.000Z").toISOString();
 let userId: string | null = null;
 let generatedSlug: string | null = null;
 
@@ -33,6 +34,19 @@ try {
     packageName: generatedTitle,
     category: "property",
     description: "Cached property readiness pack",
+    sourceTitle: "Registration and Stamps Department Telangana property registration",
+    sourceUrl: "https://registration.telangana.gov.in/",
+    sourceOrganization: "Registration and Stamps Department Telangana",
+    lastChecked: checkedAt,
+    verificationSources: [{
+      title: "Registration and Stamps Department Telangana property registration",
+      organization: "Registration and Stamps Department Telangana",
+      url: "https://registration.telangana.gov.in/",
+      type: "government",
+      retrievedAt: checkedAt,
+    }],
+    lastVerifiedAt: checkedAt,
+    verificationStatus: "verified",
     requiredDocuments: [{ id: "buyer_pan", title: "Buyer PAN Card", name: "Buyer PAN Card", documentType: "pan", owner: "self", category: "Buyer Identity", required: true }],
   });
   assert.equal(await findDefaultPackSlug("buy uncommon farm parcel"), generatedSlug);
@@ -40,6 +54,19 @@ try {
     packageName: generatedTitle,
     category: "property",
     description: "Cached property readiness pack",
+    sourceTitle: "Registration and Stamps Department Telangana property registration",
+    sourceUrl: "https://registration.telangana.gov.in/",
+    sourceOrganization: "Registration and Stamps Department Telangana",
+    lastChecked: checkedAt,
+    verificationSources: [{
+      title: "Registration and Stamps Department Telangana property registration",
+      organization: "Registration and Stamps Department Telangana",
+      url: "https://registration.telangana.gov.in/",
+      type: "government",
+      retrievedAt: checkedAt,
+    }],
+    lastVerifiedAt: checkedAt,
+    verificationStatus: "verified",
     requiredDocuments: [{ id: "buyer_pan", title: "Buyer PAN Card", name: "Buyer PAN Card", documentType: "pan", owner: "self", category: "Buyer Identity", required: true }],
   });
   assert.equal(await prisma.readinessPack.count({ where: { slug: generatedSlug } }), 1);

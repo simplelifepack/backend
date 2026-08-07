@@ -1,32 +1,71 @@
 import type { AIReadinessPackage } from "../../ai/intentTypes";
 import { prisma } from "../../lib/prisma";
 import { normalizeRequirementDocumentTypes, normalizeSearchText, slugify } from "./normalization";
+import { scorePackDetailed, type PackMatchReason } from "./readinessScoring";
+
+const CONFIDENT_MATCH_SCORE = 70;
+
+export type DefaultPackSearchMatch = {
+  slug: string;
+  confidence: number;
+  reason: PackMatchReason;
+  hasOfficialSource: boolean;
+};
 
 export async function findDefaultPackSlug(query: string) {
-  const normalized = normalizeSearchText(query);
-  const querySlug = slugify(query);
-  const queryTokens = tokens(normalized);
+  return (await findDefaultPackMatch(query))?.slug ?? null;
+}
+
+export async function findDefaultPackMatch(query: string): Promise<DefaultPackSearchMatch | null> {
   const packages = await prisma.readinessPack.findMany({
-    select: { slug: true, title: true, aliases: true, keywords: true },
+    select: {
+      slug: true,
+      title: true,
+      aliases: true,
+      category: true,
+      description: true,
+      keywords: true,
+      sourceTitle: true,
+      sourceUrl: true,
+      lastCheckedAt: true,
+      verificationSources: true,
+    },
   });
-  const exact = packages.find((item) => item.slug === querySlug || normalizeSearchText(item.title) === normalized || item.aliases.some((alias) => normalizeSearchText(alias) === normalized));
-  if (exact) return exact.slug;
-  const keywordMatch = packages.find((item) => queryTokens.length >= 2 && queryTokens.every((token) => item.keywords.includes(token)));
-  return keywordMatch?.slug ?? null;
+  const [best] = packages
+    .map((item) => {
+      const score = scorePackDetailed(item, query);
+      return {
+        slug: item.slug,
+        confidence: score.score,
+        reason: score.reason,
+        hasOfficialSource: hasOfficialSource(item),
+      };
+    })
+    .filter((item): item is DefaultPackSearchMatch => item.reason !== null && item.confidence >= CONFIDENT_MATCH_SCORE)
+    .sort((left, right) => right.confidence - left.confidence || left.slug.localeCompare(right.slug));
+  return best ?? null;
 }
 
 export async function saveGeneratedDefaultPack(query: string, generated: AIReadinessPackage) {
+  const duplicate = await findDefaultPackMatch(`${query} ${generated.packageName}`);
+  if (duplicate) {
+    await addSearchMetadata(duplicate.slug, query, generated);
+    return duplicate.slug;
+  }
+
   const slug = slugify(generated.packageName);
   const alias = normalizeSearchText(query);
-  const keywords = [...new Set(tokens(`${query} ${generated.packageName} ${generated.category}`))];
+  const keywords = searchKeywords(query, generated);
+  const verification = verificationMetadata(generated);
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.readinessPack.findUnique({ where: { slug }, select: { slug: true, aliases: true, keywords: true } });
+    const existing = await tx.readinessPack.findUnique({ where: { slug }, select: { slug: true, aliases: true, keywords: true, createdBy: true, verificationSources: true } });
     if (existing) {
       await tx.readinessPack.update({
         where: { slug },
         data: {
           aliases: [...new Set([...existing.aliases, alias])],
           keywords: [...new Set([...existing.keywords, ...keywords])],
+          ...(!hasVerificationSources(existing.verificationSources) ? verification : {}),
         },
       });
       return slug;
@@ -39,6 +78,14 @@ export async function saveGeneratedDefaultPack(query: string, generated: AIReadi
         description: generated.description,
         aliases: [alias],
         keywords,
+        sourceType: "official",
+        sourceName: verification.sourceName,
+        sourceTitle: verification.sourceTitle,
+        sourceUrl: verification.sourceUrl,
+        lastCheckedAt: verification.lastCheckedAt,
+        verificationSources: verification.verificationSources,
+        lastVerifiedAt: verification.lastVerifiedAt,
+        verificationStatus: verification.verificationStatus,
         createdBy: "ai",
         version: 1,
         requirements: {
@@ -60,6 +107,69 @@ export async function saveGeneratedDefaultPack(query: string, generated: AIReadi
     });
     return slug;
   });
+}
+
+async function addSearchMetadata(slug: string, query: string, generated: AIReadinessPackage) {
+  const alias = normalizeSearchText(query);
+  const keywords = searchKeywords(query, generated);
+  const verification = verificationMetadata(generated);
+  const existing = await prisma.readinessPack.findUnique({
+    where: { slug },
+    select: { aliases: true, keywords: true, createdBy: true, verificationSources: true },
+  });
+  if (!existing) return;
+  await prisma.readinessPack.update({
+    where: { slug },
+    data: {
+      aliases: [...new Set([...existing.aliases, alias])],
+      keywords: [...new Set([...existing.keywords, ...keywords])],
+      ...(!hasVerificationSources(existing.verificationSources) ? verification : {}),
+    },
+  });
+}
+
+function verificationMetadata(generated: AIReadinessPackage) {
+  if (!generated.sourceTitle || !generated.sourceUrl || !generated.sourceOrganization || !generated.lastChecked) {
+    throw new Error("Generated package is missing official source metadata.");
+  }
+  const lastVerifiedAt = new Date(generated.lastChecked);
+  if (Number.isNaN(lastVerifiedAt.getTime())) {
+    throw new Error("Generated package has an invalid source checked date.");
+  }
+  return {
+    sourceName: generated.sourceOrganization,
+    sourceTitle: generated.sourceTitle,
+    sourceUrl: generated.sourceUrl,
+    lastCheckedAt: lastVerifiedAt,
+    verificationSources: generated.verificationSources.length
+      ? generated.verificationSources
+      : [{
+        title: generated.sourceTitle,
+        organization: generated.sourceOrganization,
+        url: generated.sourceUrl,
+        type: "official" as const,
+        retrievedAt: generated.lastChecked,
+      }],
+    lastVerifiedAt,
+    verificationStatus: "verified",
+  };
+}
+
+function hasVerificationSources(value: unknown) {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function hasOfficialSource(pack: {
+  lastCheckedAt: Date | null;
+  sourceTitle: string | null;
+  sourceUrl: string | null;
+  verificationSources: unknown;
+}) {
+  return Boolean(pack.sourceTitle && pack.sourceUrl && pack.lastCheckedAt && hasVerificationSources(pack.verificationSources));
+}
+
+function searchKeywords(query: string, generated: AIReadinessPackage) {
+  return [...new Set(tokens(`${query} ${generated.packageName} ${generated.category} ${generated.description} ${generated.requiredDocuments.map((document) => `${document.title} ${document.name} ${document.category} ${document.documentType}`).join(" ")}`))];
 }
 
 function tokens(value: string) {

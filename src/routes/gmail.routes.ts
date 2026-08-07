@@ -4,17 +4,24 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { gmailAuthorizeLimiter, gmailImportLimiter, gmailScanLimiter } from "../middleware/security";
-import { createAuthorizationUrl, markGmailDisconnectedOnAuthFailure } from "../services/gmail/oauth";
-import { handleGmailCallback } from "../services/gmail/callback";
+import { completeAuthorization, consumeOAuthState, createAuthorizationUrl, GmailOAuthError, markGmailDisconnectedOnAuthFailure } from "../services/gmail/oauth";
+import { GMAIL_SCOPE } from "../services/gmail/config";
+import { hasGrantedScope } from "../services/googleIntegrationStatus";
 import { scanGmail } from "../services/gmail/scanner";
 import { importGmailCandidates } from "../services/gmail/importer";
+import { completeOAuthPopupCallback, sendOAuthPopupCallback } from "../services/oauthPopupCallback";
 
 const router = Router();
 const activeGmailScans = new Map<string, ReturnType<typeof scanGmail>>();
 
 router.get("/callback", async (req, res) => {
-  const result = await handleGmailCallback(req.query);
-  return res.redirect(302, result.redirectUrl);
+  const result = await completeOAuthPopupCallback(req.query, {
+    provider: "gmail",
+    authorize: completeAuthorization,
+    consumeDeniedState: consumeOAuthState,
+    mapError: (error) => error instanceof GmailOAuthError ? error.safeCode : "authorization_failed",
+  });
+  return sendOAuthPopupCallback(res, result);
 });
 
 router.use(requireAuth);
@@ -23,7 +30,8 @@ router.get("/status", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const connection = await prisma.externalConnection.findUnique({ where: { userId_provider: { userId: authUser.id, provider: "gmail" } } });
-    return res.json({ connected: connection?.status === "connected", account: connection?.status === "connected" ? connection.providerEmail : null, lastScannedAt: connection?.lastScannedAt ?? null, scanning: Boolean(connection?.scanStartedAt) });
+    const connected = hasGrantedScope(connection, GMAIL_SCOPE);
+    return res.json({ connected, account: connected ? connection!.providerEmail : null, lastScannedAt: connection?.lastScannedAt ?? null, scanning: Boolean(connection?.scanStartedAt) });
   } catch (error) { return next(error); }
 });
 

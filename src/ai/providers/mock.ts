@@ -44,10 +44,24 @@ export class MockAIProvider implements AIProvider {
 }
 
 function packageResult(packageName: string, category: string, documents: Array<[string, string, string, AIReadinessPackage["requiredDocuments"][number]["owner"], string]>): AIReadinessPackage {
+  const checkedAt = new Date().toISOString();
   return {
     packageName,
     category,
     description: `${packageName} readiness pack`,
+    sourceTitle: "Ministry of Electronics and Information Technology citizen services",
+    sourceUrl: "https://www.meity.gov.in/",
+    sourceOrganization: "Ministry of Electronics and Information Technology",
+    lastChecked: checkedAt,
+    verificationSources: [{
+      title: "Ministry of Electronics and Information Technology citizen services",
+      organization: "Ministry of Electronics and Information Technology",
+      url: "https://www.meity.gov.in/",
+      type: "government",
+      retrievedAt: checkedAt,
+    }],
+    lastVerifiedAt: checkedAt,
+    verificationStatus: "verified",
     requiredDocuments: documents.map(([id, documentCategory, documentType, owner, title]) => ({ id, category: documentCategory, documentType, owner, name: title, title, required: true })),
   };
 }

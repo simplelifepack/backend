@@ -157,16 +157,37 @@ export function normalizeRequirementDocumentTypes(documentType: string, title: s
 }
 
 export function normalizeSearchText(input: string) {
-  return input
+  const normalized = input
     .trim()
     .toLowerCase()
     .replace(/\bhouse\b/g, "home")
+    .replace(/\bcar finance\b/g, "car vehicle loan")
+    .replace(/\bauto finance\b/g, "auto vehicle loan")
+    .replace(/\bautomobile loan\b/g, "automobile vehicle loan")
+    .replace(/\bdemat\b/g, "trading demat")
+    .replace(/\bdematerialised\b/g, "demat")
+    .replace(/\bdematerialized\b/g, "demat")
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(?:i want|i need|need|want|help me|please|documents for|document for|requirements for|required documents for|docs for|open|apply for|create|build|get|start)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  return singularizeSearchTerms(normalized);
 }
 
 export function slugify(input: string) {
   return normalizeSearchText(input).replace(/\s+/g, "-");
+}
+
+function singularizeSearchTerms(input: string) {
+  return input
+    .split(" ")
+    .map((token) => {
+      if (token.length <= 3) return token;
+      if (token.endsWith("ies")) return `${token.slice(0, -3)}y`;
+      if (token.endsWith("sses")) return token.slice(0, -2);
+      if (token.endsWith("s") && !token.endsWith("ss")) return token.slice(0, -1);
+      return token;
+    })
+    .join(" ");
 }

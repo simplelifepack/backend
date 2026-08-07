@@ -3,7 +3,6 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { decryptDocumentRecord } from "./documents.helpers";
-import { getPackageDefinitions } from "../services/packs.service";
 
 const router = Router();
 router.use(requireAuth);
@@ -31,13 +30,10 @@ function readinessFields(value: unknown) {
 router.get("/", async (req, res, next) => {
   try {
     const { authUser } = req as AuthenticatedRequest;
-    const [documents, packages] = await Promise.all([
-      prisma.document.findMany({
-        where: { ownerProfileId: authUser.id, deletedAt: null },
-        orderBy: { createdAt: "desc" },
-      }),
-      getPackageDefinitions(),
-    ]);
+    const documents = await prisma.document.findMany({
+      where: { ownerProfileId: authUser.id, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
 
     return res.json({
       user: authUser,
@@ -71,7 +67,6 @@ router.get("/", async (req, res, next) => {
           updatedAt: decrypted.updatedAt,
         };
       }),
-      packages,
       savedPackages: [],
       version: "1",
     });
