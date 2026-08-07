@@ -28,11 +28,11 @@ export class GmailEmailProvider implements EmailProvider {
       subject: input.subject,
       html: input.html,
       text: input.text,
-      headers: {
-        "Auto-Submitted": "auto-generated",
-        "X-Auto-Response-Suppress": "All",
-        "X-Lifepack-Message-Type": "authentication",
-      },
+      // headers: {
+      //   "Auto-Submitted": "auto-generated",
+      //   "X-Auto-Response-Suppress": "All",
+      //   "X-Lifepack-Message-Type": "authentication",
+      // },
     });
   }
 

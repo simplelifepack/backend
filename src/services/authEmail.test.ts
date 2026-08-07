@@ -4,13 +4,14 @@ import assert from "node:assert/strict";
 import { prisma } from "../lib/prisma";
 import type { TokenPayload } from "google-auth-library";
 
-import { googleLogin, login, signup } from "./auth.service";
+import { forgotPassword, googleLogin, login, resetPassword, signup } from "./auth.service";
 import type { SendEmailInput } from "./email/EmailProvider";
 import { setEmailProviderForTests } from "./email/emailService";
 import { renderLoginAlertEmail } from "./email/templates/loginAlertEmail";
+import { renderPasswordResetEmail } from "./email/templates/passwordResetEmail";
 import { renderWelcomeEmail } from "./email/templates/welcomeEmail";
 
-process.env.APP_URL ||= "http://localhost:5173";
+process.env.APP_URL = "https://www.readines.com";
 
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const email = (label: string) => `auth-email-${label}-${runId}@example.com`;
@@ -85,6 +86,31 @@ async function run() {
   assert.equal(provider.sent[1].subject, "New login to your LifePack account");
   assert.match(provider.sent[1].text, /203\.0\.113\.x/);
 
+  const missingReset = await forgotPassword({ email: email("missing") });
+  assert.match(missingReset.message, /If an account exists/);
+  assert.equal(provider.sent.length, 2, "forgot password for unknown account sends no email");
+
+  const resetResponse = await forgotPassword({ email: email("new") });
+  assert.match(resetResponse.message, /If an account exists/);
+  assert.equal(provider.sent.length, 3, "forgot password sends one reset email for password account");
+  assert.equal(provider.sent[2].subject, "Reset your LifePack password");
+  assert.equal(provider.sent[2].to, email("new"));
+  const resetUrl = provider.sent[2].text.match(/http[^\s]+/)?.[0];
+  assert.ok(resetUrl, "reset email includes reset URL");
+  const resetToken = new URL(resetUrl).searchParams.get("token");
+  assert.ok(resetToken, "reset URL includes token");
+
+  await resetPassword({ token: resetToken, password: "new-password-123" });
+  await expectFailure(
+    () => login({ email: email("new"), password: "password123" }),
+    /Invalid email or password/,
+  );
+  await login({ email: email("new"), password: "new-password-123" });
+  await expectFailure(
+    () => resetPassword({ token: resetToken, password: "another-password-123" }),
+    /Invalid or expired/,
+  );
+
   const failingWelcomeProvider = new MockEmailProvider();
   failingWelcomeProvider.shouldFail = true;
   setEmailProviderForTests(failingWelcomeProvider);
@@ -94,7 +120,7 @@ async function run() {
   const failingLoginProvider = new MockEmailProvider();
   failingLoginProvider.shouldFail = true;
   setEmailProviderForTests(failingLoginProvider);
-  await login({ email: email("new"), password: "password123" });
+  await login({ email: email("new"), password: "new-password-123" });
   assert.equal(failingLoginProvider.sent.length, 0, "SMTP failure does not fail successful login");
 
   const googleProvider = new MockEmailProvider();
@@ -110,6 +136,16 @@ async function run() {
   );
   assert.equal(googleProvider.sent.length, 2, "existing Google login sends one alert");
   assert.equal(googleProvider.sent[1].subject, "New login to your LifePack account");
+
+  await forgotPassword({ email: email("google-new") });
+  assert.equal(googleProvider.sent.length, 3, "forgot password sends reset email for Google-created account");
+  assert.equal(googleProvider.sent[2].subject, "Reset your LifePack password");
+  const googleResetUrl = googleProvider.sent[2].text.match(/http[^\s]+/)?.[0];
+  assert.ok(googleResetUrl, "Google reset email includes reset URL");
+  const googleResetToken = new URL(googleResetUrl).searchParams.get("token");
+  assert.ok(googleResetToken, "Google reset URL includes token");
+  await resetPassword({ token: googleResetToken, password: "google-password-123" });
+  await login({ email: email("google-new"), password: "google-password-123" });
 
   const welcome = renderWelcomeEmail({ name: `<script>alert("x")</script>`, appUrl: "http://localhost:5173" });
   assert.ok(welcome.html.length > 0 && welcome.text.length > 0);
@@ -129,6 +165,17 @@ async function run() {
   assert.doesNotMatch(loginAlert.html, /<img src=x/);
   assert.doesNotMatch(loginAlert.html, /href="http:\/\/localhost:5173"/);
   assert.doesNotMatch(loginAlert.text, /http:\/\/localhost:5173/);
+
+  const passwordReset = renderPasswordResetEmail({ resetUrl: "https://www.readines.com/reset-password?token=<script>" });
+  assert.ok(passwordReset.html.length > 0 && passwordReset.text.length > 0);
+  assert.match(passwordReset.html, /token=&lt;script&gt;/);
+  assert.doesNotMatch(passwordReset.html, /<script>/);
+
+  const localPasswordReset = renderPasswordResetEmail({ resetUrl: "http://localhost:5173/reset-password?token=test-token" });
+  assert.ok(localPasswordReset.html.length > 0 && localPasswordReset.text.length > 0);
+  assert.match(localPasswordReset.html, /Copy and paste this reset link/);
+  assert.match(localPasswordReset.html, /http:\/\/localhost:5173\/reset-password\?token=test-token/);
+  assert.match(localPasswordReset.text, /http:\/\/localhost:5173\/reset-password\?token=test-token/);
 
   console.log("Authentication email tests passed.");
 }

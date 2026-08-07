@@ -2,6 +2,7 @@ import { loadEmailConfig } from "../../config/email";
 import { prisma } from "../../lib/prisma";
 import { GmailEmailProvider } from "./GmailEmailProvider";
 import type { EmailProvider } from "./EmailProvider";
+import { renderPasswordResetEmail } from "./templates/passwordResetEmail";
 import { renderLoginAlertEmail } from "./templates/loginAlertEmail";
 import { renderWelcomeEmail } from "./templates/welcomeEmail";
 
@@ -14,7 +15,7 @@ export type LoginAlertContext = {
   timeZone?: string | null;
 };
 
-type SendType = "welcome" | "login_alert";
+type SendType = "welcome" | "login_alert" | "password_reset";
 
 let providerOverride: EmailProvider | null = null;
 let cachedProvider: EmailProvider | null | undefined;
@@ -155,5 +156,18 @@ export async function sendLoginAlertEmail(user: { id: string; email: string }, c
     await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
   } catch (error) {
     logEmailFailure("login_alert", user.id, error);
+  }
+}
+
+export async function sendPasswordResetEmail(user: { id: string; email: string }, resetUrl: string) {
+  const provider = getEmailProvider();
+  if (!provider || !isValidRecipient(user.email)) return;
+
+  const rendered = renderPasswordResetEmail({ resetUrl });
+
+  try {
+    await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
+  } catch (error) {
+    logEmailFailure("password_reset", user.id, error);
   }
 }

@@ -135,7 +135,7 @@ Email is disabled by default. To send reset emails through a Gmail app password:
 
 ```env
 EMAIL_PROVIDER=gmail
-APP_URL=http://localhost:5173
+APP_URL=https://your-lifepack-web-app.example.com
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=465
 SMTP_SECURE=true
@@ -147,7 +147,9 @@ TZ=Asia/Kolkata
 ```
 
 Create `SMTP_APP_PASSWORD` in the Google Account security settings after enabling
-2-Step Verification. `EMAIL_FROM_ADDRESS` must match `SMTP_USER`.
+2-Step Verification. `EMAIL_FROM_ADDRESS` must match `SMTP_USER`. Gmail-delivered
+authentication emails must use a public HTTPS `APP_URL`; use a local mail catcher
+or HTTPS tunnel when testing reset links against a local frontend.
 
 ### S3-compatible storage (Supabase or AWS)
 

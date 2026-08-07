@@ -36,11 +36,18 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().email("A valid email is required."),
 });
 
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(32, "Reset token is required."),
+  password: z.string().min(8, "Password must be at least 8 characters."),
+});
+
 const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, "Refresh token is required."),
 });
 
 const REFRESH_TOKEN_DAYS = 30;
+const PASSWORD_RESET_MINUTES = 30;
+const PASSWORD_RESET_MESSAGE = "If an account exists for that email, password reset instructions will be sent.";
 
 function httpError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode });
@@ -58,10 +65,27 @@ function hashRefreshToken(refreshToken: string) {
   return createHash("sha256").update(refreshToken).digest("hex");
 }
 
+function hashPasswordResetToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 function getRefreshTokenExpiry() {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_DAYS);
   return expiresAt;
+}
+
+function getPasswordResetExpiry() {
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + PASSWORD_RESET_MINUTES);
+  return expiresAt;
+}
+
+function buildPasswordResetUrl(token: string) {
+  const appUrl = process.env.APP_URL?.trim() || "http://localhost:5173";
+  const resetUrl = new URL("/reset-password", appUrl);
+  resetUrl.searchParams.set("token", token);
+  return resetUrl.toString();
 }
 
 async function createRefreshToken(userId: string) {
@@ -274,11 +298,95 @@ export async function logout(input: unknown) {
   };
 }
 
-export function forgotPassword(input: unknown) {
-  forgotPasswordSchema.parse(input);
+export async function forgotPassword(input: unknown) {
+  const { email } = forgotPasswordSchema.parse(input);
+  const user = await findUserByEmail(email);
+
+  if (user) {
+    const token = randomBytes(48).toString("base64url");
+    await prisma.passwordResetToken.updateMany({
+      where: {
+        userId: user.id,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+    await prisma.passwordResetToken.create({
+      data: {
+        tokenHash: hashPasswordResetToken(token),
+        userId: user.id,
+        expiresAt: getPasswordResetExpiry(),
+      },
+    });
+    await emailService.sendPasswordResetEmail(user, buildPasswordResetUrl(token));
+  }
 
   return {
-    message: "If an account exists for that email, password reset instructions will be sent.",
+    message: PASSWORD_RESET_MESSAGE,
+  };
+}
+
+export async function resetPassword(input: unknown) {
+  const { token, password } = resetPasswordSchema.parse(input);
+  const tokenHash = hashPasswordResetToken(token);
+  const savedToken = await prisma.passwordResetToken.findUnique({
+    where: {
+      tokenHash,
+    },
+    select: {
+      id: true,
+      userId: true,
+      usedAt: true,
+      expiresAt: true,
+    },
+  });
+
+  if (!savedToken || savedToken.usedAt || savedToken.expiresAt <= new Date()) {
+    throw httpError("Invalid or expired password reset link.", 400);
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.passwordResetToken.updateMany({
+      where: {
+        id: savedToken.id,
+        usedAt: null,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    if (claimed.count !== 1) {
+      throw httpError("Invalid or expired password reset link.", 400);
+    }
+
+    await tx.user.update({
+      where: {
+        id: savedToken.userId,
+      },
+      data: {
+        passwordHash,
+      },
+    });
+    await tx.refreshToken.updateMany({
+      where: {
+        userId: savedToken.userId,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+  });
+
+  return {
+    message: "Password reset successfully. Please sign in with your new password.",
   };
 }
 

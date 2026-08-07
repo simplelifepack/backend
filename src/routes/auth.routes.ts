@@ -57,9 +57,18 @@ router.post("/logout", async (req, res, next) => {
   }
 });
 
-router.post("/forgot-password", authLimiter, (req, res, next) => {
+router.post("/forgot-password", authLimiter, async (req, res, next) => {
   try {
-    const result = authService.forgotPassword(req.body);
+    const result = await authService.forgotPassword(req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/reset-password", authLimiter, async (req, res, next) => {
+  try {
+    const result = await authService.resetPassword(req.body);
     res.json(result);
   } catch (error) {
     next(error);
