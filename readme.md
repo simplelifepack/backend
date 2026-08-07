@@ -129,27 +129,27 @@ GOOGLE_TOKEN_ENCRYPTION_KEY=base64:<dedicated-32-byte-value>
 Generate `GOOGLE_TOKEN_ENCRYPTION_KEY` with `openssl rand -base64 32`. Do not
 reuse any document encryption key.
 
-### Gmail password-reset email delivery
+### SMTP password-reset email delivery
 
-Email is disabled by default. To send reset emails through a Gmail app password:
+Email is disabled by default. To send reset emails through GoDaddy Professional
+Email SMTP:
 
 ```env
-EMAIL_PROVIDER=gmail
 APP_URL=https://your-lifepack-web-app.example.com
-SMTP_HOST=smtp.gmail.com
+SMTP_HOST=smtpout.secureserver.net
 SMTP_PORT=465
 SMTP_SECURE=true
-SMTP_USER=account@example.com
-SMTP_APP_PASSWORD=
-EMAIL_FROM_NAME=LifePack
-EMAIL_FROM_ADDRESS=account@example.com
+SMTP_USER=support@readines.info
+SMTP_PASS=
+MAIL_FROM="LifePack <support@readines.info>"
 TZ=Asia/Kolkata
 ```
 
-Create `SMTP_APP_PASSWORD` in the Google Account security settings after enabling
-2-Step Verification. `EMAIL_FROM_ADDRESS` must match `SMTP_USER`. Gmail-delivered
-authentication emails must use a public HTTPS `APP_URL`; use a local mail catcher
-or HTTPS tunnel when testing reset links against a local frontend.
+Set `SMTP_PASS` from the mailbox credentials. Production authentication emails
+must use a public HTTPS `APP_URL`; use a local mail catcher or HTTPS tunnel when
+testing reset links against a local frontend. The backend verifies SMTP once at
+startup and logs a sanitized success/failure event. Run `npm run
+email:verify-smtp` to validate SMTP connectivity without sending a message.
 
 ### S3-compatible storage (Supabase or AWS)
 

@@ -5,7 +5,11 @@ export interface SendEmailInput {
   text: string;
 }
 
+export interface SendEmailResult {
+  messageId?: string;
+}
+
 export interface EmailProvider {
-  sendEmail(input: SendEmailInput): Promise<void>;
+  sendEmail(input: SendEmailInput): Promise<SendEmailResult | void>;
   verify?(): Promise<void>;
 }

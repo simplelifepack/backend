@@ -12,6 +12,12 @@ import { renderPasswordResetEmail } from "./email/templates/passwordResetEmail";
 import { renderWelcomeEmail } from "./email/templates/welcomeEmail";
 
 process.env.APP_URL = "https://www.readines.com";
+delete process.env.SMTP_HOST;
+delete process.env.SMTP_PORT;
+delete process.env.SMTP_SECURE;
+delete process.env.SMTP_USER;
+delete process.env.SMTP_PASS;
+delete process.env.MAIL_FROM;
 
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const email = (label: string) => `auth-email-${label}-${runId}@example.com`;

@@ -1,24 +1,24 @@
-export type GmailEmailConfig = {
-  provider: "gmail";
+export type SmtpEmailConfig = {
+  provider: "smtp";
   smtpHost: string;
   smtpPort: number;
   smtpSecure: boolean;
   smtpUser: string;
-  smtpAppPassword: string;
-  fromName: string;
-  fromAddress: string;
+  smtpPass: string;
+  mailFrom: string;
   appUrl: string;
 };
 
 export type DisabledEmailConfig = {
   provider: "disabled";
+  appUrl: string;
 };
 
-export type EmailConfig = GmailEmailConfig | DisabledEmailConfig;
+export type EmailConfig = SmtpEmailConfig | DisabledEmailConfig;
 
 function required(name: string, env: NodeJS.ProcessEnv) {
   const value = env[name]?.trim();
-  if (!value) throw new Error(`${name} is required when EMAIL_PROVIDER=gmail.`);
+  if (!value) throw new Error(`${name} is required when SMTP email is configured.`);
   return value;
 }
 
@@ -36,20 +36,12 @@ function parsePort(value: string) {
   return port;
 }
 
+function isProductionEnv(env: NodeJS.ProcessEnv) {
+  return env.APP_ENV === "production" || env.NODE_ENV === "production" || env.VERCEL_ENV === "production";
+}
+
 export function loadEmailConfig(env: NodeJS.ProcessEnv = process.env): EmailConfig {
-  const provider = (env.EMAIL_PROVIDER?.trim() || "disabled").toLowerCase();
-  if (provider === "disabled" || provider === "none") return { provider: "disabled" };
-  if (provider !== "gmail") {
-    throw new Error(`Unsupported EMAIL_PROVIDER: ${provider}. Expected "gmail" or "disabled".`);
-  }
-
-  const smtpUser = required("SMTP_USER", env).toLowerCase();
-  const fromAddress = required("EMAIL_FROM_ADDRESS", env).toLowerCase();
-  if (fromAddress !== smtpUser) {
-    throw new Error("EMAIL_FROM_ADDRESS must match SMTP_USER when EMAIL_PROVIDER=gmail.");
-  }
-
-  const appUrl = required("APP_URL", env);
+  const appUrl = env.APP_URL?.trim() || "http://localhost:5173";
   try {
     const parsed = new URL(appUrl);
     if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Invalid APP_URL protocol.");
@@ -57,15 +49,23 @@ export function loadEmailConfig(env: NodeJS.ProcessEnv = process.env): EmailConf
     throw new Error("APP_URL must be a valid http or https URL.");
   }
 
+  const smtpValues = [env.SMTP_HOST, env.SMTP_PORT, env.SMTP_SECURE, env.SMTP_USER, env.SMTP_PASS, env.MAIL_FROM];
+  if (smtpValues.every((value) => !value?.trim())) {
+    return { provider: "disabled", appUrl };
+  }
+
+  if (!isProductionEnv(env) && smtpValues.some((value) => !value?.trim())) {
+    return { provider: "disabled", appUrl };
+  }
+
   return {
-    provider: "gmail",
+    provider: "smtp",
     smtpHost: required("SMTP_HOST", env),
     smtpPort: parsePort(required("SMTP_PORT", env)),
     smtpSecure: parseBoolean("SMTP_SECURE", required("SMTP_SECURE", env)),
-    smtpUser,
-    smtpAppPassword: required("SMTP_APP_PASSWORD", env),
-    fromName: required("EMAIL_FROM_NAME", env),
-    fromAddress,
+    smtpUser: required("SMTP_USER", env),
+    smtpPass: required("SMTP_PASS", env),
+    mailFrom: required("MAIL_FROM", env),
     appUrl,
   };
 }

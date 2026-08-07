@@ -1,6 +1,6 @@
 import { loadEmailConfig } from "../../config/email";
 import { prisma } from "../../lib/prisma";
-import { GmailEmailProvider } from "./GmailEmailProvider";
+import { SmtpEmailProvider } from "./SmtpEmailProvider";
 import type { EmailProvider } from "./EmailProvider";
 import { renderPasswordResetEmail } from "./templates/passwordResetEmail";
 import { renderLoginAlertEmail } from "./templates/loginAlertEmail";
@@ -19,12 +19,13 @@ type SendType = "welcome" | "login_alert" | "password_reset";
 
 let providerOverride: EmailProvider | null = null;
 let cachedProvider: EmailProvider | null | undefined;
+let startupVerificationStarted = false;
 
 function getEmailProvider(): EmailProvider | null {
   if (providerOverride) return providerOverride;
   if (cachedProvider !== undefined) return cachedProvider;
   const config = loadEmailConfig();
-  cachedProvider = config.provider === "disabled" ? null : new GmailEmailProvider(config);
+  cachedProvider = config.provider === "disabled" ? null : new SmtpEmailProvider(config);
   return cachedProvider;
 }
 
@@ -39,7 +40,30 @@ export async function verifyEmailProvider() {
   await provider.verify();
 }
 
-function withTimeout(send: Promise<void>) {
+export function verifyEmailProviderOnStartup() {
+  if (startupVerificationStarted) return;
+  startupVerificationStarted = true;
+
+  const provider = getEmailProvider();
+  if (!provider?.verify) {
+    console.info({ event: "smtp_verify_skipped", reason: "email_disabled" });
+    return;
+  }
+
+  provider.verify()
+    .then(() => {
+      console.info({ event: "smtp_verify_succeeded" });
+    })
+    .catch((error) => {
+      console.error({
+        event: "smtp_verify_failed",
+        errorCode: errorCode(error),
+        ...emailFailureDetails(error),
+      });
+    });
+}
+
+function withTimeout<T>(send: Promise<T>) {
   let timeout: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
     timeout = setTimeout(() => {
@@ -63,12 +87,30 @@ function errorCode(error: unknown) {
   return "unknown";
 }
 
+function emailFailureDetails(error: unknown) {
+  if (typeof error !== "object" || !error) return {};
+  const detail = error as {
+    command?: unknown;
+    response?: unknown;
+    responseCode?: unknown;
+    rejected?: unknown;
+  };
+
+  return {
+    command: typeof detail.command === "string" ? detail.command : undefined,
+    responseCode: typeof detail.responseCode === "number" ? detail.responseCode : undefined,
+    response: typeof detail.response === "string" ? detail.response.slice(0, 500) : undefined,
+    rejectedCount: Array.isArray(detail.rejected) ? detail.rejected.length : undefined,
+  };
+}
+
 function logEmailFailure(type: SendType, userId: string, error: unknown) {
   console.error({
     event: "auth_email_failed",
     type,
     userId,
     errorCode: errorCode(error),
+    ...emailFailureDetails(error),
   });
 }
 
@@ -131,7 +173,7 @@ export async function sendWelcomeEmail(user: { id: string; name: string | null; 
   if (claimed.count !== 1) return;
 
   const config = loadEmailConfig();
-  const rendered = renderWelcomeEmail({ name: user.name, appUrl: config.provider === "gmail" ? config.appUrl : "http://localhost:5173" });
+  const rendered = renderWelcomeEmail({ name: user.name, appUrl: config.appUrl });
 
   try {
     await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
@@ -146,7 +188,7 @@ export async function sendLoginAlertEmail(user: { id: string; email: string }, c
 
   const config = loadEmailConfig();
   const rendered = renderLoginAlertEmail({
-    appUrl: config.provider === "gmail" ? config.appUrl : "http://localhost:5173",
+    appUrl: config.appUrl,
     loginTime: formatLoginTime(new Date(), context.timeZone),
     deviceSummary: safeDeviceSummary(context.userAgent),
     locationSummary: safeIpSummary(context.ip),

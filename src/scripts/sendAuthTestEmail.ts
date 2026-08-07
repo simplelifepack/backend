@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { loadEmailConfig } from "../config/email";
-import { GmailEmailProvider } from "../services/email/GmailEmailProvider";
+import { SmtpEmailProvider } from "../services/email/SmtpEmailProvider";
 import { renderLoginAlertEmail } from "../services/email/templates/loginAlertEmail";
 
 const recipient = process.env.TEST_EMAIL_RECIPIENT?.trim();
@@ -16,11 +16,11 @@ async function run() {
   }
 
   const config = loadEmailConfig();
-  if (config.provider !== "gmail") {
-    throw new Error("EMAIL_PROVIDER must be gmail to send a test email.");
+  if (config.provider !== "smtp") {
+    throw new Error("SMTP email must be configured to send a test email.");
   }
 
-  const provider = new GmailEmailProvider(config);
+  const provider = new SmtpEmailProvider(config);
   const rendered = renderLoginAlertEmail({
     appUrl: config.appUrl,
     loginTime: new Intl.DateTimeFormat("en-US", {
@@ -32,13 +32,15 @@ async function run() {
     locationSummary: "Not available",
   });
 
-  await provider.sendEmail({
+  const result = await provider.sendEmail({
     to: recipient!,
     subject: rendered.subject,
     html: rendered.html,
     text: rendered.text,
   });
-  console.log("Test authentication email sent.");
+  console.log("Test authentication email accepted.", {
+    messageId: result?.messageId,
+  });
 }
 
 run().catch((error) => {

@@ -18,6 +18,7 @@ import { loadBackendEnv } from "./config/env";
 import { loadStorageConfig } from "./config/storage";
 import { getActiveDocumentEncryptionKey } from "./services/documentHybridEncryption";
 import { assertDocumentSecurityScannerConfigured } from "./services/documentSecurityValidation";
+import { verifyEmailProviderOnStartup } from "./services/email/emailService";
 
 loadBackendEnv();
 assertDatabaseConfigured();
@@ -26,6 +27,7 @@ loadStorageConfig();
 assertDocumentEncryptionConfigured();
 getActiveDocumentEncryptionKey();
 assertDocumentSecurityScannerConfigured();
+verifyEmailProviderOnStartup();
 
 const app = express();
 app.disable("x-powered-by");
