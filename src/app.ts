@@ -33,6 +33,7 @@ verifyEmailProviderOnStartup();
 
 const app = express();
 app.disable("x-powered-by");
+app.disable("etag");
 
 if (process.env.TRUST_PROXY) {
   app.set("trust proxy", process.env.TRUST_PROXY);
@@ -40,6 +41,12 @@ if (process.env.TRUST_PROXY) {
 
 app.use(helmet(securityHeadersOptions));
 app.use(cors(corsOptions));
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/") || req.path === "/packages" || req.path.startsWith("/packages/")) {
+    res.setHeader("Cache-Control", "no-store");
+  }
+  next();
+});
 app.use(express.json({ limit: jsonBodyLimit }));
 
 app.get("/health", (_req, res) => {
