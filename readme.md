@@ -141,15 +141,20 @@ SMTP_PORT=465
 SMTP_SECURE=true
 SMTP_USER=support@readines.info
 SMTP_PASS=
+SMTP_APP_PASSWORD=
 MAIL_FROM="LifePack <support@readines.info>"
+EMAIL_FROM_NAME=LifePack
+EMAIL_FROM_ADDRESS=support@readines.info
 TZ=Asia/Kolkata
 ```
 
-Set `SMTP_PASS` from the mailbox credentials. Production authentication emails
-must use a public HTTPS `APP_URL`; use a local mail catcher or HTTPS tunnel when
-testing reset links against a local frontend. The backend verifies SMTP once at
-startup and logs a sanitized success/failure event. Run `npm run
-email:verify-smtp` to validate SMTP connectivity without sending a message.
+Set either `SMTP_PASS` or the forgot-password flow's `SMTP_APP_PASSWORD` from
+the mailbox credentials. Set either `MAIL_FROM` or `EMAIL_FROM_ADDRESS` (with
+optional `EMAIL_FROM_NAME`). Production authentication emails must use a public
+HTTPS `APP_URL`; use a local mail catcher or HTTPS tunnel when testing reset
+links against a local frontend. The backend verifies SMTP once at startup and
+logs a sanitized success/failure event. Run `npm run email:verify-smtp` to
+validate SMTP connectivity without sending a message.
 
 ### S3-compatible storage (Supabase or AWS)
 

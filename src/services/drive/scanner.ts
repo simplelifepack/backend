@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import type { drive_v3 } from "googleapis";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../lib/prisma";
 import { temporaryUploadsDir } from "../../middleware/upload";
@@ -34,6 +35,12 @@ type DrivePdf = {
   webViewLink: string | null;
 };
 
+type DriveFailure = {
+  fileId: string;
+  name: string;
+  reason: string;
+};
+
 export type DriveScanResult = {
   discovered: number;
   processed: number;
@@ -61,6 +68,32 @@ function logDriveScanError(message: string, error: unknown, details: Record<stri
   const status = (error as { response?: { status?: unknown } }).response?.status;
   const errorMessage = error instanceof Error ? error.message : String(error);
   console.error(`[Drive Scan] ${message}`, { ...details, status, error: errorMessage });
+}
+
+function displayDriveFileName(name: string) {
+  const clean = name.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!clean) return "unnamed PDF";
+  return clean.length > 80 ? `${clean.slice(0, 77)}...` : clean;
+}
+
+function summarizeDriveFailures(failures: DriveFailure[]) {
+  if (!failures.length) return null;
+  const [first] = failures;
+  const suffix = failures.length > 1 ? ` and ${failures.length - 1} more` : "";
+  return `${failures.length} PDF(s) could not be processed: ${first.name}${suffix}. Reason: ${first.reason}`;
+}
+
+function driveFailureReason(error: unknown) {
+  const status = (error as { response?: { status?: number } }).response?.status;
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof Prisma.PrismaClientKnownRequestError) return `database error ${error.code}`;
+  if (error instanceof Prisma.PrismaClientValidationError) return "database validation failed";
+  if (status === 403) return "Google Drive denied access";
+  if (status === 404) return "file was no longer available";
+  if (/password/i.test(message)) return "password protected PDF";
+  if (/too large|exceeds|invalid size/i.test(message)) return "file exceeds the 25 MB limit";
+  if (/storage|s3|bucket|upload/i.test(message)) return "document storage failed";
+  return "unsupported or unreadable PDF";
 }
 
 async function withRetry<T>(operation: () => Promise<T>) {
@@ -121,14 +154,14 @@ async function mapBounded<T>(items: T[], worker: (item: T) => Promise<void>) {
   }));
 }
 
-async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, duplicateAction: DuplicateAction) {
-  logDriveScan("processing", { fileId: file.id, mimeType: file.mimeType, size: file.size });
+async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, duplicateAction: DuplicateAction, forceReprocess = false) {
+  logDriveScan("processing", { fileId: file.id, fileName: displayDriveFileName(file.name), mimeType: file.mimeType, size: file.size });
   if (file.size > MAX_PDF_SIZE) {
-    logDriveScan("skipped oversized", { fileId: file.id, mimeType: file.mimeType, size: file.size });
-    return "failed";
+    logDriveScan("skipped oversized", { fileId: file.id, fileName: displayDriveFileName(file.name), mimeType: file.mimeType, size: file.size });
+    throw new Error("Google Drive PDF exceeds the 25 MB limit.");
   }
   const existingFile = await prisma.document.findFirst({ where: { ownerProfileId: userId, driveFileId: file.id } });
-  if (existingFile && existingFile.sourceModifiedTime?.toISOString() === new Date(file.modifiedTime).toISOString()) {
+  if (!forceReprocess && existingFile && existingFile.sourceModifiedTime?.toISOString() === new Date(file.modifiedTime).toISOString()) {
     logDriveScan("skipped unchanged", { fileId: file.id, mimeType: file.mimeType });
     return "unchanged";
   }
@@ -141,7 +174,7 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
   const content = Buffer.from(response.data as ArrayBuffer);
   if (!content.length || content.length > MAX_PDF_SIZE) {
     logDriveScan("download invalid size", { fileId: file.id, mimeType: file.mimeType, size: content.length });
-    return "failed";
+    throw new Error("Google Drive PDF is empty or exceeds the 25 MB limit.");
   }
   const plaintextHash = crypto.createHash("sha256").update(content).digest("hex");
   const checksum = userScopedDocumentHash(userId, plaintextHash)!;
@@ -150,7 +183,14 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
   try {
     const analysis = await ingestDocument({ path: temporaryPath, originalName: file.name, mimeType: PDF_MIME, size: content.length });
     if (!analysis.success || analysis.documentType.toLowerCase() === "unknown") {
-      logDriveScan("skipped unsupported analysis", { fileId: file.id, mimeType: file.mimeType, documentType: analysis.documentType });
+      logDriveScan("skipped unsupported analysis", {
+        fileId: file.id,
+        fileName: displayDriveFileName(file.name),
+        mimeType: file.mimeType,
+        documentType: analysis.documentType,
+        reason: analysis.reason,
+        warningCodes: analysis.warnings.map((warning) => warning.code),
+      });
       return "ignored";
     }
     const uniqueNumber = analysis.validation.uniqueIdentifier;
@@ -256,22 +296,31 @@ export async function scanDrive(
   });
   if (locked.count !== 1) throw Object.assign(new Error("A Google Drive scan is already running."), { statusCode: 409 });
   const counts: Record<string, number> = { indexed: 0, updated: 0, unchanged: 0, ignored: 0, duplicate: 0, duplicate_kept: 0, failed: 0 };
+  const failures: DriveFailure[] = [];
+  let completed = 0;
   try {
     const checkpoint = options.full || !connection.lastScannedAt ? null : connection.lastSuccessfulSync;
     const files = await listDrivePdfs(drive, checkpoint);
     logDriveScan(`files found: ${files.length}`, { userId, checkpoint: checkpoint?.toISOString() ?? null });
     await prisma.externalConnection.update({ where: { id: connection.id }, data: { scanPhase: "Finding PDFs...", scanTotal: files.length } });
     await mapBounded(files, async (file) => {
+      const fileName = displayDriveFileName(file.name);
       try {
-        await prisma.externalConnection.update({ where: { id: connection.id }, data: { scanPhase: "Analyzing..." } });
-        const outcome = await processPdf(userId, drive, file, options.duplicateAction ?? "ignore");
+        await prisma.externalConnection.update({ where: { id: connection.id }, data: { scanPhase: `Indexing ${fileName}` } });
+        const outcome = await processPdf(userId, drive, file, options.duplicateAction ?? "ignore", Boolean(options.full));
         counts[outcome] = (counts[outcome] ?? 0) + 1;
       } catch (error) {
         counts.failed += 1;
-        logDriveScanError("processing failed", error, { fileId: file.id, mimeType: file.mimeType });
+        const reason = driveFailureReason(error);
+        failures.push({ fileId: file.id, name: fileName, reason });
+        logDriveScanError("processing failed", error, { fileId: file.id, fileName, mimeType: file.mimeType, reason });
         await markDriveDisconnectedOnAuthFailure(userId, error);
       } finally {
-        await prisma.externalConnection.update({ where: { id: connection.id }, data: { scanProcessed: { increment: 1 }, scanPhase: "Indexing..." } });
+        completed += 1;
+        await prisma.externalConnection.update({
+          where: { id: connection.id },
+          data: { scanProcessed: completed, scanPhase: completed >= files.length ? "Finishing..." : "Indexing..." },
+        });
       }
     });
     const indexedCount = await prisma.document.count({ where: { ownerProfileId: userId, sourceProvider: "GOOGLE_DRIVE" } });
@@ -283,7 +332,7 @@ export async function scanDrive(
       where: { id: connection.id },
       data: {
         lastScannedAt: new Date(), lastSuccessfulSync: startedAt, scanStartedAt: null,
-        scanPhase: null, indexedCount, lastScanError: counts.failed ? `${counts.failed} PDF(s) could not be processed.` : null,
+        scanPhase: null, indexedCount, lastScanError: summarizeDriveFailures(failures),
       },
     });
     logDriveScan(`imported: ${imported}`, { userId });

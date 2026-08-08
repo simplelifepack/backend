@@ -1,5 +1,5 @@
 import { analyzeWithRules } from "../../rules/engine";
-import type { DocumentAnalysis, Evidence } from "../../rules/types";
+import type { DocumentAnalysis, DocumentCategory, Evidence } from "../../rules/types";
 import type { ExtractionHints } from "../types";
 
 const drivingLicenceSatisfies = ["identity_proof", "address_proof", "photo_id", "driving_authorization"];
@@ -127,6 +127,60 @@ function toDrivingLicenceAnalysis(base: DocumentAnalysis, text: string, confiden
   };
 }
 
+function paymentStatementAnalysis(base: DocumentAnalysis, input: { fileName: string; text: string }) {
+  const haystack = `${input.fileName} ${input.text}`.replace(/[_-]+/g, " ");
+  if (!/\b(?:paytm|upi|payment)\s+statement\b/i.test(haystack)) return null;
+  const evidence = [
+    ...base.evidence,
+    { label: "payment statement filename/text", text: input.fileName.slice(0, 160), points: 55 },
+  ];
+
+  return {
+    ...base,
+    analysisSource: "rules" as const,
+    documentType: "payment_statement",
+    category: "finance" as const,
+    confidence: Math.max(base.confidence, 70),
+    evidence,
+    sourceEvidence: evidence.map((item) => `${item.label}: ${item.text}`),
+    reason: "Detected as a payment statement from filename and document text.",
+  };
+}
+
+function filenameFallbackAnalysis(base: DocumentAnalysis, input: { fileName: string; text: string }) {
+  const fileName = input.fileName.replace(/[_-]+/g, " ");
+  const sparseText = input.text.replace(/\s+/g, " ").trim();
+  const haystack = `${fileName} ${sparseText}`.toLowerCase();
+  const matches: Array<{ documentType: string; category: DocumentCategory; pattern: RegExp; label: string }> = [
+    { documentType: "bonafide_certificate", category: "education", pattern: /\bbonafide\b/i, label: "bonafide certificate filename/text" },
+    { documentType: "degree_certificate", category: "education", pattern: /\b(?:provision(?:al)? certificate|degree certificate)\b/i, label: "degree certificate filename/text" },
+    { documentType: "birth_certificate", category: "identity", pattern: /\bbirth certificate\b/i, label: "birth certificate filename/text" },
+    { documentType: "income_certificate", category: "other", pattern: /\bincome certificate\b/i, label: "income certificate filename/text" },
+    { documentType: "domicile_certificate", category: "other", pattern: /\b(?:residence|domicile) certificate\b/i, label: "residence certificate filename/text" },
+    { documentType: "aadhaar", category: "identity", pattern: /\b(?:aadhaar|aadhar|adhar)\b/i, label: "aadhaar filename/text" },
+    { documentType: "marks_memo", category: "education", pattern: /\b(?:ssc|inter|marks?|memo|memorandum|marksheet|grade|ogpa)\b/i, label: "marks memo filename/text" },
+    { documentType: "marks_memo", category: "education", pattern: /\b(?:ielts|gre|trf)\b/i, label: "exam score report filename/text" },
+    { documentType: "visa_approval", category: "travel", pattern: /\b(?:i\s*20|i-20|form i-20)\b/i, label: "i-20 filename/text" },
+  ];
+  const match = matches.find((candidate) => candidate.pattern.test(haystack));
+  if (!match) return null;
+  const evidence = [
+    ...base.evidence,
+    { label: match.label, text: fileName.slice(0, 160), points: 45 },
+  ];
+
+  return {
+    ...base,
+    analysisSource: "manual" as const,
+    documentType: match.documentType,
+    category: match.category,
+    confidence: Math.max(base.confidence, sparseText.length >= 80 ? 55 : 45),
+    evidence,
+    sourceEvidence: evidence.map((item) => `${item.label}: ${item.text}`),
+    reason: "Detected from clear document name and available PDF text. Please review extracted fields.",
+  };
+}
+
 export function classifyDocument(input: { fileName: string; text: string; hints?: ExtractionHints }) {
   const analysis = analyzeWithRules({
     fileName: input.fileName,
@@ -137,6 +191,9 @@ export function classifyDocument(input: { fileName: string; text: string; hints?
   if (analysis.documentType === "driving_license") {
     return toDrivingLicenceAnalysis(analysis, input.text, Math.max(analysis.confidence, 80), [...analysis.evidence, ...fallback.evidence], "rules");
   }
+
+  const paymentStatement = paymentStatementAnalysis(analysis, input);
+  if (paymentStatement) return paymentStatement;
 
   const hasStrongText = fallback.textScore >= 45;
   const hasVisualAndPartialText = fallback.layoutScore >= 25 && fallback.textScore >= 30;
@@ -153,6 +210,11 @@ export function classifyDocument(input: { fileName: string; text: string; hints?
   ) {
     const confidence = Math.max(70, Math.min(85, 62 + fallback.textScore * 0.35 + fallback.layoutScore * 0.3));
     return toDrivingLicenceAnalysis(analysis, input.text, Math.round(confidence), fallback.evidence, "manual");
+  }
+
+  if (analysis.documentType === "unknown") {
+    const filenameAnalysis = filenameFallbackAnalysis(analysis, input);
+    if (filenameAnalysis) return filenameAnalysis;
   }
 
   return analysis;

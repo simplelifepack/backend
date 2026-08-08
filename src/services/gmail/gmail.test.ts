@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import type { gmail_v1 } from "googleapis";
 
 import { prisma } from "../../lib/prisma";
+import { userScopedDocumentHash } from "../../utils/documentEncryption";
 import { deleteTemporaryUploadFile } from "../documentFileStorage";
 import { candidatesFromMessage, flattenParts, GMAIL_RELEVANCE_THRESHOLDS, gmailSearchQueries } from "./candidates";
 import { importGmailCandidates } from "./importer";
@@ -152,6 +153,27 @@ async function run() {
   await scanGmail(user.id, gmailMock({ scan: message("scan") }));
   assert.equal(await prisma.externalDocumentCandidate.count({ where: { connectionId: connection.id } }), 2);
 
+  const raceUser = await prisma.user.create({ data: { name: "Race", email: `gmail-race-${runId}@example.test`, passwordHash: null } });
+  const raceConnection = await prisma.externalConnection.create({ data: {
+    userId: raceUser.id, provider: "gmail", providerAccountId: `gmail-race-${runId}@example.test`,
+    providerEmail: `gmail-race-${runId}@example.test`, encryptedRefreshToken: encrypted,
+    grantedScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+  } });
+  let deletedDuringScan = false;
+  const raceGmail = {
+    users: { messages: {
+      list: async () => ({ data: { messages: [{ id: "race-scan" }] } }),
+      get: async () => {
+        if (!deletedDuringScan) {
+          deletedDuringScan = true;
+          await prisma.externalConnection.delete({ where: { id: raceConnection.id } });
+        }
+        return { data: message("race-scan") };
+      },
+    } },
+  } as unknown as gmail_v1.Gmail;
+  await assert.rejects(() => scanGmail(raceUser.id, raceGmail), /Gmail connection changed/);
+
   const bodyCandidate = await prisma.externalDocumentCandidate.create({ data: {
     userId: user.id, connectionId: connection.id, provider: "gmail", sourceKey: "body-import",
     externalMessageId: "body-import", externalAttachmentId: null, filename: "statement.txt", mimeType: "text/plain", size: 0,
@@ -163,11 +185,12 @@ async function run() {
   assert.equal(imported[0]?.analysis?.analysisSource, "rules");
   assert.ok(imported[0]?.analysis?.tempFileId);
   const importedUpload = await prisma.temporaryUpload.findUniqueOrThrow({ where: { id: imported[0]!.analysis!.tempFileId } });
-  await prisma.document.create({ data: {
-    ownerProfileId: user.id, originalName: "statement.txt", storedName: "test", mimeType: "text/plain", size: 30,
-    path: "test-only", documentType: "bank_statement", normalizedType: "bank_statement", category: "finance",
-    analysisSource: "rules", confidence: 50, fields: {}, contentHash: importedUpload.contentHash,
-  } });
+	  await prisma.document.create({ data: {
+	    ownerProfileId: user.id, originalName: "statement.txt", storedName: "test", mimeType: "text/plain", size: 30,
+	    path: "test-only", documentType: "bank_statement", normalizedType: "bank_statement", category: "finance",
+	    analysisSource: "rules", confidence: 50, fields: {}, contentHash: importedUpload.contentHash,
+	    userScopedDedupHash: userScopedDocumentHash(user.id, importedUpload.contentHash),
+	  } });
   const duplicateCandidate = await prisma.externalDocumentCandidate.create({ data: {
     userId: user.id, connectionId: connection.id, provider: "gmail", sourceKey: "duplicate-body",
     externalMessageId: "duplicate-body", externalAttachmentId: null, filename: "statement.txt", mimeType: "text/plain", size: 0,

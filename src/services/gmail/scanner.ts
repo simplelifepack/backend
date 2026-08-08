@@ -1,4 +1,5 @@
 import type { gmail_v1 } from "googleapis";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../lib/prisma";
 import { authorizedGmail } from "./oauth";
@@ -35,6 +36,16 @@ async function mapBounded<T, R>(items: T[], limit: number, fn: (item: T) => Prom
     results.push(...await Promise.all(items.slice(index, index + limit).map(fn)));
   }
   return results;
+}
+
+function isMissingConnectionError(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code === "P2025") return true;
+  return error.code === "P2003";
+}
+
+function connectionChangedError() {
+  return Object.assign(new Error("Gmail connection changed. Reconnect Gmail and start a new scan."), { statusCode: 409 });
 }
 
 export async function scanGmail(userId: string, providedGmail?: GmailApi, full = false) {
@@ -86,10 +97,11 @@ export async function scanGmail(userId: string, providedGmail?: GmailApi, full =
     };
   } catch (error) {
     const authFailure = String((error as { message?: unknown }).message ?? error).toLowerCase();
-    await prisma.externalConnection.update({
+    await prisma.externalConnection.updateMany({
       where: { id: connection.id },
       data: { scanStartedAt: null, ...(authFailure.includes("invalid_grant") || authFailure.includes("unauthorized") ? { status: "disconnected", encryptedRefreshToken: "" } : {}) },
     }).catch(() => undefined);
+    if (isMissingConnectionError(error)) throw connectionChangedError();
     throw error;
   }
 }

@@ -41,6 +41,12 @@ export function buildErrorResponse(input: {
     "ENCRYPTION_FAILED",
     "INVALID_ENCRYPTION_ENVELOPE",
     "UPLOAD_FAILED",
+    "PLAN_FEATURE_NOT_AVAILABLE",
+    "PLAN_MEMBER_LIMIT_REACHED",
+    "PLAN_STORAGE_LIMIT_REACHED",
+    "PLAN_AI_SEARCH_LIMIT_REACHED",
+    "TRUST_ACCESS_DENIED",
+    "TRUST_MEMBER_REVOKED",
   ]);
   const code =
     typeof candidateCode === "string" && safeCodes.has(candidateCode)
@@ -53,6 +59,10 @@ export function buildErrorResponse(input: {
       status,
       body: {
         ...(code ? { code } : {}),
+        ...((input.error as { metadata?: unknown })?.metadata &&
+        typeof (input.error as { metadata?: unknown }).metadata === "object"
+          ? { metadata: (input.error as { metadata: unknown }).metadata }
+          : {}),
         message: status === 500 ? "Internal server error." : "Request failed.",
         errorId,
       },
@@ -63,6 +73,10 @@ export function buildErrorResponse(input: {
     status,
     body: {
       ...(code ? { code } : {}),
+      ...((input.error as { metadata?: unknown })?.metadata &&
+      typeof (input.error as { metadata?: unknown }).metadata === "object"
+        ? { metadata: (input.error as { metadata: unknown }).metadata }
+        : {}),
       message: input.error instanceof Error ? input.error.message : "Internal server error.",
       errorId,
     },

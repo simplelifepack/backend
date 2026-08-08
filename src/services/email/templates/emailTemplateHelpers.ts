@@ -80,16 +80,7 @@ export function ctaButton(label: string, href: string) {
 }
 
 export function appAccessBlock(label: string, appUrl: string) {
-  if (isPublicHttpsUrl(appUrl)) return ctaButton(label, appUrl);
-
-  return `
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:26px 0;width:100%;">
-      <tr>
-        <td style="border:1px solid ${EMAIL_STYLE.borderDeep};border-radius:14px;background:#FFFFFF;padding:14px 16px;font-family:Inter,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:${EMAIL_STYLE.body};">
-          Open LifePack from the browser where you started this session.
-        </td>
-      </tr>
-    </table>`;
+  return ctaButton(label, appUrl);
 }
 
 export function renderShell(content: string) {

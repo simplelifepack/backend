@@ -50,6 +50,7 @@ import {
   validateDecryptedDocument,
   withIsolatedPlaintextFile,
 } from "../services/documentSecurityValidation";
+import { assertStorageAllowance } from "../services/entitlements.service";
 
 function toAnalysisFile(temporaryUpload: {
   originalName: string;
@@ -91,6 +92,7 @@ async function analyzeEncryptedUpload(
     const envelope = validateEncryptedDocumentEnvelope(req.body, req.file);
     plaintext = verifyAndDecryptEnvelope(envelope);
     await validateDecryptedDocument(plaintext, envelope);
+    await assertStorageAllowance(authUser.id, envelope.originalSize);
 
     const duplicate = await prisma.document.findFirst({
       where: {
@@ -186,6 +188,7 @@ router.post("/", async (req, res, next) => {
     if (pendingTemporaryUpload.keyAlgorithm && pendingTemporaryUpload.scanStatus !== "passed") {
       return res.status(422).json({ message: "Document security validation has not passed." });
     }
+    await assertStorageAllowance(authUser.id, pendingTemporaryUpload.size);
     const fieldsForValidation = {
       ...payload.fields,
       ...Object.fromEntries(

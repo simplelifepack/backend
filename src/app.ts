@@ -9,6 +9,8 @@ import aiRouter from "./routes/ai";
 import gmailRouter from "./routes/gmail.routes";
 import driveRouter from "./routes/drive.routes";
 import bootstrapRouter from "./routes/bootstrap.routes";
+import trustRouter from "./routes/trust.routes";
+import wealthRouter from "./routes/wealth.routes";
 import { corsOptions, generalApiLimiter, jsonBodyLimit, securityHeadersOptions } from "./middleware/security";
 import { assertDocumentEncryptionConfigured } from "./utils/documentEncryption";
 import { errorHandler } from "./middleware/errorHandling";
@@ -60,6 +62,8 @@ app.use("/api/ai", aiRouter);
 app.use("/api/integrations/gmail", gmailRouter);
 app.use("/api/integrations/drive", driveRouter);
 app.use("/api/bootstrap", bootstrapRouter);
+app.use("/api/trust", trustRouter);
+app.use("/api/wealth", wealthRouter);
 
 app.use(errorHandler);
 

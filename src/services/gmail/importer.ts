@@ -73,6 +73,17 @@ function localAnalysisResponse(temporaryUpload: Awaited<ReturnType<typeof create
   };
 }
 
+function importFailureMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  return "Unable to import this Gmail document.";
+}
+
+function importFailureStatus(error: unknown) {
+  const statusCode = typeof error === "object" && error !== null && "statusCode" in error ? Number((error as { statusCode?: unknown }).statusCode) : undefined;
+  const code = typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : undefined;
+  return { statusCode, code };
+}
+
 export async function importGmailCandidates(userId: string, candidateIds: string[], providedGmail?: import("googleapis").gmail_v1.Gmail) {
   const gmail = providedGmail ?? (await authorizedGmail(userId)).gmail;
   const candidates = await prisma.externalDocumentCandidate.findMany({
@@ -81,52 +92,70 @@ export async function importGmailCandidates(userId: string, candidateIds: string
   if (candidates.length !== new Set(candidateIds).size) throw Object.assign(new Error("One or more Gmail candidates are unavailable."), { statusCode: 404 });
   const results = [];
   for (const candidate of candidates) {
-    if (!isSupportedGmailMime(candidate.mimeType)) throw Object.assign(new Error("Unsupported Gmail attachment type."), { statusCode: 400 });
-    if (candidate.size > MAX_SIZE) throw Object.assign(new Error("Gmail attachment exceeds the 25 MB upload limit."), { statusCode: 413 });
-    const message = await gmail.users.messages.get({ userId: "me", id: candidate.externalMessageId, format: "full" });
-    let content: Buffer;
-    if (candidate.externalAttachmentId) {
-      const attachment = await gmail.users.messages.attachments.get({
-        userId: "me", messageId: candidate.externalMessageId, id: candidate.externalAttachmentId,
+    try {
+      if (!isSupportedGmailMime(candidate.mimeType)) throw Object.assign(new Error("Unsupported Gmail attachment type."), { statusCode: 400 });
+      if (candidate.size > MAX_SIZE) throw Object.assign(new Error("Gmail attachment exceeds the 25 MB upload limit."), { statusCode: 413 });
+      const message = await gmail.users.messages.get({ userId: "me", id: candidate.externalMessageId, format: "full" });
+      let content: Buffer;
+      if (candidate.externalAttachmentId) {
+        const attachment = await gmail.users.messages.attachments.get({
+          userId: "me", messageId: candidate.externalMessageId, id: candidate.externalAttachmentId,
+        });
+        content = decode(attachment.data.data);
+      } else if (candidate.externalPartId) {
+        const selectedPart = flattenParts(message.data.payload).find((part) => part.partId === candidate.externalPartId);
+        content = selectedPart?.body?.data ? decode(selectedPart.body.data) : extractMessageBody(message.data.payload);
+      } else {
+        content = extractMessageBody(message.data.payload);
+      }
+      if (!content.length || content.length > MAX_SIZE) throw Object.assign(new Error("Gmail document is empty or too large."), { statusCode: 400 });
+      if (candidate.mimeType === "application/pdf" && content.includes(Buffer.from("/Encrypt"))) {
+        throw Object.assign(new Error("This PDF is password protected. Enter the password to analyse it."), { statusCode: 422, code: "PASSWORD_PROTECTED_PDF" });
+      }
+      const contentHash = crypto.createHash("sha256").update(content).digest("hex");
+      const duplicate = await prisma.document.findFirst({
+        where: { ownerProfileId: userId, userScopedDedupHash: userScopedDocumentHash(userId, contentHash), deletedAt: null },
       });
-      content = decode(attachment.data.data);
-    } else if (candidate.externalPartId) {
-      const selectedPart = flattenParts(message.data.payload).find((part) => part.partId === candidate.externalPartId);
-      content = selectedPart?.body?.data ? decode(selectedPart.body.data) : extractMessageBody(message.data.payload);
-    } else {
-      content = extractMessageBody(message.data.payload);
+      if (duplicate) {
+        await prisma.externalDocumentCandidate.update({ where: { id: candidate.id }, data: { status: "imported", ignoredReason: null } });
+        results.push({ candidateId: candidate.id, status: "already_imported", documentId: duplicate.id });
+        continue;
+      }
+      const extension = extensionByMime[candidate.mimeType] ?? path.extname(candidate.filename);
+      const filePath = path.join(temporaryUploadsDir, `${crypto.randomUUID()}${extension}`);
+      await fsp.writeFile(filePath, content, { flag: "wx" });
+      const upload = await createTemporaryUpload(userId, {
+        path: filePath, originalname: candidate.filename, mimetype: candidate.mimeType, size: content.length,
+      } as Express.Multer.File);
+      const temporaryUpload = await prisma.temporaryUpload.update({
+        where: { id: upload.id }, data: {
+          contentHash, sourceProvider: "gmail", sourceMessageId: candidate.externalMessageId,
+          sourceAttachmentId: candidate.externalAttachmentId, externalCandidateId: candidate.id,
+        },
+      });
+      const analysis = await ingestDocument({
+        path: temporaryUpload.storagePath, originalName: temporaryUpload.originalName,
+        mimeType: temporaryUpload.detectedMimeType, size: temporaryUpload.size,
+      });
+      await prisma.externalDocumentCandidate.update({ where: { id: candidate.id }, data: { status: "pending_review", ignoredReason: null } });
+      results.push({ candidateId: candidate.id, status: "ready_for_review", analysis: localAnalysisResponse(temporaryUpload, analysis) });
+    } catch (error) {
+      const message = importFailureMessage(error);
+      const { statusCode, code } = importFailureStatus(error);
+      console.warn("[Gmail Import] candidate failed", {
+        candidateId: candidate.id,
+        filename: candidate.filename,
+        mimeType: candidate.mimeType,
+        statusCode,
+        code,
+        message,
+      });
+      await prisma.externalDocumentCandidate.update({
+        where: { id: candidate.id },
+        data: { status: "import_failed", ignoredReason: message },
+      });
+      results.push({ candidateId: candidate.id, status: "failed", message });
     }
-    if (!content.length || content.length > MAX_SIZE) throw Object.assign(new Error("Gmail document is empty or too large."), { statusCode: 400 });
-    if (candidate.mimeType === "application/pdf" && content.includes(Buffer.from("/Encrypt"))) {
-      throw Object.assign(new Error("This PDF is password protected. Enter the password to analyse it."), { statusCode: 422, code: "PASSWORD_PROTECTED_PDF" });
-    }
-    const contentHash = crypto.createHash("sha256").update(content).digest("hex");
-    const duplicate = await prisma.document.findFirst({
-      where: { ownerProfileId: userId, userScopedDedupHash: userScopedDocumentHash(userId, contentHash), deletedAt: null },
-    });
-    if (duplicate) {
-      await prisma.externalDocumentCandidate.update({ where: { id: candidate.id }, data: { status: "imported" } });
-      results.push({ candidateId: candidate.id, status: "already_imported", documentId: duplicate.id });
-      continue;
-    }
-    const extension = extensionByMime[candidate.mimeType] ?? path.extname(candidate.filename);
-    const filePath = path.join(temporaryUploadsDir, `${crypto.randomUUID()}${extension}`);
-    await fsp.writeFile(filePath, content, { flag: "wx" });
-    const upload = await createTemporaryUpload(userId, {
-      path: filePath, originalname: candidate.filename, mimetype: candidate.mimeType, size: content.length,
-    } as Express.Multer.File);
-    const temporaryUpload = await prisma.temporaryUpload.update({
-      where: { id: upload.id }, data: {
-        contentHash, sourceProvider: "gmail", sourceMessageId: candidate.externalMessageId,
-        sourceAttachmentId: candidate.externalAttachmentId, externalCandidateId: candidate.id,
-      },
-    });
-    const analysis = await ingestDocument({
-      path: temporaryUpload.storagePath, originalName: temporaryUpload.originalName,
-      mimeType: temporaryUpload.detectedMimeType, size: temporaryUpload.size,
-    });
-    await prisma.externalDocumentCandidate.update({ where: { id: candidate.id }, data: { status: "pending_review" } });
-    results.push({ candidateId: candidate.id, status: "ready_for_review", analysis: localAnalysisResponse(temporaryUpload, analysis) });
   }
   return results;
 }

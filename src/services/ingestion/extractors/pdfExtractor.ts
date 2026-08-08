@@ -4,15 +4,28 @@ import type { DocumentExtractor, ExtractedDocument } from "../types";
 import { logPipelineStage } from "../logger";
 import { ocrImage } from "../ocr/ocrService";
 
+const MIN_EMBEDDED_TEXT_LENGTH = 80;
+
+async function ensurePdfRuntime() {
+  const runtime = globalThis as Record<string, unknown>;
+  if (runtime.DOMMatrix && runtime.ImageData && runtime.Path2D) return;
+  const canvas = await import("@napi-rs/canvas");
+  runtime.DOMMatrix ??= canvas.DOMMatrix;
+  runtime.ImageData ??= canvas.ImageData;
+  runtime.Path2D ??= canvas.Path2D;
+}
+
 export const pdfExtractor: DocumentExtractor = {
   supports: (_file, signature) => signature.kind === "pdf",
   async extract(file, signature): Promise<ExtractedDocument> {
     const buffer = await fs.readFile(file.path);
     const warnings = [...signature.warnings];
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: buffer });
+    let parser: InstanceType<(typeof import("pdf-parse"))["PDFParse"]> | null = null;
 
     try {
+      await ensurePdfRuntime();
+      const { PDFParse } = await import("pdf-parse");
+      parser = new PDFParse({ data: buffer });
       const textResult = await parser.getText();
       const embeddedPages = textResult.pages.map((page) => ({
         pageNumber: page.num,
@@ -20,7 +33,7 @@ export const pdfExtractor: DocumentExtractor = {
       }));
       const embeddedText = textResult.text || embeddedPages.map((page) => page.text).join("\n\n");
 
-      if (embeddedText.trim()) {
+      if (embeddedText.trim().length >= MIN_EMBEDDED_TEXT_LENGTH) {
         logPipelineStage("pdf_embedded_text_extracted", {
           pages: textResult.total,
           textLength: embeddedText.length,
@@ -39,7 +52,9 @@ export const pdfExtractor: DocumentExtractor = {
 
       warnings.push({
         code: "PDF_SCANNED",
-        message: "No embedded PDF text was found. OCR was used page by page.",
+        message: embeddedText.trim()
+          ? "Embedded PDF text was too sparse. OCR was used page by page."
+          : "No embedded PDF text was found. OCR was used page by page.",
       });
 
       const screenshots = await parser.getScreenshot({
@@ -91,7 +106,7 @@ export const pdfExtractor: DocumentExtractor = {
         partial: true,
       };
     } finally {
-      await parser.destroy().catch(() => undefined);
+      await parser?.destroy().catch(() => undefined);
     }
   },
 };

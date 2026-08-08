@@ -1,4 +1,4 @@
-import { appAccessBlock, EMAIL_STYLE, escapeHtml, isPublicHttpsUrl, renderShell, type EmailRenderResult } from "./emailTemplateHelpers";
+import { appAccessBlock, EMAIL_STYLE, escapeHtml, renderShell, type EmailRenderResult } from "./emailTemplateHelpers";
 
 export type LoginAlertEmailInput = {
   appUrl: string;
@@ -21,7 +21,7 @@ export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderR
     "If this was you, no action is required.",
     "If this was not you, change your password and review active sessions.",
     "",
-    isPublicHttpsUrl(input.appUrl) ? `Open LifePack: ${input.appUrl}` : "Open LifePack from the browser where you started this session.",
+    `Open LifePack: ${input.appUrl}`,
     "",
     "This security message was sent by LifePack.",
   ].join("\n");

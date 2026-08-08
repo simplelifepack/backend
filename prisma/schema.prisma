@@ -12,6 +12,8 @@ model User {
   name                       String
   email                      String                      @unique
   passwordHash               String?
+  planId                     String                      @default("plan_freemium")
+  plan                       Plan                        @relation(fields: [planId], references: [id])
   welcomeEmailSentAt         DateTime?
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
@@ -22,6 +24,128 @@ model User {
   externalConnections        ExternalConnection[]
   externalDocumentCandidates ExternalDocumentCandidate[]
   externalOAuthStates        ExternalOAuthState[]
+  planUsages                 PlanUsage[]
+  ownedTrustMembers          TrustMember[]               @relation("TrustMemberOwner")
+  linkedTrustMemberships     TrustMember[]               @relation("TrustMemberLinkedUser")
+  wealthRecords              WealthRecord[]
+
+  @@index([planId])
+}
+
+model Plan {
+  id                     String   @id @default(cuid())
+  code                   String   @unique
+  name                   String
+  isActive               Boolean  @default(true)
+  memberLimit            Int      @default(0)
+  storageBytes           BigInt   @default(1073741824)
+  unknownPackSearchLimit Int      @default(1)
+  homeAccess             Boolean  @default(true)
+  packagesAccess         Boolean  @default(true)
+  documentsAccess        Boolean  @default(true)
+  healthAccess           Boolean  @default(false)
+  wealthAccess           Boolean  @default(false)
+  trustCenterAccess      Boolean  @default(false)
+  emergencyAccess        Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  users                  User[]
+
+  @@map("plans")
+}
+
+model PlanUsage {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period              String
+  unknownPackSearches Int      @default(0)
+  storageBytesUsed    BigInt   @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userId, period])
+  @@index([userId])
+  @@map("plan_usage")
+}
+
+model TrustMember {
+  id              String                  @id @default(cuid())
+  ownerUserId     String
+  owner           User                    @relation("TrustMemberOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  memberUserId    String?
+  memberUser      User?                   @relation("TrustMemberLinkedUser", fields: [memberUserId], references: [id], onDelete: SetNull)
+  email           String
+  name            String
+  relation        TrustRelation
+  customRelation  String?
+  dateOfBirth     String
+  bloodGroup      String
+  accessType      TrustMemberAccessType
+  status          TrustMemberStatus       @default(INVITED)
+  invitedAt       DateTime                @default(now())
+  inviteTokenHash String?                 @unique
+  inviteExpiresAt DateTime?
+  invitePinHash   String?
+  rejectedAt      DateTime?
+  pinAttemptCount Int                     @default(0)
+  pinLockedUntil  DateTime?
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  permissions     TrustMemberPermission[]
+
+  @@index([ownerUserId, status])
+  @@index([memberUserId, status])
+  @@index([email, status])
+  @@index([inviteExpiresAt])
+  @@map("trust_members")
+}
+
+model TrustMemberPermission {
+  id            String                @id @default(cuid())
+  trustMemberId String
+  trustMember   TrustMember           @relation(fields: [trustMemberId], references: [id], onDelete: Cascade)
+  module        TrustPermissionModule
+  canView       Boolean               @default(false)
+  canDownload   Boolean               @default(false)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@unique([trustMemberId, module])
+  @@index([trustMemberId])
+  @@map("trust_member_permissions")
+}
+
+enum TrustMemberAccessType {
+  VIEW_ONLY
+  FAMILY_MEMBER
+  EMERGENCY_ACCESS
+}
+
+enum TrustMemberStatus {
+  INVITED
+  ACTIVE
+  REVOKED
+  REJECTED
+}
+
+enum TrustRelation {
+  SPOUSE
+  PARENT
+  CHILD
+  SIBLING
+  GUARDIAN
+  RELATIVE
+  FRIEND
+  OTHER
+}
+
+enum TrustPermissionModule {
+  DOCUMENTS
+  HEALTH
+  WEALTH
 }
 
 model ExternalIdentity {
@@ -80,67 +204,69 @@ model PasswordResetToken {
 }
 
 model Document {
-  id                   String   @id @default(cuid())
-  title                String?
-  displayName          String?
-  ownerProfileId       String?
-  targetProfileId      String?
-  uniqueIdentifier     String?
-  uniqueIdentifierHash String?
-  extractedKeyFields   Json?
-  rawText              String?
-  originalName         String
-  storedName           String
-  mimeType             String
-  size                 Int
-  path                 String
-  storageKey           String?
-  storageBucket        String?
-  storageMimeType      String?
-  encryptionVersion    Int?
-  contentAlgorithm     String?
-  keyAlgorithm         String?
-  keyId                String?
-  keyVersion           Int?
-  encryptionIv         String?
-  wrappedKey           String?
-  originalSha256       String?
-  encryptedSha256      String?
-  encryptedSize        Int?
-  ciphertextHash       String?
-  userScopedDedupHash  String?
-  metadataIntegrityHash String?
-  integrityStatus      String   @default("pending")
-  scanStatus           String?
-  scanCompletedAt      DateTime?
-  documentType         String
-  normalizedType       String?
-  documentTypeCode     String?
-  category             String
-  analysisSource       String
-  confidence           Float
-  classificationStatus String   @default("pending")
-  classificationConfidence Float @default(0)
-  classificationSignals Json?
-  ownershipStatus      String   @default("unknown")
-  ownershipConfidence  Float    @default(0)
-  ownershipMatchedFields String[] @default([])
-  ownershipMismatchedFields String[] @default([])
-  readinessEligible    Boolean  @default(false)
-  fields               Json
-  contentHash          String?
-  sourceProvider       String?
-  sourceMessageId      String?
-  sourceAttachmentId   String?
-  driveFileId          String?
-  sourceModifiedTime   DateTime?
-  sourceChecksum       String?
-  lastAnalyzed         DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  deletedAt            DateTime?
+  id                        String    @id @default(cuid())
+  title                     String?
+  displayName               String?
+  ownerProfileId            String?
+  targetProfileId           String?
+  uniqueIdentifier          String?
+  uniqueIdentifierHash      String?
+  extractedKeyFields        Json?
+  rawText                   String?
+  originalName              String
+  storedName                String
+  mimeType                  String
+  size                      Int
+  path                      String
+  storageKey                String?
+  storageBucket             String?
+  storageMimeType           String?
+  encryptionVersion         Int?
+  contentAlgorithm          String?
+  keyAlgorithm              String?
+  keyId                     String?
+  keyVersion                Int?
+  encryptionIv              String?
+  wrappedKey                String?
+  originalSha256            String?
+  encryptedSha256           String?
+  encryptedSize             Int?
+  ciphertextHash            String?
+  userScopedDedupHash       String?
+  metadataIntegrityHash     String?
+  integrityStatus           String    @default("pending")
+  scanStatus                String?
+  scanCompletedAt           DateTime?
+  documentType              String
+  normalizedType            String?
+  documentTypeCode          String?
+  category                  String
+  analysisSource            String
+  confidence                Float
+  classificationStatus      String    @default("pending")
+  classificationConfidence  Float     @default(0)
+  classificationSignals     Json?
+  ownershipStatus           String    @default("unknown")
+  ownershipConfidence       Float     @default(0)
+  ownershipMatchedFields    String[]  @default([])
+  ownershipMismatchedFields String[]  @default([])
+  readinessEligible         Boolean   @default(false)
+  fields                    Json
+  contentHash               String?
+  sourceProvider            String?
+  sourceMessageId           String?
+  sourceAttachmentId        String?
+  driveFileId               String?
+  sourceModifiedTime        DateTime?
+  sourceChecksum            String?
+  lastAnalyzed              DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  deletedAt                 DateTime?
+  wealthAttachments         WealthRecordAttachment[]
 
   @@unique([ownerProfileId, contentHash])
+  @@unique([ownerProfileId, driveFileId])
   @@index([normalizedType])
   @@index([documentTypeCode])
   @@index([ownerProfileId, readinessEligible])
@@ -154,7 +280,6 @@ model Document {
   @@index([uniqueIdentifier])
   @@index([uniqueIdentifierHash])
   @@index([sourceProvider, sourceMessageId])
-  @@unique([ownerProfileId, driveFileId])
   @@index([ownerProfileId, sourceChecksum])
 }
 
@@ -266,27 +391,27 @@ model ExternalDocumentCandidate {
 }
 
 model ReadinessPack {
-  id           String        @id @default(cuid())
-  slug         String        @unique
-  title        String
-  subtitle     String?
-  category     String
-  aliases      String[]
-  description  String
-  keywords     String[]
-  sourceType   String        @default("curated")
-  sourceName   String?
-  sourceTitle  String?
-  sourceUrl    String?
-  lastCheckedAt DateTime?
+  id                  String        @id @default(cuid())
+  slug                String        @unique
+  title               String
+  subtitle            String?
+  category            String
+  aliases             String[]
+  description         String
+  keywords            String[]
+  sourceType          String        @default("curated")
+  sourceName          String?
+  sourceTitle         String?
+  sourceUrl           String?
+  lastCheckedAt       DateTime?
   verificationSources Json?
-  lastVerifiedAt DateTime?
-  verificationStatus String @default("needs_review")
-  createdBy    String        @default("seed")
-  version      Int           @default(1)
-  requirements Requirement[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  lastVerifiedAt      DateTime?
+  verificationStatus  String        @default("needs_review")
+  createdBy           String        @default("seed")
+  version             Int           @default(1)
+  requirements        Requirement[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   @@index([category])
   @@index([createdBy])
@@ -309,4 +434,104 @@ model Requirement {
 
   @@index([packId])
   @@index([documentType, owner])
+}
+
+model WealthRecord {
+  id          String                   @id @default(cuid())
+  ownerUserId String
+  owner       User                     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  type        WealthRecordType
+  title       String
+  details     Json
+  notes       String?
+  followUpDate DateTime?
+  followUpNote String?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  attachments WealthRecordAttachment[]
+
+  @@index([ownerUserId, type])
+  @@index([followUpDate])
+  @@map("wealth_records")
+}
+
+model WealthRecordAttachment {
+  id             String       @id @default(cuid())
+  wealthRecordId String
+  wealthRecord   WealthRecord @relation(fields: [wealthRecordId], references: [id], onDelete: Cascade)
+  documentId      String
+  document        Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+
+  @@unique([wealthRecordId, documentId])
+  @@index([documentId])
+  @@map("wealth_record_attachments")
+}
+
+model LifePackFormCategory {
+  id                String                @id @default(cuid())
+  module            String
+  code              String
+  label             String
+  description       String?
+  sortOrder         Int                   @default(0)
+  isActive          Boolean               @default(true)
+  wealthRecordType  WealthRecordType?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  subtypes          LifePackFormSubtype[]
+
+  @@unique([module, code])
+  @@index([module, isActive, sortOrder])
+  @@map("lifepack_form_categories")
+}
+
+model LifePackFormSubtype {
+  id          String              @id @default(cuid())
+  categoryId  String
+  category    LifePackFormCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  code        String
+  label       String
+  description String?
+  sortOrder   Int                 @default(0)
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  fields      LifePackFormField[]
+
+  @@unique([categoryId, code])
+  @@index([categoryId, isActive, sortOrder])
+  @@map("lifepack_form_subtypes")
+}
+
+model LifePackFormField {
+  id           String              @id @default(cuid())
+  subtypeId    String
+  subtype      LifePackFormSubtype @relation(fields: [subtypeId], references: [id], onDelete: Cascade)
+  fieldId      String
+  label        String
+  inputType    String
+  required     Boolean             @default(false)
+  placeholder  String?
+  defaultValue Json?
+  options      Json?
+  validation   Json?
+  group        String?
+  visibility   Json?
+  sortOrder    Int                 @default(0)
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@unique([subtypeId, fieldId])
+  @@index([subtypeId, isActive, sortOrder])
+  @@map("lifepack_form_fields")
+}
+
+enum WealthRecordType {
+  ASSET
+  LOAN_TAKEN
+  LOAN_GIVEN
+  INSURANCE
+  PAYMENT_PROOF
 }

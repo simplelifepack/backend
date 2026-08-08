@@ -1,4 +1,4 @@
-import { appAccessBlock, cleanDisplayName, EMAIL_STYLE, escapeHtml, isPublicHttpsUrl, renderShell, type EmailRenderResult } from "./emailTemplateHelpers";
+import { appAccessBlock, cleanDisplayName, EMAIL_STYLE, escapeHtml, renderShell, type EmailRenderResult } from "./emailTemplateHelpers";
 
 export type WelcomeEmailInput = {
   name?: string | null;
@@ -15,7 +15,7 @@ export function renderWelcomeEmail(input: WelcomeEmailInput): EmailRenderResult 
     "",
     "Keep important documents organized, understand what is ready, and prepare for major life events without searching everywhere.",
     "",
-    isPublicHttpsUrl(input.appUrl) ? `Open LifePack: ${input.appUrl}` : "Open LifePack from the browser where you started this session.",
+    `Open LifePack: ${input.appUrl}`,
     "",
     "Security note: LifePack will never ask for your password by email.",
     "",

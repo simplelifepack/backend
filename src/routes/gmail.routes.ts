@@ -90,6 +90,7 @@ router.delete("/", gmailAuthorizeLimiter, async (req, res, next) => {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const connection = await prisma.externalConnection.findUnique({ where: { userId_provider: { userId: authUser.id, provider: "gmail" } } });
     if (!connection) return res.status(204).send();
+    if (connection.scanStartedAt) return res.status(409).json({ message: "A Gmail scan is already running." });
     await prisma.externalDocumentCandidate.deleteMany({ where: { connectionId: connection.id, status: { not: "imported" } } });
     await prisma.externalConnection.delete({ where: { id: connection.id } });
     return res.status(204).send();

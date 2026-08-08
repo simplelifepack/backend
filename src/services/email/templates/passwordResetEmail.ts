@@ -9,7 +9,7 @@ export function renderPasswordResetEmail({ resetUrl }: { resetUrl: string }): Em
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:26px 0;width:100%;">
         <tr>
           <td style="border:1px solid ${EMAIL_STYLE.borderDeep};border-radius:14px;background:#FFFFFF;padding:14px 16px;font-family:Inter,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:${EMAIL_STYLE.body};word-break:break-word;">
-            Copy and paste this reset link into the browser where you started the request:<br>
+            Copy and paste this reset link into your browser:<br>
             <span style="font-family:'JetBrains Mono','Courier New',monospace;font-size:12px;color:${EMAIL_STYLE.ink};">${safeResetUrl}</span>
           </td>
         </tr>

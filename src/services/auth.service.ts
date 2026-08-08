@@ -7,6 +7,7 @@ import { prisma } from "../lib/prisma";
 import { signAccessToken } from "../utils/jwt";
 import * as emailService from "./email/emailService";
 import { verifyGoogleCredential, type GoogleCredentialVerifier } from "./googleIdentity.service";
+import { acceptTrustInvitationsForUser } from "./trustCenter.service";
 
 export type AuthUser = {
   id: string;
@@ -147,6 +148,7 @@ export async function signup(input: unknown): Promise<AuthResult> {
   });
 
   const result = await buildAuthResult(user);
+  await acceptTrustInvitationsForUser(user.id, user.email);
   await emailService.sendWelcomeEmail(user);
   return result;
 }
@@ -170,6 +172,7 @@ export async function login(input: unknown, context?: emailService.LoginAlertCon
   }
 
   const result = await buildAuthResult(user);
+  await acceptTrustInvitationsForUser(user.id, user.email);
   await emailService.sendLoginAlertEmail(user, context);
   return result;
 }
@@ -233,6 +236,7 @@ export async function googleLogin(
   if (!user) throw new Error("Unable to authenticate with Google.");
 
   const result = await buildAuthResult(user);
+  await acceptTrustInvitationsForUser(user.id, user.email);
   if (emailType === "welcome") {
     await emailService.sendWelcomeEmail(user);
   } else {

@@ -3,6 +3,11 @@ export interface SendEmailInput {
   subject: string;
   html: string;
   text: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+  }>;
 }
 
 export interface SendEmailResult {

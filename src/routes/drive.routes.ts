@@ -78,6 +78,7 @@ router.delete("/", driveAuthorizeLimiter, async (req, res, next) => {
     const userId = (req as unknown as AuthenticatedRequest).authUser.id;
     const connection = await prisma.externalConnection.findUnique({ where: { userId_provider: { userId, provider: "google_drive" } } });
     if (!connection) return res.status(204).send();
+    if (connection.scanStartedAt) return res.status(409).json({ message: "A Google Drive scan is already running. Wait for it to finish before disconnecting." });
     await prisma.externalConnection.delete({ where: { id: connection.id } });
     return res.status(204).send();
   } catch (error) { return next(error); }

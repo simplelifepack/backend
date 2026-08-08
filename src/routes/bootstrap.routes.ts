@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
+import { getUserEntitlements } from "../services/entitlements.service";
 import { decryptDocumentRecord } from "./documents.helpers";
 
 const router = Router();
@@ -34,9 +35,11 @@ router.get("/", async (req, res, next) => {
       where: { ownerProfileId: authUser.id, deletedAt: null },
       orderBy: { createdAt: "desc" },
     });
+    const entitlements = await getUserEntitlements(authUser.id);
 
     return res.json({
       user: authUser,
+      entitlements,
       familyMembers: [],
       documents: documents.map((document) => {
         const decrypted = decryptDocumentRecord(document);
