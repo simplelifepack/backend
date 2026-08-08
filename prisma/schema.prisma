@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -204,7 +205,7 @@ model PasswordResetToken {
 }
 
 model Document {
-  id                        String    @id @default(cuid())
+  id                        String                   @id @default(cuid())
   title                     String?
   displayName               String?
   ownerProfileId            String?
@@ -234,7 +235,7 @@ model Document {
   ciphertextHash            String?
   userScopedDedupHash       String?
   metadataIntegrityHash     String?
-  integrityStatus           String    @default("pending")
+  integrityStatus           String                   @default("pending")
   scanStatus                String?
   scanCompletedAt           DateTime?
   documentType              String
@@ -243,14 +244,14 @@ model Document {
   category                  String
   analysisSource            String
   confidence                Float
-  classificationStatus      String    @default("pending")
-  classificationConfidence  Float     @default(0)
+  classificationStatus      String                   @default("pending")
+  classificationConfidence  Float                    @default(0)
   classificationSignals     Json?
-  ownershipStatus           String    @default("unknown")
-  ownershipConfidence       Float     @default(0)
-  ownershipMatchedFields    String[]  @default([])
-  ownershipMismatchedFields String[]  @default([])
-  readinessEligible         Boolean   @default(false)
+  ownershipStatus           String                   @default("unknown")
+  ownershipConfidence       Float                    @default(0)
+  ownershipMatchedFields    String[]                 @default([])
+  ownershipMismatchedFields String[]                 @default([])
+  readinessEligible         Boolean                  @default(false)
   fields                    Json
   contentHash               String?
   sourceProvider            String?
@@ -260,8 +261,8 @@ model Document {
   sourceModifiedTime        DateTime?
   sourceChecksum            String?
   lastAnalyzed              DateTime?
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
   deletedAt                 DateTime?
   wealthAttachments         WealthRecordAttachment[]
 
@@ -437,18 +438,18 @@ model Requirement {
 }
 
 model WealthRecord {
-  id          String                   @id @default(cuid())
-  ownerUserId String
-  owner       User                     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  type        WealthRecordType
-  title       String
-  details     Json
-  notes       String?
+  id           String                   @id @default(cuid())
+  ownerUserId  String
+  owner        User                     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  type         WealthRecordType
+  title        String
+  details      Json
+  notes        String?
   followUpDate DateTime?
   followUpNote String?
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @updatedAt
-  attachments WealthRecordAttachment[]
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  attachments  WealthRecordAttachment[]
 
   @@index([ownerUserId, type])
   @@index([followUpDate])
@@ -459,9 +460,9 @@ model WealthRecordAttachment {
   id             String       @id @default(cuid())
   wealthRecordId String
   wealthRecord   WealthRecord @relation(fields: [wealthRecordId], references: [id], onDelete: Cascade)
-  documentId      String
-  document        Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  createdAt       DateTime     @default(now())
+  documentId     String
+  document       Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
 
   @@unique([wealthRecordId, documentId])
   @@index([documentId])
@@ -469,17 +470,17 @@ model WealthRecordAttachment {
 }
 
 model LifePackFormCategory {
-  id                String                @id @default(cuid())
-  module            String
-  code              String
-  label             String
-  description       String?
-  sortOrder         Int                   @default(0)
-  isActive          Boolean               @default(true)
-  wealthRecordType  WealthRecordType?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  subtypes          LifePackFormSubtype[]
+  id               String                @id @default(cuid())
+  module           String
+  code             String
+  label            String
+  description      String?
+  sortOrder        Int                   @default(0)
+  isActive         Boolean               @default(true)
+  wealthRecordType WealthRecordType?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  subtypes         LifePackFormSubtype[]
 
   @@unique([module, code])
   @@index([module, isActive, sortOrder])
@@ -487,16 +488,16 @@ model LifePackFormCategory {
 }
 
 model LifePackFormSubtype {
-  id          String              @id @default(cuid())
+  id          String               @id @default(cuid())
   categoryId  String
   category    LifePackFormCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   code        String
   label       String
   description String?
-  sortOrder   Int                 @default(0)
-  isActive    Boolean             @default(true)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  sortOrder   Int                  @default(0)
+  isActive    Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
   fields      LifePackFormField[]
 
   @@unique([categoryId, code])
