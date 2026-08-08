@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "prisma generate && tsc",
+    "build": "node scripts/prisma-command.mjs generate && tsc",
     "lint": "eslint .",
     "start": "node dist/index.js",
     "test:ingestion": "tsx src/services/ingestion/pipeline.test.ts",
@@ -28,8 +28,8 @@
     "email:send-test": "tsx src/scripts/sendAuthTestEmail.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "vercel-build": "prisma migrate deploy && prisma generate",
-    "postinstall": "prisma generate"
+    "vercel-build": "node scripts/prisma-command.mjs migrate-deploy && node scripts/prisma-command.mjs generate",
+    "postinstall": "node scripts/prisma-command.mjs generate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",
