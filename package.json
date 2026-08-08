@@ -28,7 +28,7 @@
     "email:send-test": "tsx src/scripts/sendAuthTestEmail.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "vercel-build": "prisma generate",
+    "vercel-build": "prisma migrate deploy && prisma generate",
     "postinstall": "prisma generate"
   },
   "dependencies": {
