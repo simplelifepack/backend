@@ -13,8 +13,6 @@ model User {
   name                       String
   email                      String                      @unique
   passwordHash               String?
-  planId                     String                      @default("plan_freemium")
-  plan                       Plan                        @relation(fields: [planId], references: [id])
   welcomeEmailSentAt         DateTime?
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
@@ -25,49 +23,47 @@ model User {
   externalConnections        ExternalConnection[]
   externalDocumentCandidates ExternalDocumentCandidate[]
   externalOAuthStates        ExternalOAuthState[]
-  planUsages                 PlanUsage[]
+  subscriptions              Subscription[]
+  usages                     Usage[]
   ownedTrustMembers          TrustMember[]               @relation("TrustMemberOwner")
   linkedTrustMemberships     TrustMember[]               @relation("TrustMemberLinkedUser")
   wealthRecords              WealthRecord[]
-
-  @@index([planId])
 }
 
-model Plan {
-  id                     String   @id @default(cuid())
-  code                   String   @unique
-  name                   String
-  isActive               Boolean  @default(true)
-  memberLimit            Int      @default(0)
-  storageBytes           BigInt   @default(1073741824)
-  unknownPackSearchLimit Int      @default(1)
-  homeAccess             Boolean  @default(true)
-  packagesAccess         Boolean  @default(true)
-  documentsAccess        Boolean  @default(true)
-  healthAccess           Boolean  @default(false)
-  wealthAccess           Boolean  @default(false)
-  trustCenterAccess      Boolean  @default(false)
-  emergencyAccess        Boolean  @default(false)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-  users                  User[]
+model Subscription {
+  id                     String                @id @default(cuid())
+  userId                 String
+  user                   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier                   SubscriptionTier      @default(FREE)
+  billingInterval        BillingInterval?
+  status                 String                @default("active")
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  provider               String?
+  providerCustomerId     String?
+  providerSubscriptionId String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
-  @@map("plans")
+  @@index([userId, status])
+  @@index([providerSubscriptionId])
+  @@map("subscriptions")
 }
 
-model PlanUsage {
-  id                  String   @id @default(cuid())
-  userId              String
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  period              String
-  unknownPackSearches Int      @default(0)
-  storageBytesUsed    BigInt   @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+model Usage {
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodStart          DateTime
+  periodEnd            DateTime
+  aiPackSearchesUsed   Int      @default(0)
+  storageBytesUsed     BigInt   @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  @@unique([userId, period])
-  @@index([userId])
-  @@map("plan_usage")
+  @@unique([userId, periodStart])
+  @@index([userId, periodStart, periodEnd])
+  @@map("usage")
 }
 
 model TrustMember {
@@ -147,6 +143,16 @@ enum TrustPermissionModule {
   DOCUMENTS
   HEALTH
   WEALTH
+}
+
+enum SubscriptionTier {
+  FREE
+  PAID
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
 }
 
 model ExternalIdentity {

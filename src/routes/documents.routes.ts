@@ -50,7 +50,7 @@ import {
   validateDecryptedDocument,
   withIsolatedPlaintextFile,
 } from "../services/documentSecurityValidation";
-import { assertStorageAllowance } from "../services/entitlements.service";
+import { assertStorageAllowance, reconcileCurrentStorageUsage } from "../services/entitlements.service";
 
 function toAnalysisFile(temporaryUpload: {
   originalName: string;
@@ -374,6 +374,7 @@ router.post("/", async (req, res, next) => {
         throw error;
       }
       await removePermanentFile(duplicate.storageKey ?? duplicate.path);
+      await reconcileCurrentStorageUsage(authUser.id);
       if (ownership.identity) await createIdentityProfile(authUser.id, savedDocument.id, ownership);
       return res.status(200).json({
         document: toDocumentResponseDto(savedDocument),
@@ -396,6 +397,7 @@ router.post("/", async (req, res, next) => {
         data: { status: "imported" },
       });
     }
+    await reconcileCurrentStorageUsage(authUser.id);
     if (ownership.identity) await createIdentityProfile(authUser.id, savedDocument.id, ownership);
     return res.status(201).json({
       document: toDocumentResponseDto(savedDocument),
@@ -445,6 +447,7 @@ router.delete("/:id", async (req, res, next) => {
     }
     await removePermanentFile(document.storageKey ?? document.path);
     await prisma.document.delete({ where: { id: document.id } });
+    await reconcileCurrentStorageUsage(authUser.id);
     return res.status(204).send();
   } catch (error) {
     return next(error);

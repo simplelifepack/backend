@@ -1,9 +1,8 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient, type BillingInterval, type SubscriptionTier } from "@prisma/client";
 
 import { prisma } from "../lib/prisma";
 
-export type PlanCode = "FREEMIUM" | "FAMILY" | "PLUS";
-export type EntitlementModule = "home" | "packages" | "documents" | "health" | "wealth" | "trustCenter";
+export type EntitlementModule = "home" | "packages" | "documents" | "health" | "wealth" | "trustCenter" | "legacy";
 export type TrustModule = "DOCUMENTS" | "HEALTH" | "WEALTH";
 
 export const PLAN_LIMIT_CODES = {
@@ -15,10 +14,53 @@ export const PLAN_LIMIT_CODES = {
   trustRevoked: "TRUST_MEMBER_REVOKED",
 } as const;
 
-type PrismaTx = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
+const MB = 1024 * 1024;
+const GB = 1024 * MB;
 
-type UserPlan = NonNullable<Awaited<ReturnType<typeof getUserPlan>>>;
+type PrismaTx = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 type TrustAccessType = "VIEW_ONLY" | "FAMILY_MEMBER" | "EMERGENCY_ACCESS";
+
+const ENTITLEMENT_CONFIG: Record<SubscriptionTier, {
+  name: string;
+  memberLimit: number;
+  storageLimitBytes: number;
+  aiSearchMonthlyLimit: number;
+  modules: Record<EntitlementModule, boolean>;
+  emergencyAccess: boolean;
+}> = {
+  FREE: {
+    name: "Free",
+    memberLimit: Number.MAX_SAFE_INTEGER,
+    storageLimitBytes: 50 * MB,
+    aiSearchMonthlyLimit: 1,
+    modules: {
+      home: true,
+      packages: true,
+      documents: true,
+      trustCenter: true,
+      legacy: true,
+      health: false,
+      wealth: false,
+    },
+    emergencyAccess: true,
+  },
+  PAID: {
+    name: "Paid",
+    memberLimit: Number.MAX_SAFE_INTEGER,
+    storageLimitBytes: 50 * GB,
+    aiSearchMonthlyLimit: 50,
+    modules: {
+      home: true,
+      packages: true,
+      documents: true,
+      trustCenter: true,
+      legacy: true,
+      health: true,
+      wealth: true,
+    },
+    emergencyAccess: true,
+  },
+};
 
 const TRUST_ACCESS_DEFAULTS: Record<TrustAccessType, {
   canEdit: boolean;
@@ -30,132 +72,173 @@ const TRUST_ACCESS_DEFAULTS: Record<TrustAccessType, {
   EMERGENCY_ACCESS: { canEdit: false, canManageMembers: false, emergencyOnly: true },
 };
 
-function currentMonthlyPeriod(date = new Date()) {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+function currentUsagePeriod(date = new Date()) {
+  const periodStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+  const periodEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+  return { periodStart, periodEnd };
 }
 
-function nextPeriodStart(period: string) {
-  const [year, month] = period.split("-").map(Number);
-  return new Date(Date.UTC(month === 12 ? year + 1 : year, month === 12 ? 0 : month, 1)).toISOString();
+function periodKey(date: Date) {
+  return date.toISOString().slice(0, 7);
 }
 
 function entitlementError(code: string, message: string, metadata: Record<string, unknown>, statusCode = 403) {
   return Object.assign(new Error(message), { statusCode, code, metadata });
 }
 
-function moduleAccess(userPlan: UserPlan, module: EntitlementModule) {
-  const plan = userPlan.plan!;
-  if (module === "trustCenter") return true;
-  return {
-    home: plan.homeAccess,
-    packages: plan.packagesAccess,
-    documents: plan.documentsAccess,
-    health: plan.healthAccess,
-    wealth: plan.wealthAccess,
-    trustCenter: plan.trustCenterAccess,
-  }[module];
+function isSubscriptionActive(status: string) {
+  return ["active", "trialing"].includes(status.toLowerCase());
 }
 
-function requiredPlanFor(module: EntitlementModule): PlanCode {
-  if (module === "wealth") return "PLUS";
-  if (module === "health") return "FAMILY";
-  return "FREEMIUM";
+function subscriptionSortStatus(status: string) {
+  return isSubscriptionActive(status) ? 0 : 1;
 }
 
-export async function getUserPlan(userId: string, client: PrismaTx = prisma) {
-  return client.user.findUnique({
+function resolveSubscriptionTier(subscriptions: Array<{ tier: SubscriptionTier; status: string }>): SubscriptionTier {
+  const activePaid = subscriptions.some((subscription) => subscription.tier === "PAID" && isSubscriptionActive(subscription.status));
+  return activePaid ? "PAID" : "FREE";
+}
+
+export async function getOrCreateCurrentUsage(userId: string, client: PrismaTx = prisma) {
+  const { periodStart, periodEnd } = currentUsagePeriod();
+  return client.usage.upsert({
+    where: { userId_periodStart: { userId, periodStart } },
+    update: { periodEnd },
+    create: { userId, periodStart, periodEnd },
+  });
+}
+
+async function getUserSubscriptions(userId: string, client: PrismaTx = prisma) {
+  const user = await client.user.findUnique({
     where: { id: userId },
     select: {
       id: true,
-      plan: {
+      subscriptions: {
+        orderBy: [{ createdAt: "desc" }],
         select: {
           id: true,
-          code: true,
-          name: true,
-          memberLimit: true,
-          storageBytes: true,
-          unknownPackSearchLimit: true,
-          homeAccess: true,
-          packagesAccess: true,
-          documentsAccess: true,
-          healthAccess: true,
-          wealthAccess: true,
-          trustCenterAccess: true,
-          emergencyAccess: true,
+          tier: true,
+          billingInterval: true,
+          status: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
+          provider: true,
+          providerCustomerId: true,
+          providerSubscriptionId: true,
         },
       },
     },
   });
+  if (!user) throw entitlementError(PLAN_LIMIT_CODES.feature, "User not found.", {}, 404);
+  if (user.subscriptions.length) return user.subscriptions;
+
+  const subscription = await client.subscription.create({
+    data: { userId, tier: "FREE", billingInterval: null, status: "active" },
+    select: {
+      id: true,
+      tier: true,
+      billingInterval: true,
+      status: true,
+      currentPeriodStart: true,
+      currentPeriodEnd: true,
+      provider: true,
+      providerCustomerId: true,
+      providerSubscriptionId: true,
+    },
+  });
+  return [subscription];
+}
+
+export async function getAuthoritativeStorageUsage(userId: string, client: PrismaTx = prisma) {
+  const documents = await client.document.findMany({
+    where: { ownerProfileId: userId, deletedAt: null },
+    select: { encryptedSize: true, size: true },
+  });
+  return documents.reduce((total, document) => total + Number(document.encryptedSize ?? document.size), 0);
+}
+
+export async function reconcileCurrentStorageUsage(userId: string, client: PrismaTx = prisma) {
+  const usage = await getOrCreateCurrentUsage(userId, client);
+  const storageBytesUsed = await getAuthoritativeStorageUsage(userId, client);
+  if (Number(usage.storageBytesUsed) === storageBytesUsed) return usage;
+  return client.usage.update({
+    where: { id: usage.id },
+    data: { storageBytesUsed },
+  });
 }
 
 export async function getUserEntitlements(userId: string, client: PrismaTx = prisma) {
-  const userPlan = await getUserPlan(userId, client);
-  if (!userPlan?.plan) {
-    throw entitlementError(PLAN_LIMIT_CODES.feature, "Plan entitlements are not configured.", {}, 500);
-  }
-  const plan = userPlan.plan;
-  const period = currentMonthlyPeriod();
-  const usage = await client.planUsage.upsert({
-    where: { userId_period: { userId, period } },
-    update: {},
-    create: { userId, period },
-  });
+  const subscriptions = await getUserSubscriptions(userId, client);
+  const usage = await getOrCreateCurrentUsage(userId, client);
+  const sortedSubscriptions = [...subscriptions].sort((a, b) => subscriptionSortStatus(a.status) - subscriptionSortStatus(b.status));
+  const subscription = sortedSubscriptions[0]!;
+  const tier = resolveSubscriptionTier(subscriptions);
+  const rules = ENTITLEMENT_CONFIG[tier];
   const storageBytesUsed = await getAuthoritativeStorageUsage(userId, client);
+  if (Number(usage.storageBytesUsed) !== storageBytesUsed) {
+    await client.usage.update({ where: { id: usage.id }, data: { storageBytesUsed } });
+  }
 
   return {
-    plan: { id: plan.id, code: plan.code as PlanCode, name: plan.name },
+    subscription: {
+      id: subscription.id,
+      tier,
+      billingInterval: subscription.billingInterval as BillingInterval | null,
+      status: subscription.status,
+      currentPeriodStart: subscription.currentPeriodStart?.toISOString() ?? null,
+      currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+      provider: subscription.provider,
+      providerCustomerId: subscription.providerCustomerId,
+      providerSubscriptionId: subscription.providerSubscriptionId,
+    },
+    plan: { id: subscription.id, code: tier, name: rules.name },
+    tier,
+    billingInterval: subscription.billingInterval as BillingInterval | null,
     rules: {
-      memberLimit: plan.memberLimit,
-      storageBytes: Number(plan.storageBytes),
-      unknownPackSearchLimit: plan.unknownPackSearchLimit,
-      modules: {
-        home: plan.homeAccess,
-        packages: plan.packagesAccess,
-        documents: plan.documentsAccess,
-        health: plan.healthAccess,
-        wealth: plan.wealthAccess,
-        trustCenter: true,
-      },
-      emergencyAccess: plan.emergencyAccess,
+      memberLimit: rules.memberLimit,
+      storageBytes: rules.storageLimitBytes,
+      storageLimitBytes: rules.storageLimitBytes,
+      unknownPackSearchLimit: rules.aiSearchMonthlyLimit,
+      aiSearchMonthlyLimit: rules.aiSearchMonthlyLimit,
+      modules: rules.modules,
+      emergencyAccess: rules.emergencyAccess,
+      wealthEnabled: rules.modules.wealth,
+      healthEnabled: rules.modules.health,
     },
     usage: {
-      period,
-      unknownPackSearches: usage.unknownPackSearches,
+      period: periodKey(usage.periodStart),
+      periodStart: usage.periodStart.toISOString(),
+      periodEnd: usage.periodEnd.toISOString(),
+      unknownPackSearches: usage.aiPackSearchesUsed,
+      aiPackSearchesUsed: usage.aiPackSearchesUsed,
       storageBytesUsed,
-      aiSearchesRemaining: Math.max(0, plan.unknownPackSearchLimit - usage.unknownPackSearches),
-      resetAt: nextPeriodStart(period),
+      aiSearchesRemaining: Math.max(0, rules.aiSearchMonthlyLimit - usage.aiPackSearchesUsed),
+      resetAt: usage.periodEnd.toISOString(),
     },
   };
 }
 
 export async function assertModuleEntitlement(userId: string, module: EntitlementModule) {
-  const userPlan = await getUserPlan(userId);
-  if (!userPlan?.plan || !moduleAccess(userPlan, module)) {
-    const currentPlan = userPlan?.plan?.code ?? "FREEMIUM";
-    throw entitlementError(PLAN_LIMIT_CODES.feature, "Your current plan does not include this feature.", {
-      currentPlan,
-      requiredPlan: requiredPlanFor(module),
-      module,
-      upgradeRequired: true,
-    });
-  }
-}
-
-export async function getAuthoritativeStorageUsage(userId: string, client: PrismaTx = prisma) {
-  const aggregate = await client.document.aggregate({
-    where: { ownerProfileId: userId, deletedAt: null },
-    _sum: { encryptedSize: true, size: true },
+  const entitlements = await getUserEntitlements(userId);
+  if (entitlements.rules.modules[module]) return entitlements;
+  throw entitlementError(PLAN_LIMIT_CODES.feature, "Your current subscription does not include this feature.", {
+    currentTier: entitlements.tier,
+    currentPlan: entitlements.tier,
+    requiredTier: "PAID",
+    requiredPlan: "PAID",
+    module,
+    upgradeRequired: true,
   });
-  return Number(aggregate._sum.encryptedSize ?? aggregate._sum.size ?? 0);
 }
 
 export async function assertStorageAllowance(userId: string, incomingBytes: number) {
   const entitlements = await getUserEntitlements(userId);
   const currentUsage = entitlements.usage.storageBytesUsed;
-  const limit = entitlements.rules.storageBytes;
-  if (currentUsage + incomingBytes <= limit) return;
+  const limit = entitlements.rules.storageLimitBytes;
+  if (currentUsage + incomingBytes <= limit) return entitlements;
   throw entitlementError(PLAN_LIMIT_CODES.storage, "Your storage limit has been reached.", {
-    currentPlan: entitlements.plan.code,
+    currentTier: entitlements.tier,
+    currentPlan: entitlements.tier,
     currentUsage,
     incomingBytes,
     limit,
@@ -169,41 +252,55 @@ export async function assertMemberAllowance(userId: string, client: PrismaTx = p
     where: { ownerUserId: userId, status: { in: ["INVITED", "ACTIVE"] } },
   });
   if (memberCount < entitlements.rules.memberLimit) return { entitlements, memberCount };
-  throw entitlementError(PLAN_LIMIT_CODES.member, "Your member limit has been reached.", {
-    currentPlan: entitlements.plan.code,
+  throw entitlementError(PLAN_LIMIT_CODES.member, "Your trusted member limit has been reached.", {
+    currentTier: entitlements.tier,
+    currentPlan: entitlements.tier,
     currentUsage: memberCount,
     limit: entitlements.rules.memberLimit,
-    requiredPlan: entitlements.plan.code === "FREEMIUM" ? "FAMILY" : "PLUS",
+    requiredTier: "PAID",
+    requiredPlan: "PAID",
     upgradeRequired: true,
   }, 409);
 }
 
-export async function assertAndIncrementUnknownPackSearch(userId: string) {
-  const period = currentMonthlyPeriod();
+export async function assertAiPackSearchAllowance(userId: string, client: PrismaTx = prisma) {
+  const entitlements = await getUserEntitlements(userId, client);
+  if (entitlements.usage.aiPackSearchesUsed < entitlements.rules.aiSearchMonthlyLimit) return entitlements;
+  throw entitlementError(PLAN_LIMIT_CODES.aiSearch, "Your monthly AI package search limit has been reached.", {
+    currentTier: entitlements.tier,
+    currentPlan: entitlements.tier,
+    currentUsage: entitlements.usage.aiPackSearchesUsed,
+    limit: entitlements.rules.aiSearchMonthlyLimit,
+    periodStart: entitlements.usage.periodStart,
+    periodEnd: entitlements.usage.periodEnd,
+    resetAt: entitlements.usage.resetAt,
+    upgradeRequired: true,
+  }, 429);
+}
+
+export async function incrementAiPackSearchUsage(userId: string) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       return await prisma.$transaction(async (tx) => {
-        const entitlements = await getUserEntitlements(userId, tx);
-        await tx.planUsage.upsert({
-          where: { userId_period: { userId, period } },
-          update: {},
-          create: { userId, period },
-        });
-        const updated = await tx.planUsage.updateMany({
+        const entitlements = await assertAiPackSearchAllowance(userId, tx);
+        const periodStart = new Date(entitlements.usage.periodStart);
+        const updated = await tx.usage.updateMany({
           where: {
             userId,
-            period,
-            unknownPackSearches: { lt: entitlements.rules.unknownPackSearchLimit },
+            periodStart,
+            aiPackSearchesUsed: { lt: entitlements.rules.aiSearchMonthlyLimit },
           },
-          data: { unknownPackSearches: { increment: 1 } },
+          data: { aiPackSearchesUsed: { increment: 1 } },
         });
         if (updated.count !== 1) {
           throw entitlementError(PLAN_LIMIT_CODES.aiSearch, "Your monthly AI package search limit has been reached.", {
-            currentPlan: entitlements.plan.code,
-            currentUsage: entitlements.usage.unknownPackSearches,
-            limit: entitlements.rules.unknownPackSearchLimit,
-            period,
-            resetAt: nextPeriodStart(period),
+            currentTier: entitlements.tier,
+            currentPlan: entitlements.tier,
+            currentUsage: entitlements.usage.aiPackSearchesUsed,
+            limit: entitlements.rules.aiSearchMonthlyLimit,
+            periodStart: entitlements.usage.periodStart,
+            periodEnd: entitlements.usage.periodEnd,
+            resetAt: entitlements.usage.resetAt,
             upgradeRequired: true,
           }, 429);
         }

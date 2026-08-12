@@ -6,7 +6,7 @@ import { getPackageDefinitions, getReadinessPackDefinitionBySlug, getReadinessPa
 import { getReadinessForQuery, getReadinessForSlug } from "../services/readiness/readiness.service";
 import { findDefaultPackMatch, saveGeneratedDefaultPack } from "../services/readiness/defaultPacksRepository";
 import { buildPackZip } from "../services/readiness/readinessZip";
-import { assertAndIncrementUnknownPackSearch } from "../services/entitlements.service";
+import { assertAiPackSearchAllowance, incrementAiPackSearchUsage } from "../services/entitlements.service";
 
 const router = Router();
 router.use(requireAuth);
@@ -47,10 +47,11 @@ router.post("/search-or-generate", async (req, res, next) => {
     const existing = await findDefaultPackMatch(query);
     const shouldGenerate = !existing;
     const source = shouldGenerate ? "official_source" : "existing";
-    if (shouldGenerate) await assertAndIncrementUnknownPackSearch(authUser.id);
+    if (shouldGenerate) await assertAiPackSearchAllowance(authUser.id);
     const slug = shouldGenerate
       ? await saveGeneratedDefaultPack(query, await analyzeIntent(query))
       : existing.slug;
+    if (shouldGenerate) await incrementAiPackSearchUsage(authUser.id);
     const [packageDefinition, readiness] = await Promise.all([
       getReadinessPackDefinitionBySlug(slug),
       getReadinessForSlug(authUser.id, slug),

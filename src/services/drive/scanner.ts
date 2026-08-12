@@ -8,6 +8,7 @@ import { prisma } from "../../lib/prisma";
 import { temporaryUploadsDir } from "../../middleware/upload";
 import { ingestDocument } from "../ingestion/pipeline";
 import { removePermanentFile } from "../documentFileStorage";
+import { assertStorageAllowance, reconcileCurrentStorageUsage } from "../entitlements.service";
 import {
   documentLookupHash,
   documentMetadataIntegrityHash,
@@ -259,6 +260,7 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
       sourceChecksum: checksum,
       lastAnalyzed: new Date(),
     };
+    if (!existingFile) await assertStorageAllowance(userId, content.length);
     if (duplicate && duplicateAction === "replace") {
       await prisma.document.delete({ where: { id: duplicate.id } });
       if (duplicate.storageKey || duplicate.path) await removePermanentFile(duplicate.storageKey ?? duplicate.path);
@@ -268,6 +270,7 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
       create: data,
       update: data,
     });
+    await reconcileCurrentStorageUsage(userId);
     const outcome = duplicate ? "duplicate_kept" : existingFile ? "updated" : "indexed";
     logDriveScan("stored", { fileId: file.id, mimeType: file.mimeType, outcome });
     return outcome;
