@@ -17,7 +17,9 @@ export function matchRequirementMetadata(
   now = new Date(),
 ): MetadataMatchResult {
   const acceptedTypes = new Set([requirement.documentType, ...requirement.acceptedDocumentTypes]);
-  const relatedDocuments = documents.filter((document) => acceptedTypes.has(document.documentType));
+  const requiredCapabilities = new Set(requirement.requiredCapabilities);
+  const relatedDocuments = documents.filter((document) =>
+    acceptedTypes.has(document.documentType) || document.capabilities.some((capability) => requiredCapabilities.has(capability)));
   if (!relatedDocuments.length) return result("missing", null, [], null);
 
   const ownerMatches = relatedDocuments.filter((document) => document.owner === requirement.owner);

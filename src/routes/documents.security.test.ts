@@ -1,3 +1,4 @@
+import { isHybridEncryptionMetadata } from "../services/documentHybridEncryption";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
@@ -17,9 +18,9 @@ import {
 import { getStorageProvider } from "../infrastructure/storage/createStorageProvider";
 
 process.env.STORAGE_DRIVER = "local";
-process.env.LOCAL_STORAGE_PATH = path.join(os.tmpdir(), "lifepack-document-security-storage");
+process.env.LOCAL_STORAGE_PATH = path.join(os.tmpdir(), "readiness-document-security-storage");
 import { toDocumentResponseDto } from "./documents.helpers";
-import { encryptJson, encryptString, isDocumentEncryptionEnvelope } from "../utils/documentEncryption";
+import { encryptJson, encryptString } from "../utils/documentEncryption";
 
 const ownerA = `security-owner-a-${crypto.randomUUID()}`;
 const ownerB = `security-owner-b-${crypto.randomUUID()}`;
@@ -61,6 +62,7 @@ async function createSavedDocument(ownerProfileId: string, content = "PAN CARD\n
   const encryptedFile = await saveEncryptedPermanentFile(ownerProfileId, documentId, temporaryUpload);
   const document = await prisma.document.create({
     data: {
+      ...encryptedFile,
       id: documentId,
       originalName: temporaryUpload.originalName,
       title: temporaryUpload.originalName,
@@ -142,8 +144,10 @@ async function run() {
 
     const permanentBytes = await getStorageProvider().download(encryptedFile.storageKey);
     assert.equal(permanentBytes.includes(Buffer.from(content)), false, "Permanent storage must not contain plaintext bytes.");
-    assert.equal(isDocumentEncryptionEnvelope(permanentBytes), true, "Permanent storage must use the encrypted file envelope.");
-    assert.equal((await readDecryptedDocumentFile(encryptedFile.path)).toString("utf8"), content);
+    assert.equal(isHybridEncryptionMetadata(document), true, "Permanent ciphertext requires persisted hybrid encryption metadata.");
+    assert.equal(permanentBytes.length, document.encryptedSize);
+    assert.equal((await readDecryptedDocumentFile(encryptedFile.path, document)).toString("utf8"), content);
+    await assert.rejects(readDecryptedDocumentFile(encryptedFile.path, { ...document, encryptedSha256: "0".repeat(64) }), "Tampered ciphertext metadata must be rejected.");
 
     const ownerDocument = await prisma.document.findFirst({ where: { id: document.id, ownerProfileId: ownerA } });
     const otherUserDocument = await prisma.document.findFirst({ where: { id: document.id, ownerProfileId: ownerB } });

@@ -21,9 +21,9 @@ type FieldSeed = {
 };
 
 type FormDelegates = {
-  lifePackFormCategory?: typeof prisma.lifePackFormCategory;
-  lifePackFormSubtype?: typeof prisma.lifePackFormSubtype;
-  lifePackFormField?: typeof prisma.lifePackFormField;
+  readinessFormCategory?: typeof prisma.readinessFormCategory;
+  readinessFormSubtype?: typeof prisma.readinessFormSubtype;
+  readinessFormField?: typeof prisma.readinessFormField;
 };
 
 const commonFields: FieldSeed[] = [
@@ -83,23 +83,23 @@ function fieldsFor(category: string): FieldSeed[] {
 
 async function ensureWealthCatalog() {
   const delegates = prisma as FormDelegates;
-  if (!delegates.lifePackFormCategory) return false;
+  if (!delegates.readinessFormCategory) return false;
   if (formTablesAvailable === null) {
-    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.lifepack_form_categories') IS NOT NULL AS "exists"`;
+    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.readiness_form_categories') IS NOT NULL AS "exists"`;
     formTablesAvailable = Boolean(rows[0]?.exists);
   }
   if (!formTablesAvailable) return false;
-  const existing = await delegates.lifePackFormCategory.count({ where: { module: moduleCode } });
+  const existing = await delegates.readinessFormCategory.count({ where: { module: moduleCode } });
   if (existing) return true;
   for (const [categoryIndex, category] of catalog.entries()) {
-    const savedCategory = await delegates.lifePackFormCategory.create({
+    const savedCategory = await delegates.readinessFormCategory.create({
       data: { module: moduleCode, code: category.code, label: category.label, wealthRecordType: category.type, sortOrder: categoryIndex + 1 },
     });
     for (const [subtypeIndex, label] of category.subtypes.entries()) {
-      const subtype = await delegates.lifePackFormSubtype!.create({
+      const subtype = await delegates.readinessFormSubtype!.create({
         data: { categoryId: savedCategory.id, code: subtypeCode(label), label, sortOrder: subtypeIndex + 1 },
       });
-      await delegates.lifePackFormField!.createMany({ data: fieldsFor(category.code).map((field) => ({ ...field, subtypeId: subtype.id })) });
+      await delegates.readinessFormField!.createMany({ data: fieldsFor(category.code).map((field) => ({ ...field, subtypeId: subtype.id })) });
     }
   }
   return true;
@@ -112,7 +112,7 @@ function fieldDto(field: { fieldId: string; label: string; inputType: string; re
 export async function listWealthFormCategories() {
   try {
     if (!await ensureWealthCatalog()) return catalogCategories();
-    return prisma.lifePackFormCategory.findMany({ where: { module: moduleCode, isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }], select: { code: true, label: true, description: true } });
+    return prisma.readinessFormCategory.findMany({ where: { module: moduleCode, isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }], select: { code: true, label: true, description: true } });
   } catch {
     return catalogCategories();
   }
@@ -121,9 +121,9 @@ export async function listWealthFormCategories() {
 export async function listWealthFormSubtypes(categoryCode: string) {
   try {
     if (!await ensureWealthCatalog()) return catalogSubtypes(categoryCode);
-    const category = await prisma.lifePackFormCategory.findUnique({ where: { module_code: { module: moduleCode, code: categoryCode } } });
+    const category = await prisma.readinessFormCategory.findUnique({ where: { module_code: { module: moduleCode, code: categoryCode } } });
     if (!category?.isActive) throw Object.assign(new Error("Unknown Wealth category."), { statusCode: 404 });
-    return prisma.lifePackFormSubtype.findMany({ where: { categoryId: category.id, isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }], select: { code: true, label: true, description: true } });
+    return prisma.readinessFormSubtype.findMany({ where: { categoryId: category.id, isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }], select: { code: true, label: true, description: true } });
   } catch (error) {
     if ((error as { statusCode?: number }).statusCode === 404) throw error;
     return catalogSubtypes(categoryCode);
@@ -133,9 +133,9 @@ export async function listWealthFormSubtypes(categoryCode: string) {
 export async function getWealthFormSchema(categoryCode: string, subtypeCode: string) {
   try {
     if (!await ensureWealthCatalog()) return catalogSchema(categoryCode, subtypeCode);
-    const category = await prisma.lifePackFormCategory.findUnique({ where: { module_code: { module: moduleCode, code: categoryCode } } });
+    const category = await prisma.readinessFormCategory.findUnique({ where: { module_code: { module: moduleCode, code: categoryCode } } });
     if (!category?.isActive) throw Object.assign(new Error("Unknown Wealth category."), { statusCode: 404 });
-    const subtype = await prisma.lifePackFormSubtype.findUnique({ where: { categoryId_code: { categoryId: category.id, code: subtypeCode } }, include: { fields: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }] } } });
+    const subtype = await prisma.readinessFormSubtype.findUnique({ where: { categoryId_code: { categoryId: category.id, code: subtypeCode } }, include: { fields: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }] } } });
     if (!subtype?.isActive) throw Object.assign(new Error("Unknown Wealth subtype."), { statusCode: 404 });
     return { category: { code: category.code, label: category.label }, subtype: { code: subtype.code, label: subtype.label }, fields: subtype.fields.map(fieldDto) };
   } catch (error) {

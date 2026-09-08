@@ -34,6 +34,7 @@ try {
     packageName: generatedTitle,
     category: "property",
     description: "Cached property readiness pack",
+    searchMetadata: { intent: "property purchase", subject: "farm parcel", searchPhrases: ["buy uncommon farm parcel"] },
     sourceTitle: "Registration and Stamps Department Telangana property registration",
     sourceUrl: "https://registration.telangana.gov.in/",
     sourceOrganization: "Registration and Stamps Department Telangana",
@@ -47,13 +48,14 @@ try {
     }],
     lastVerifiedAt: checkedAt,
     verificationStatus: "verified",
-    requiredDocuments: [{ id: "buyer_pan", title: "Buyer PAN Card", name: "Buyer PAN Card", documentType: "pan", owner: "self", category: "Buyer Identity", required: true }],
+    requiredDocuments: [{ id: "buyer_pan", title: "Buyer PAN Card", name: "Buyer PAN Card", documentType: "pan", owner: "self", category: "Buyer Identity", required: true, whyNeeded: "Officially listed identity evidence.", sourceName: "Registration and Stamps Department Telangana", sourceUrl: "https://registration.telangana.gov.in/", sourceAuthorityTier: "government", lastVerifiedAt: checkedAt }],
   });
   assert.equal(await findDefaultPackSlug("buy uncommon farm parcel"), generatedSlug);
   await saveGeneratedDefaultPack("buy uncommon farm parcel", {
     packageName: generatedTitle,
     category: "property",
     description: "Cached property readiness pack",
+    searchMetadata: { intent: "property purchase", subject: "farm parcel", searchPhrases: ["buy uncommon farm parcel"] },
     sourceTitle: "Registration and Stamps Department Telangana property registration",
     sourceUrl: "https://registration.telangana.gov.in/",
     sourceOrganization: "Registration and Stamps Department Telangana",
@@ -67,7 +69,7 @@ try {
     }],
     lastVerifiedAt: checkedAt,
     verificationStatus: "verified",
-    requiredDocuments: [{ id: "buyer_pan", title: "Buyer PAN Card", name: "Buyer PAN Card", documentType: "pan", owner: "self", category: "Buyer Identity", required: true }],
+    requiredDocuments: [{ id: "buyer_pan", title: "Buyer PAN Card", name: "Buyer PAN Card", documentType: "pan", owner: "self", category: "Buyer Identity", required: true, whyNeeded: "Officially listed identity evidence.", sourceName: "Registration and Stamps Department Telangana", sourceUrl: "https://registration.telangana.gov.in/", sourceAuthorityTier: "government", lastVerifiedAt: checkedAt }],
   });
   assert.equal(await prisma.readinessPack.count({ where: { slug: generatedSlug } }), 1);
   const stored = await prisma.readinessPack.findUnique({ where: { slug: generatedSlug }, include: { requirements: true } });

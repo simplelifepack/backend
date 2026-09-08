@@ -57,7 +57,7 @@ async function run() {
       originalMimeType: "application/pdf",
       originalSize: unsafePdf.length,
     }),
-    /active or embedded content/,
+    /plain PDF or image copy/,
   );
   for (const marker of ["/Encrypt", "/EmbeddedFile /Filespec"]) {
     const rejectedPdf = minimalPdf(marker);
@@ -67,7 +67,7 @@ async function run() {
         originalMimeType: "application/pdf",
         originalSize: rejectedPdf.length,
       }),
-      marker === "/Encrypt" ? /Password-protected/ : /active or embedded content/,
+      marker === "/Encrypt" ? /password-protected/ : /plain PDF or image copy/,
     );
   }
   const truncatedPdf = Buffer.from("%PDF-1.4\n1 0 obj\n");
@@ -77,7 +77,7 @@ async function run() {
       originalMimeType: "application/pdf",
       originalSize: truncatedPdf.length,
     }),
-    /truncated/,
+    { code: "FILE_CORRUPTED", message: "This file appears to be corrupted. Please try uploading another copy." },
   );
   const malwarePdf = Buffer.concat([
     minimalPdf(),
@@ -108,7 +108,7 @@ async function run() {
           originalMimeType: "image/png",
           originalSize: bytes.length - 1,
         }),
-        /truncated/,
+        { code: "FILE_CORRUPTED", message: "This file appears to be corrupted. Please try uploading another copy." },
       );
     }
   }
@@ -122,7 +122,7 @@ async function run() {
       originalMimeType: "image/png",
       originalSize: wide.length,
     }),
-    /dimensions exceed/,
+    { code: "IMAGE_DIMENSIONS_EXCEEDED" },
   );
 
   let isolatedPath = "";

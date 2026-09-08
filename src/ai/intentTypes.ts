@@ -8,6 +8,11 @@ export type AIRequiredDocument = {
   name: string;
   title: string;
   required: boolean;
+  whyNeeded: string;
+  sourceName: string;
+  sourceUrl: string;
+  sourceAuthorityTier: "government" | "authority" | "official" | "commercial" | "aggregator";
+  lastVerifiedAt: string;
 };
 
 export type AIVerificationSource = {
@@ -22,6 +27,14 @@ export type AIReadinessPackage = {
   packageName: string;
   category: string;
   description: string;
+  searchMetadata: {
+    intent?: string;
+    searchPhrases: string[];
+    jurisdiction?: string;
+    destination?: string;
+    purpose?: string;
+    subject?: string;
+  };
   sourceTitle: string;
   sourceUrl: string;
   sourceOrganization: string;

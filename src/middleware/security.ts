@@ -15,18 +15,9 @@ function csvFromEnv(name: string) {
     .filter(Boolean);
 }
 
-function forwardedHeaderClientIp(header: string | string[] | undefined) {
-  const value = Array.isArray(header) ? header[0] : header;
-  if (!value) return null;
-  const firstForwarded = value.split(",")[0]?.trim();
-  const forMatch = firstForwarded?.match(/(?:^|;)\s*for=(?:(?:"([^"]+)")|([^;]+))/i);
-  const raw = (forMatch?.[1] ?? forMatch?.[2])?.trim();
-  return raw?.replace(/^\[/, "").replace(/\]$/, "").replace(/^\"|\"$/g, "") || null;
-}
-
 function clientRateLimitKey(req: Request) {
-  const forwardedIp = forwardedHeaderClientIp(req.headers.forwarded);
-  return ipKeyGenerator(forwardedIp || req.ip || "unknown");
+  // Express resolves trusted proxies; never trust arbitrary Forwarded headers.
+  return ipKeyGenerator(req.ip || "unknown");
 }
 
 function buildRateLimiter(input: {
@@ -62,13 +53,14 @@ export const securityHeadersOptions: HelmetOptions = {
 };
 
 export const corsOptions: CorsOptions = {
+  credentials: true,
   exposedHeaders: ["Content-Disposition", "Content-Length"],
   origin(origin, callback) {
     if (!origin) return callback(null, true);
 
     const allowedOrigins = csvFromEnv("CORS_ORIGINS");
 
-    if (allowedOrigins.includes("*") || allowedOrigins.includes(origin) || isAllowedLocalhostOrigin(origin)) return callback(null, true);
+    if (allowedOrigins.includes(origin) || (process.env.NODE_ENV !== "production" && isAllowedLocalhostOrigin(origin))) return callback(null, true);
 
     return callback(new Error("Origin is not allowed by CORS."));
   },

@@ -66,8 +66,8 @@ function encryptedFile(ciphertext: Buffer): Express.Multer.File {
 }
 
 async function run() {
-  const oldKey = keyPair("lifepack-old", 1);
-  const newKey = keyPair("lifepack-new", 2);
+  const oldKey = keyPair("readiness-old", 1);
+  const newKey = keyPair("readiness-new", 2);
   configureKeys([oldKey, newKey], oldKey);
 
   const plaintext = Buffer.from("authenticated document bytes");

@@ -1,0 +1,1998 @@
+{
+  "inspectedAt": "2026-09-06T09:40:10.414Z",
+  "migrations": [
+    {
+      "migration_name": "20260626051148_init",
+      "finished_at": "2026-08-17T09:40:43.230Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260627072059_add_user_refresh_tokens",
+      "finished_at": "2026-08-17T09:40:43.239Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260627080646_add_document_title",
+      "finished_at": "2026-08-17T09:40:43.242Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260627093000_add_readiness_packs",
+      "finished_at": "2026-08-17T09:40:43.252Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260707000000_add_pack_builder_document_metadata",
+      "finished_at": "2026-08-17T09:40:43.256Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260712000000_encrypt_document_sensitive_fields",
+      "finished_at": "2026-08-17T09:40:43.260Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260712090000_add_temporary_uploads",
+      "finished_at": "2026-08-17T09:40:43.264Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260717093000_add_requirement_matching_metadata",
+      "finished_at": "2026-08-17T09:40:43.268Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260717101418_add_identity_profile_and_package_cache",
+      "finished_at": "2026-08-17T09:40:43.277Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260717101419_add_identity_profile_and_package_cache",
+      "finished_at": "2026-08-17T09:40:43.281Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260717120000_normalize_cached_requirement_types",
+      "finished_at": "2026-08-17T09:40:43.284Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260717123000_unify_default_packs_repository",
+      "finished_at": "2026-08-17T09:40:43.287Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260718150000_add_google_identity",
+      "finished_at": "2026-08-17T09:40:43.296Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260718190000_add_gmail_import",
+      "finished_at": "2026-08-17T09:40:43.314Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260718203000_add_gmail_candidate_scoring",
+      "finished_at": "2026-08-17T09:40:43.318Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260723090000_add_google_drive_integration",
+      "finished_at": "2026-08-17T09:40:43.323Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260724173500_allow_shared_external_accounts",
+      "finished_at": "2026-08-17T09:40:43.326Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260729090000_add_provider_neutral_document_storage",
+      "finished_at": "2026-08-17T09:40:43.329Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260729123000_add_hybrid_document_encryption",
+      "finished_at": "2026-08-17T09:40:43.333Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260731110819_new",
+      "finished_at": "2026-08-17T09:40:43.335Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260731120000_add_document_trust_states",
+      "finished_at": "2026-08-17T09:40:43.344Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260731143000_add_welcome_email_sent_at",
+      "finished_at": "2026-08-17T09:40:43.347Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260806061744_npm_run_dev",
+      "finished_at": "2026-08-17T09:40:43.349Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260806124500_add_readiness_pack_source_metadata",
+      "finished_at": "2026-08-17T09:40:43.352Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260806125500_backfill_ai_package_source_type",
+      "finished_at": "2026-08-17T09:40:43.355Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260806133000_backfill_ai_package_source_labels",
+      "finished_at": "2026-08-17T09:40:43.357Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260806134500_clear_unverified_ai_source_labels",
+      "finished_at": "2026-08-17T09:40:43.359Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260806140500_add_package_verification_sources",
+      "finished_at": "2026-08-17T09:40:43.362Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260807130000_add_password_reset_tokens",
+      "finished_at": "2026-08-17T09:40:43.367Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260808120000_add_plan_entitlements_trust_center",
+      "finished_at": "2026-08-17T09:40:43.393Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260808143000_simplify_plan_trust_tables",
+      "finished_at": "2026-08-17T09:40:43.411Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260808151500_trust_email_invitation_flow",
+      "finished_at": "2026-08-17T09:40:43.416Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260808162000_relax_trust_member_status_unique",
+      "finished_at": "2026-08-17T09:40:43.420Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260808183000_add_wealth_records",
+      "finished_at": "2026-08-17T09:40:43.431Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260808194500_add_dynamic_form_metadata",
+      "finished_at": "2026-08-17T09:40:43.444Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260811120000_free_paid_subscription_architecture",
+      "finished_at": "2026-08-17T09:40:43.459Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260817094046",
+      "finished_at": "2026-08-17T09:40:46.333Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260825183000_add_readiness_pack_search_metadata",
+      "finished_at": "2026-08-25T12:56:01.126Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260825184500_backfill_readiness_search_phrases",
+      "finished_at": "2026-08-25T16:39:28.771Z",
+      "rolled_back_at": null
+    },
+    {
+      "migration_name": "20260826090000_add_document_files",
+      "finished_at": "2026-08-26T07:45:15.343Z",
+      "rolled_back_at": null
+    }
+  ],
+  "columns": [
+    {
+      "table_name": "Document",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "originalName",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "storedName",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "mimeType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "size",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "path",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "documentType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "category",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "analysisSource",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "confidence",
+      "data_type": "double precision"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "fields",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "title",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "normalizedType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "displayName",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "ownerProfileId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "uniqueIdentifier",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "extractedKeyFields",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "rawText",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "uniqueIdentifierHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "contentHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "sourceProvider",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "sourceMessageId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "sourceAttachmentId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "driveFileId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "sourceModifiedTime",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "sourceChecksum",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "lastAnalyzed",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "storageKey",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "storageBucket",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "encryptionVersion",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "storageMimeType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "contentAlgorithm",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "keyAlgorithm",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "keyId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "keyVersion",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "encryptionIv",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "wrappedKey",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "originalSha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "encryptedSha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "encryptedSize",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "scanStatus",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "scanCompletedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "targetProfileId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "documentTypeCode",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "classificationStatus",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "classificationConfidence",
+      "data_type": "double precision"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "classificationSignals",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "ownershipStatus",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "ownershipConfidence",
+      "data_type": "double precision"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "ownershipMatchedFields",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "ownershipMismatchedFields",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "readinessEligible",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "ciphertextHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "userScopedDedupHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "metadataIntegrityHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "integrityStatus",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Document",
+      "column_name": "deletedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "documentId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "pageIndex",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "originalName",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "mimeType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "size",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "storageKey",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "storedName",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "encryptionVersion",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "contentAlgorithm",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "keyAlgorithm",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "keyId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "keyVersion",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "encryptionIv",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "wrappedKey",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "encryptedSize",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "ciphertextHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "DocumentFile",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "provider",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "providerAccountId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "providerEmail",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "encryptedRefreshToken",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "grantedScopes",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "status",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "lastScannedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "scanStartedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "lastSuccessfulSync",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "scanPhase",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "scanProcessed",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "scanTotal",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "indexedCount",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "ExternalConnection",
+      "column_name": "lastScanError",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "connectionId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "provider",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "sourceKey",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "externalMessageId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "externalAttachmentId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "filename",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "mimeType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "size",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "sender",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "subject",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "receivedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "suggestedCategory",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "suggestedDocumentType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "relevanceReason",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "relevanceScore",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "status",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "legitimacyReason",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "legitimacyScore",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "reviewRequired",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "matchedSignals",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "rejectedSignals",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "ignoredReason",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalDocumentCandidate",
+      "column_name": "externalPartId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalIdentity",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalIdentity",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalIdentity",
+      "column_name": "provider",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalIdentity",
+      "column_name": "providerAccountId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalIdentity",
+      "column_name": "avatarUrl",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalIdentity",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalIdentity",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalOAuthState",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalOAuthState",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalOAuthState",
+      "column_name": "provider",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalOAuthState",
+      "column_name": "stateHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ExternalOAuthState",
+      "column_name": "expiresAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalOAuthState",
+      "column_name": "usedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ExternalOAuthState",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "PasswordResetToken",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "PasswordResetToken",
+      "column_name": "tokenHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "PasswordResetToken",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "PasswordResetToken",
+      "column_name": "expiresAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "PasswordResetToken",
+      "column_name": "usedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "PasswordResetToken",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "slug",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "title",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "category",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "aliases",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "description",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "keywords",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "createdBy",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "version",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "subtitle",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "sourceType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "sourceName",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "sourceTitle",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "sourceUrl",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "lastCheckedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "verificationSources",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "lastVerifiedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "verificationStatus",
+      "data_type": "text"
+    },
+    {
+      "table_name": "ReadinessPack",
+      "column_name": "searchMetadata",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "RefreshToken",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "RefreshToken",
+      "column_name": "tokenHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "RefreshToken",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "RefreshToken",
+      "column_name": "expiresAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "RefreshToken",
+      "column_name": "revokedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "RefreshToken",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "packId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "title",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "description",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "required",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "group",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "acceptedDocumentTypes",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "alternativeLabels",
+      "data_type": "ARRAY"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "sortOrder",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "documentType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "owner",
+      "data_type": "text"
+    },
+    {
+      "table_name": "Requirement",
+      "column_name": "metadata",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "ownerProfileId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "storagePath",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "originalName",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "detectedMimeType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "size",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "status",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "expiresAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "consumedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "contentHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "sourceProvider",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "sourceMessageId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "sourceAttachmentId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "externalCandidateId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "encryptionVersion",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "contentAlgorithm",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "keyAlgorithm",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "keyId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "keyVersion",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "encryptionIv",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "wrappedKey",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "originalSha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "encryptedSha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "encryptedSize",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "scanStatus",
+      "data_type": "text"
+    },
+    {
+      "table_name": "TemporaryUpload",
+      "column_name": "scanCompletedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "User",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "User",
+      "column_name": "name",
+      "data_type": "text"
+    },
+    {
+      "table_name": "User",
+      "column_name": "email",
+      "data_type": "text"
+    },
+    {
+      "table_name": "User",
+      "column_name": "passwordHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "User",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "User",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "User",
+      "column_name": "welcomeEmailSentAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "fullName",
+      "data_type": "text"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "normalizedNameHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "dateOfBirth",
+      "data_type": "text"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "dateOfBirthHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "documentNumber",
+      "data_type": "text"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "createdFromDocumentId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "verified",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "UserIdentityProfile",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "checksum",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "finished_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "migration_name",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "logs",
+      "data_type": "text"
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "rolled_back_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "started_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "applied_steps_count",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "module",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "code",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "label",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "description",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "sortOrder",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "isActive",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "wealthRecordType",
+      "data_type": "USER-DEFINED"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "lifepack_form_categories",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "subtypeId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "fieldId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "label",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "inputType",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "required",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "placeholder",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "defaultValue",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "options",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "validation",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "group",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "visibility",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "sortOrder",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "isActive",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "lifepack_form_fields",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "categoryId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "code",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "label",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "description",
+      "data_type": "text"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "sortOrder",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "isActive",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "lifepack_form_subtypes",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "tier",
+      "data_type": "USER-DEFINED"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "billingInterval",
+      "data_type": "USER-DEFINED"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "status",
+      "data_type": "text"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "currentPeriodStart",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "currentPeriodEnd",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "provider",
+      "data_type": "text"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "providerCustomerId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "providerSubscriptionId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "subscriptions",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_member_permissions",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_member_permissions",
+      "column_name": "trustMemberId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_member_permissions",
+      "column_name": "module",
+      "data_type": "USER-DEFINED"
+    },
+    {
+      "table_name": "trust_member_permissions",
+      "column_name": "canView",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "trust_member_permissions",
+      "column_name": "canDownload",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "trust_member_permissions",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_member_permissions",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "ownerUserId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "memberUserId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "email",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "name",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "relation",
+      "data_type": "USER-DEFINED"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "customRelation",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "dateOfBirth",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "bloodGroup",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "status",
+      "data_type": "USER-DEFINED"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "invitedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "acceptedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "revokedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "accessType",
+      "data_type": "USER-DEFINED"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "inviteTokenHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "inviteExpiresAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "invitePinHash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "rejectedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "pinAttemptCount",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "trust_members",
+      "column_name": "pinLockedUntil",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "usage",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "usage",
+      "column_name": "userId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "usage",
+      "column_name": "periodStart",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "usage",
+      "column_name": "periodEnd",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "usage",
+      "column_name": "aiPackSearchesUsed",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "usage",
+      "column_name": "storageBytesUsed",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "usage",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "usage",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "wealth_record_attachments",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "wealth_record_attachments",
+      "column_name": "wealthRecordId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "wealth_record_attachments",
+      "column_name": "documentId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "wealth_record_attachments",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "ownerUserId",
+      "data_type": "text"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "type",
+      "data_type": "USER-DEFINED"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "title",
+      "data_type": "text"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "details",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "notes",
+      "data_type": "text"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "followUpDate",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "followUpNote",
+      "data_type": "text"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone"
+    },
+    {
+      "table_name": "wealth_records",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone"
+    }
+  ],
+  "constraints": [
+    {
+      "conname": "_prisma_migrations_pkey"
+    },
+    {
+      "conname": "Document_pkey"
+    },
+    {
+      "conname": "User_pkey"
+    },
+    {
+      "conname": "RefreshToken_pkey"
+    },
+    {
+      "conname": "RefreshToken_userId_fkey"
+    },
+    {
+      "conname": "ReadinessPack_pkey"
+    },
+    {
+      "conname": "Requirement_pkey"
+    },
+    {
+      "conname": "Requirement_packId_fkey"
+    },
+    {
+      "conname": "TemporaryUpload_pkey"
+    },
+    {
+      "conname": "UserIdentityProfile_pkey"
+    },
+    {
+      "conname": "UserIdentityProfile_userId_fkey"
+    },
+    {
+      "conname": "ExternalIdentity_pkey"
+    },
+    {
+      "conname": "ExternalIdentity_userId_fkey"
+    },
+    {
+      "conname": "ExternalConnection_pkey"
+    },
+    {
+      "conname": "ExternalOAuthState_pkey"
+    },
+    {
+      "conname": "ExternalDocumentCandidate_pkey"
+    },
+    {
+      "conname": "ExternalConnection_userId_fkey"
+    },
+    {
+      "conname": "ExternalOAuthState_userId_fkey"
+    },
+    {
+      "conname": "ExternalDocumentCandidate_userId_fkey"
+    },
+    {
+      "conname": "ExternalDocumentCandidate_connectionId_fkey"
+    },
+    {
+      "conname": "PasswordResetToken_pkey"
+    },
+    {
+      "conname": "PasswordResetToken_userId_fkey"
+    },
+    {
+      "conname": "trust_members_pkey"
+    },
+    {
+      "conname": "trust_members_ownerUserId_fkey"
+    },
+    {
+      "conname": "trust_members_memberUserId_fkey"
+    },
+    {
+      "conname": "trust_member_permissions_pkey"
+    },
+    {
+      "conname": "trust_member_permissions_trustMemberId_fkey"
+    },
+    {
+      "conname": "wealth_records_pkey"
+    },
+    {
+      "conname": "wealth_record_attachments_pkey"
+    },
+    {
+      "conname": "wealth_records_ownerUserId_fkey"
+    },
+    {
+      "conname": "wealth_record_attachments_wealthRecordId_fkey"
+    },
+    {
+      "conname": "wealth_record_attachments_documentId_fkey"
+    },
+    {
+      "conname": "lifepack_form_categories_pkey"
+    },
+    {
+      "conname": "lifepack_form_subtypes_pkey"
+    },
+    {
+      "conname": "lifepack_form_fields_pkey"
+    },
+    {
+      "conname": "lifepack_form_subtypes_categoryId_fkey"
+    },
+    {
+      "conname": "lifepack_form_fields_subtypeId_fkey"
+    },
+    {
+      "conname": "subscriptions_pkey"
+    },
+    {
+      "conname": "subscriptions_userId_fkey"
+    },
+    {
+      "conname": "usage_pkey"
+    },
+    {
+      "conname": "usage_userId_fkey"
+    },
+    {
+      "conname": "DocumentFile_pkey"
+    },
+    {
+      "conname": "DocumentFile_documentId_fkey"
+    }
+  ]
+}

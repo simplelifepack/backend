@@ -8,11 +8,11 @@ export type LoginAlertEmailInput = {
 };
 
 export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderResult {
-  const subject = "New login to your LifePack account";
+  const subject = "New login to your Readiness account";
   const text = [
     "New login detected",
     "",
-    "A new login to your LifePack account was recorded.",
+    "A new login to your Readiness account was recorded.",
     "",
     `Time: ${input.loginTime}`,
     `Device: ${input.deviceSummary}`,
@@ -21,9 +21,9 @@ export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderR
     "If this was you, no action is required.",
     "If this was not you, change your password and review active sessions.",
     "",
-    `Open LifePack: ${input.appUrl}`,
+    `Open Readiness: ${input.appUrl}`,
     "",
-    "This security message was sent by LifePack.",
+    "This security message was sent by Readiness.",
   ].join("\n");
 
   const rows = [
@@ -37,7 +37,7 @@ export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderR
       <td style="font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:30px;line-height:1.16;font-weight:700;color:${EMAIL_STYLE.ink};padding:0 0 12px 0;">New login detected</td>
     </tr>
     <tr>
-      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 20px 0;">A new login to your LifePack account was recorded.</td>
+      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 20px 0;">A new login to your Readiness account was recorded.</td>
     </tr>
     <tr>
       <td style="border:1px solid ${EMAIL_STYLE.gold}33;border-radius:16px;background:${EMAIL_STYLE.goldSoft};padding:4px 18px;">
@@ -57,10 +57,10 @@ export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderR
       <td style="font-size:14px;line-height:1.7;color:${EMAIL_STYLE.body};padding:6px 0 0 0;">If this was not you, change your password and review active sessions.</td>
     </tr>
     <tr>
-      <td>${appAccessBlock("Open LifePack", input.appUrl)}</td>
+      <td>${appAccessBlock("Open Readiness", input.appUrl)}</td>
     </tr>
     <tr>
-      <td style="padding-top:2px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security notice - LifePack</td>
+      <td style="padding-top:2px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security notice - Readiness</td>
     </tr>`);
 
   return { subject, html, text };

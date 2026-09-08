@@ -4,8 +4,7 @@ import helmet from "helmet";
 import authRouter from "./routes/auth.routes";
 import documentsRouter from "./routes/documents.routes";
 import packsRouter from "./routes/packs.routes";
-import readinessRouter, { adminReadinessRouter } from "./routes/readiness.routes";
-import aiRouter from "./routes/ai";
+import { adminReadinessRouter } from "./routes/readiness.admin.routes";
 import gmailRouter from "./routes/gmail.routes";
 import driveRouter from "./routes/drive.routes";
 import bootstrapRouter from "./routes/bootstrap.routes";
@@ -39,6 +38,12 @@ if (process.env.TRUST_PROXY) {
   app.set("trust proxy", process.env.TRUST_PROXY);
 }
 
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === "production" && !req.secure && !(process.env.VERCEL && req.get("x-forwarded-proto") === "https")) {
+    return res.status(400).json({ message: "HTTPS is required." });
+  }
+  next();
+});
 app.use(helmet(securityHeadersOptions));
 app.use(cors(corsOptions));
 app.use((req, res, next) => {
@@ -52,7 +57,7 @@ app.use(express.json({ limit: jsonBodyLimit }));
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
-    service: "lifepack-backend",
+    service: "readiness-backend",
     timestamp: new Date().toISOString(),
   });
 });
@@ -63,9 +68,7 @@ app.use("/documents", documentsRouter);
 app.use("/packs", packsRouter);
 app.use("/packages", packsRouter);
 app.use("/api/packages", packsRouter);
-app.use("/readiness", readinessRouter);
 app.use("/admin/readiness", adminReadinessRouter);
-app.use("/api/ai", aiRouter);
 app.use("/api/integrations/gmail", gmailRouter);
 app.use("/api/integrations/drive", driveRouter);
 app.use("/api/bootstrap", bootstrapRouter);

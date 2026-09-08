@@ -21,7 +21,7 @@ function run() {
         SMTP_PORT: "465",
         SMTP_SECURE: "true",
         SMTP_USER: "support@readines.info",
-        MAIL_FROM: "LifePack <support@readines.info>",
+        MAIL_FROM: "Readiness <support@readines.info>",
       } as NodeJS.ProcessEnv),
     /SMTP_PASS or SMTP_APP_PASSWORD is required/,
   );
@@ -34,7 +34,7 @@ function run() {
     SMTP_SECURE: "true",
     SMTP_USER: "support@readines.info",
     SMTP_PASS: "secret",
-    MAIL_FROM: "LifePack <support@readines.info>",
+    MAIL_FROM: "Readiness <support@readines.info>",
   } as NodeJS.ProcessEnv);
   assert.equal(configured.provider, "smtp");
 
@@ -46,12 +46,12 @@ function run() {
     SMTP_SECURE: "true",
     SMTP_USER: "support@readines.info",
     SMTP_APP_PASSWORD: "secret",
-    EMAIL_FROM_NAME: "LifePack",
+    EMAIL_FROM_NAME: "Readiness",
     EMAIL_FROM_ADDRESS: "support@readines.info",
   } as NodeJS.ProcessEnv);
   assert.equal(forgotPasswordStyle.provider, "smtp");
   assert.equal(forgotPasswordStyle.smtpPass, "secret");
-  assert.equal(forgotPasswordStyle.mailFrom, "LifePack <support@readines.info>");
+  assert.equal(forgotPasswordStyle.mailFrom, "Readiness <support@readines.info>");
 
   console.log("Email config tests passed.");
 }

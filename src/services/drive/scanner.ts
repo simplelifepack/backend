@@ -1,3 +1,5 @@
+import { lockAccount } from "../accountUsage.service";
+import { queueStorageCleanup, drainStorageCleanup } from "../storageCleanup.service";
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -7,8 +9,6 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { temporaryUploadsDir } from "../../middleware/upload";
 import { ingestDocument } from "../ingestion/pipeline";
-import { removePermanentFile } from "../documentFileStorage";
-import { assertStorageAllowance, reconcileCurrentStorageUsage } from "../entitlements.service";
 import {
   documentLookupHash,
   documentMetadataIntegrityHash,
@@ -180,7 +180,7 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
   const plaintextHash = crypto.createHash("sha256").update(content).digest("hex");
   const checksum = userScopedDocumentHash(userId, plaintextHash)!;
   const temporaryPath = path.join(temporaryUploadsDir, `${crypto.randomUUID()}.pdf`);
-  await fsp.writeFile(temporaryPath, content, { flag: "wx" });
+  await fsp.writeFile(temporaryPath, content, { flag: "wx", mode: 0o600 });
   try {
     const analysis = await ingestDocument({ path: temporaryPath, originalName: file.name, mimeType: PDF_MIME, size: content.length });
     if (!analysis.success || analysis.documentType.toLowerCase() === "unknown") {
@@ -260,21 +260,26 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
       sourceChecksum: checksum,
       lastAnalyzed: new Date(),
     };
-    if (!existingFile) await assertStorageAllowance(userId, content.length);
-    if (duplicate && duplicateAction === "replace") {
-      await prisma.document.delete({ where: { id: duplicate.id } });
-      if (duplicate.storageKey || duplicate.path) await removePermanentFile(duplicate.storageKey ?? duplicate.path);
-    }
-    await prisma.document.upsert({
-      where: { ownerProfileId_driveFileId: { ownerProfileId: userId, driveFileId: file.id } },
-      create: data,
-      update: data,
+    await prisma.$transaction(async tx => {
+      await lockAccount(tx, userId);
+      if (duplicate && duplicateAction === "replace") {
+        const replaced = await tx.document.findFirst({ where: { id: duplicate.id, ownerProfileId: userId }, include: { files: true } });
+        if (replaced) {
+          await queueStorageCleanup(tx, userId, [replaced, ...replaced.files]);
+          await tx.document.delete({ where: { id: replaced.id } });
+        }
+      }
+      await tx.document.upsert({
+        where: { ownerProfileId_driveFileId: { ownerProfileId: userId, driveFileId: file.id } },
+        create: data, update: data,
+      });
     });
-    await reconcileCurrentStorageUsage(userId);
+    await drainStorageCleanup(userId);
     const outcome = duplicate ? "duplicate_kept" : existingFile ? "updated" : "indexed";
     logDriveScan("stored", { fileId: file.id, mimeType: file.mimeType, outcome });
     return outcome;
   } finally {
+    content.fill(0);
     await fsp.unlink(temporaryPath).catch(() => undefined);
   }
 }

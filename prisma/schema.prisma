@@ -8,10 +8,33 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum AccountTier {
+  free
+  paid
+}
+
+model UserAIUsage {
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period String
+  actionCount Int @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, period])
+  @@map("user_ai_usage")
+}
+
 model User {
+  accountTier AccountTier @default(free)
+  aiUsage UserAIUsage[]
+  storageCleanup StorageCleanup[]
   id                         String                      @id @default(cuid())
   name                       String
   email                      String                      @unique
+  recoveryVerifier           String?
+  recoveryVersion            Int                         @default(0)
+  recoveryCreatedAt          DateTime?
+  authVersion                Int                         @default(0)
   passwordHash               String?
   welcomeEmailSentAt         DateTime?
   createdAt                  DateTime                    @default(now())
@@ -23,47 +46,9 @@ model User {
   externalConnections        ExternalConnection[]
   externalDocumentCandidates ExternalDocumentCandidate[]
   externalOAuthStates        ExternalOAuthState[]
-  subscriptions              Subscription[]
-  usages                     Usage[]
   ownedTrustMembers          TrustMember[]               @relation("TrustMemberOwner")
   linkedTrustMemberships     TrustMember[]               @relation("TrustMemberLinkedUser")
   wealthRecords              WealthRecord[]
-}
-
-model Subscription {
-  id                     String                @id @default(cuid())
-  userId                 String
-  user                   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tier                   SubscriptionTier      @default(FREE)
-  billingInterval        BillingInterval?
-  status                 String                @default("active")
-  currentPeriodStart     DateTime?
-  currentPeriodEnd       DateTime?
-  provider               String?
-  providerCustomerId     String?
-  providerSubscriptionId String?
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
-
-  @@index([userId, status])
-  @@index([providerSubscriptionId])
-  @@map("subscriptions")
-}
-
-model Usage {
-  id                   String   @id @default(cuid())
-  userId               String
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  periodStart          DateTime
-  periodEnd            DateTime
-  aiPackSearchesUsed   Int      @default(0)
-  storageBytesUsed     BigInt   @default(0)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-
-  @@unique([userId, periodStart])
-  @@index([userId, periodStart, periodEnd])
-  @@map("usage")
 }
 
 model TrustMember {
@@ -145,16 +130,6 @@ enum TrustPermissionModule {
   WEALTH
 }
 
-enum SubscriptionTier {
-  FREE
-  PAID
-}
-
-enum BillingInterval {
-  MONTHLY
-  YEARLY
-}
-
 model ExternalIdentity {
   id                String   @id @default(cuid())
   userId            String
@@ -186,6 +161,7 @@ model UserIdentityProfile {
 }
 
 model RefreshToken {
+  authVersion Int @default(0)
   id        String    @id @default(cuid())
   tokenHash String    @unique
   userId    String
@@ -271,6 +247,7 @@ model Document {
   updatedAt                 DateTime                 @updatedAt
   deletedAt                 DateTime?
   wealthAttachments         WealthRecordAttachment[]
+  files                     DocumentFile[]
 
   @@unique([ownerProfileId, contentHash])
   @@unique([ownerProfileId, driveFileId])
@@ -288,6 +265,31 @@ model Document {
   @@index([uniqueIdentifierHash])
   @@index([sourceProvider, sourceMessageId])
   @@index([ownerProfileId, sourceChecksum])
+}
+
+model DocumentFile {
+  id                String   @id @default(cuid())
+  documentId        String
+  document          Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  pageIndex         Int
+  originalName      String
+  mimeType          String
+  size              Int
+  storageKey        String
+  storedName        String
+  encryptionVersion Int?
+  contentAlgorithm  String?
+  keyAlgorithm      String?
+  keyId             String?
+  keyVersion        Int?
+  encryptionIv      String?
+  wrappedKey        String?
+  encryptedSize     Int?
+  ciphertextHash    String?
+  createdAt         DateTime @default(now())
+
+  @@unique([documentId, pageIndex])
+  @@index([documentId])
 }
 
 model TemporaryUpload {
@@ -406,6 +408,7 @@ model ReadinessPack {
   aliases             String[]
   description         String
   keywords            String[]
+  searchMetadata      Json?
   sourceType          String        @default("curated")
   sourceName          String?
   sourceTitle         String?
@@ -475,7 +478,7 @@ model WealthRecordAttachment {
   @@map("wealth_record_attachments")
 }
 
-model LifePackFormCategory {
+model ReadinessFormCategory {
   id               String                @id @default(cuid())
   module           String
   code             String
@@ -486,17 +489,17 @@ model LifePackFormCategory {
   wealthRecordType WealthRecordType?
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
-  subtypes         LifePackFormSubtype[]
+  subtypes         ReadinessFormSubtype[]
 
   @@unique([module, code])
   @@index([module, isActive, sortOrder])
-  @@map("lifepack_form_categories")
+  @@map("readiness_form_categories")
 }
 
-model LifePackFormSubtype {
+model ReadinessFormSubtype {
   id          String               @id @default(cuid())
   categoryId  String
-  category    LifePackFormCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category    ReadinessFormCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   code        String
   label       String
   description String?
@@ -504,17 +507,17 @@ model LifePackFormSubtype {
   isActive    Boolean              @default(true)
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
-  fields      LifePackFormField[]
+  fields      ReadinessFormField[]
 
   @@unique([categoryId, code])
   @@index([categoryId, isActive, sortOrder])
-  @@map("lifepack_form_subtypes")
+  @@map("readiness_form_subtypes")
 }
 
-model LifePackFormField {
+model ReadinessFormField {
   id           String              @id @default(cuid())
   subtypeId    String
-  subtype      LifePackFormSubtype @relation(fields: [subtypeId], references: [id], onDelete: Cascade)
+  subtype      ReadinessFormSubtype @relation(fields: [subtypeId], references: [id], onDelete: Cascade)
   fieldId      String
   label        String
   inputType    String
@@ -532,7 +535,7 @@ model LifePackFormField {
 
   @@unique([subtypeId, fieldId])
   @@index([subtypeId, isActive, sortOrder])
-  @@map("lifepack_form_fields")
+  @@map("readiness_form_fields")
 }
 
 enum WealthRecordType {
@@ -541,4 +544,14 @@ enum WealthRecordType {
   LOAN_GIVEN
   INSURANCE
   PAYMENT_PROOF
+}
+
+model StorageCleanup {
+  storageKey String @id
+  ownerUserId String
+  owner User @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  sizeBytes BigInt
+  createdAt DateTime @default(now())
+  @@index([ownerUserId])
+  @@map("storage_cleanup")
 }

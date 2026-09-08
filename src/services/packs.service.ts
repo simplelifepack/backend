@@ -3,9 +3,6 @@ import { prisma } from "../lib/prisma";
 import { normalizeDocumentType, slugify } from "./readiness/normalization";
 import { readinessPackSeeds } from "./readiness/readinessPackData";
 import { seedReadinessPacks } from "./readiness/readiness.service";
-import { decryptJson } from "../utils/documentEncryption";
-import { buildDocumentMetadata, normalizeDocumentOwner } from "./readiness/documentMetadata";
-import { matchRequirementMetadata } from "./readiness/metadataMatcher";
 import { scorePackDetailed } from "./readiness/readinessScoring";
 import type { PackScore } from "./readiness/readinessScoring";
 
@@ -33,11 +30,11 @@ export async function ensureReadinessPacks() {
     }),
     prisma.readinessPack.findUnique({
       where: { slug: "passport-application-pack" },
-      select: { id: true },
+      select: { id: true, searchMetadata: true },
     }),
   ]);
 
-  if (count !== readinessPackSeeds.length || sourcedCount !== readinessPackSeeds.length || !passportApplicationPack) {
+  if (count !== readinessPackSeeds.length || sourcedCount !== readinessPackSeeds.length || !passportApplicationPack?.searchMetadata) {
     await seedReadinessPacks();
   }
 }
@@ -54,6 +51,7 @@ export async function getPackageDefinitions() {
       aliases: true,
       description: true,
       keywords: true,
+      searchMetadata: true,
       sourceType: true,
       sourceName: true,
       sourceTitle: true,
@@ -89,7 +87,7 @@ export async function getPackageDefinitions() {
 export async function listPackageSummaries(options: PackageListOptions) {
   await ensureReadinessPacks();
   const page = Math.max(1, options.page);
-  const limit = Math.min(Math.max(1, options.limit), 50);
+  const limit = Math.min(Math.max(1, options.limit), 200);
   const filters = [options.search, options.provider, options.location]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
@@ -99,26 +97,28 @@ export async function listPackageSummaries(options: PackageListOptions) {
     id: true,
     slug: true,
     title: true,
-    subtitle: true,
     category: true,
     aliases: true,
     description: true,
     keywords: true,
-    sourceType: true,
+    searchMetadata: true,
     sourceName: true,
     sourceTitle: true,
     sourceUrl: true,
     lastCheckedAt: true,
-    verificationSources: true,
-    lastVerifiedAt: true,
-    verificationStatus: true,
-    createdBy: true,
-    version: true,
     createdAt: true,
-    _count: {
+    requirements: {
       select: {
-        requirements: { where: { required: true } },
+        id: true,
+        title: true,
+        description: true,
+        required: true,
+        group: true,
+        owner: true,
+        metadata: true,
+        acceptedDocumentTypes: true,
       },
+      orderBy: { sortOrder: "asc" as const },
     },
   };
   const orderBy = options.sort === "newest"
@@ -164,86 +164,6 @@ export async function listPackageSummaries(options: PackageListOptions) {
   );
 }
 
-function normalizedTypeForDocument(document: { documentType: string; normalizedType: string | null }) {
-  return document.normalizedType ?? normalizeDocumentType(document.documentType);
-}
-
-export async function getPackSummaries(userId?: string) {
-  await ensureReadinessPacks();
-
-  const [packs, documents] = await Promise.all([
-    prisma.readinessPack.findMany({
-      include: {
-        requirements: {
-          orderBy: { sortOrder: "asc" },
-        },
-      },
-      orderBy: [{ category: "asc" }, { title: "asc" }],
-    }),
-    prisma.document.findMany({
-      where: userId ? {
-        ownerProfileId: userId,
-        targetProfileId: userId,
-        readinessEligible: true,
-        classificationStatus: "verified",
-        ownershipStatus: "verified",
-        integrityStatus: "passed",
-        deletedAt: null,
-      } : {
-        readinessEligible: true,
-        classificationStatus: "verified",
-        ownershipStatus: "verified",
-        integrityStatus: "passed",
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        originalName: true,
-        documentType: true,
-        normalizedType: true,
-        confidence: true,
-        createdAt: true,
-        fields: true,
-      },
-      orderBy: [{ confidence: "desc" }, { createdAt: "desc" }],
-    }),
-  ]);
-
-  const documentMetadata = documents.map((document) => buildDocumentMetadata({
-    ...document,
-    fields: decryptJson<Record<string, unknown>>(document.fields, {}),
-  }, userId ? "self" : undefined));
-
-  return packs.map((pack) => {
-    const requiredSlots = pack.requirements.filter((requirement) => requirement.required);
-    const matchedRequired = requiredSlots.filter((requirement) => matchRequirementMetadata({
-      id: requirement.id,
-      title: requirement.title,
-      documentType: normalizeDocumentType(requirement.documentType),
-      acceptedDocumentTypes: requirement.acceptedDocumentTypes.map((type) => normalizeDocumentType(type)),
-      owner: normalizeDocumentOwner(requirement.owner),
-      category: requirement.group,
-      required: requirement.required,
-      constraints: requirement.metadata && typeof requirement.metadata === "object" ? requirement.metadata as Record<string, string | number | boolean | null> : undefined,
-    }, documentMetadata).state === "ready");
-    const missingRequired = requiredSlots.filter((requirement) => !matchedRequired.includes(requirement));
-    const completion = requiredSlots.length ? Math.round((matchedRequired.length / requiredSlots.length) * 100) : 0;
-
-    return {
-      id: pack.id,
-      slug: pack.slug,
-      name: pack.title,
-      title: pack.title,
-      category: pack.category,
-      description: pack.description,
-      requiredDocumentTypes: requiredSlots.map((requirement) => requirement.title),
-      uploadedDocumentTypes: matchedRequired.map((requirement) => requirement.title),
-      missingDocumentTypes: missingRequired.map((requirement) => requirement.title),
-      completion,
-    };
-  });
-}
-
 export async function getReadinessPacksBySlugs(slugs: string[]) {
   await ensureReadinessPacks();
   const uniqueSlugs = [...new Set(slugs.map(slugify).filter(Boolean))].slice(0, 5);
@@ -268,6 +188,7 @@ const packDefinitionSelect = {
   aliases: true,
   description: true,
   keywords: true,
+  searchMetadata: true,
   sourceType: true,
   sourceName: true,
   sourceTitle: true,
@@ -325,24 +246,29 @@ export async function getReadinessPackDefinitionByCanonicalSlug(slug: string) {
 }
 
 function toPaginatedPackageResponse<T extends {
-  _count?: { requirements: number };
   createdAt: Date;
   id: string;
   slug: string;
   title: string;
-  subtitle: string | null;
   category: string;
+  aliases: string[];
+  keywords: string[];
+  searchMetadata: unknown;
   description: string;
-  sourceType: string;
   sourceName: string | null;
   sourceTitle: string | null;
   sourceUrl: string | null;
   lastCheckedAt: Date | null;
-  verificationSources: unknown;
-  lastVerifiedAt: Date | null;
-  verificationStatus: string;
-  createdBy: string;
-  version: number;
+  requirements: Array<{
+    id: string;
+    title: string;
+    description: string;
+    required: boolean;
+    group: string;
+    owner: string;
+    metadata: unknown;
+    acceptedDocumentTypes: string[];
+  }>;
 }>(packs: T[], total: number, page: number, limit: number, query?: string, matchInfo = new Map<string, PackScore>()) {
   const matches = packs.flatMap((pack) => {
     const match = matchInfo.get(pack.slug);
@@ -361,29 +287,25 @@ function toPaginatedPackageResponse<T extends {
     items: packs.map((pack) => ({
       id: pack.id,
       slug: pack.slug,
-      name: pack.title,
       title: pack.title,
-      subtitle: pack.subtitle,
       category: pack.category,
-      provider: null,
-      location: null,
       description: pack.description,
-      shortDescription: pack.subtitle ?? pack.description,
-      icon: null,
-      sourceType: pack.sourceType,
-      sourceName: pack.sourceName,
-      sourceTitle: pack.sourceTitle,
-      sourceUrl: pack.sourceUrl,
-      lastCheckedAt: pack.lastCheckedAt?.toISOString() ?? null,
-      verificationSources: normalizeVerificationSources(pack.verificationSources),
-      lastVerifiedAt: pack.lastVerifiedAt?.toISOString() ?? null,
-      verificationStatus: pack.verificationStatus,
-      createdAt: pack.createdAt.toISOString(),
-      requiredDocumentCount: pack._count?.requirements ?? 0,
-      readyDocumentCount: 0,
-      source: pack.sourceType,
-      generationSource: pack.createdBy,
-      version: pack.version,
+      ...(pack.sourceName || pack.sourceTitle || pack.sourceUrl || pack.lastCheckedAt ? { source: {
+        ...(pack.sourceName ? { name: pack.sourceName } : {}),
+        ...(pack.sourceTitle ? { title: pack.sourceTitle } : {}),
+        ...(pack.sourceUrl ? { url: pack.sourceUrl } : {}),
+        ...(pack.lastCheckedAt ? { lastCheckedAt: pack.lastCheckedAt.toISOString().slice(0, 10) } : {}),
+      } } : {}),
+      requirements: pack.requirements.map((requirement) => ({
+        id: requirement.id,
+        title: requirement.title,
+        ...(requirement.description ? { description: requirement.description } : {}),
+        required: requirement.required,
+        ...(requirement.group ? { group: requirement.group } : {}),
+        ...(requirement.owner !== "self" ? { owner: requirement.owner } : {}),
+        acceptedDocumentTypes: [...new Set(requirement.acceptedDocumentTypes.map((type) => normalizeDocumentType(type)))],
+        ...(requirement.metadata && typeof requirement.metadata === "object" && Object.keys(requirement.metadata as object).length ? { metadata: requirement.metadata } : {}),
+      })),
     })),
     matches,
     hasConfidentMatch: matches.length > 0,
@@ -396,38 +318,6 @@ function toPaginatedPackageResponse<T extends {
     },
   };
 }
-
-type VerificationSourceSummary = {
-  title: string;
-  organization: string;
-  url: string;
-  type: "government" | "official" | "bank" | "university" | "insurance" | "authority";
-  retrievedAt: string;
-};
-
-function normalizeVerificationSources(value: unknown): VerificationSourceSummary[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const source = item as Record<string, unknown>;
-    if (typeof source.title !== "string" || typeof source.organization !== "string" || typeof source.url !== "string") return [];
-    const retrievedAt = typeof source.retrievedAt === "string" && !Number.isNaN(Date.parse(source.retrievedAt))
-      ? new Date(source.retrievedAt).toISOString()
-      : new Date().toISOString();
-    return [{
-      title: source.title,
-      organization: source.organization,
-      url: source.url,
-      type: isVerificationSourceType(source.type) ? source.type : "official",
-      retrievedAt,
-    }];
-  });
-}
-
-function isVerificationSourceType(value: unknown): value is VerificationSourceSummary["type"] {
-  return typeof value === "string" && ["government", "official", "bank", "university", "insurance", "authority"].includes(value);
-}
-
 function isConfidentSearchScore(score: PackScore | undefined) {
   if (!score) return false;
   if (score.score >= 70 && score.missingTokens.length === 0) return true;

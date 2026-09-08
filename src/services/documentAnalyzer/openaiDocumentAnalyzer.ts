@@ -20,9 +20,9 @@ const imageMimeTypes = new Set([
   "image/webp",
 ]);
 
-const prompt = `You are a document classifier for a personal document manager.
+const prompt = `You are the document vision classifier for Readiness.
 
-Analyze the uploaded document image.
+All supplied images belong to ONE logical document and may represent the front, back, or additional pages of the same document. Analyze all images together. Use visual layout, logos, headings, issuer information, labels, identifier patterns, and only the visible text needed for recognition. Do not perform or return full-document OCR.
 
 Return ONLY valid JSON with exactly these keys:
 
@@ -30,7 +30,8 @@ Return ONLY valid JSON with exactly these keys:
   "category": "",
   "documentType": "",
   "uniqueNumber": "",
-  "nameOnDocument": ""
+  "nameOnDocument": null,
+  "expiryDate": null
 }
 
 Category must be exactly one of:
@@ -38,17 +39,18 @@ Identity, Employment, Finance, Insurance, Property, Medical, Education, Travel, 
 
 Your only tasks:
 1. Identify which category the document belongs to.
-2. Identify what document type it is.
-3. Extract only the primary unique document/account/policy/licence/certificate/reference number.
+2. Identify the most specific document type.
+3. Extract only the primary unique document/account/policy/licence/certificate/reference number, primary holder name, and a clearly labelled expiry/valid-until/end date.
 
 Rules:
 - Do not extract full text.
-- Do not extract names.
+- Do not determine ownership.
 - Do not extract addresses.
 - Do not extract DOB.
 - Do not extract phone numbers.
 - Do not extract salary.
-- Do not extract dates unless the date itself is part of the unique identifier.
+- Do not return address, DOB, gender, phone, email, salary, balance, transactions, marks, medical readings, issue date, relatives' names, or full OCR text.
+- Do not confuse DOB, issue/statement/due/start dates with expiry.
 - Never return extra fields.
 - Never invent a unique number.
 - If the unique number is not visible/readable, return null.
@@ -70,7 +72,7 @@ Category guidance:
 - Passport, Aadhaar, PAN Card, Voter ID -> Identity
 - Passport-size photos, standalone ID photos, headshot prints -> Photo
 - Driving Licence can be Identity or Vehicle, but prefer Vehicle in this app
-- Vehicle RC, pollution certificate, vehicle insurance -> Vehicle
+- Vehicle RC, pollution certificate -> Vehicle
 - Bank statement, passbook, Form 16, ITR, salary slip -> Finance
 - Health insurance, life insurance, vehicle insurance, travel insurance -> Insurance
 - Medical report, prescription, discharge summary -> Medical
@@ -110,6 +112,7 @@ export function inferDocumentAIResult(result: DocumentAIResult): DocumentAIResul
     return {
       ...result,
       nameOnDocument: normalizeName(result.nameOnDocument),
+      expiryDate: result.expiryDate,
     };
   }
 
@@ -122,6 +125,7 @@ export function inferDocumentAIResult(result: DocumentAIResult): DocumentAIResul
       documentType: documentType === "unknown" || documentType === "pan" ? "PAN Card" : result.documentType,
       uniqueNumber: normalized,
       nameOnDocument: normalizeName(result.nameOnDocument),
+      expiryDate: result.expiryDate,
     };
   }
 
@@ -131,6 +135,7 @@ export function inferDocumentAIResult(result: DocumentAIResult): DocumentAIResul
       documentType: documentType === "unknown" ? "Passport" : result.documentType,
       uniqueNumber: normalized,
       nameOnDocument: normalizeName(result.nameOnDocument),
+      expiryDate: result.expiryDate,
     };
   }
 
@@ -140,6 +145,7 @@ export function inferDocumentAIResult(result: DocumentAIResult): DocumentAIResul
       documentType: documentType === "unknown" ? "Aadhaar" : result.documentType,
       uniqueNumber: normalized,
       nameOnDocument: normalizeName(result.nameOnDocument),
+      expiryDate: result.expiryDate,
     };
   }
 
@@ -167,20 +173,28 @@ export function validateDocumentAIResult(value: unknown): DocumentAIResult {
   const nameOnDocument = typeof raw.nameOnDocument === "string" && raw.nameOnDocument.trim()
     ? raw.nameOnDocument.trim()
     : null;
+  const expiryDate = normalizeExpiryDate(raw.expiryDate);
 
   return inferDocumentAIResult({
     category,
     documentType,
     uniqueNumber,
     nameOnDocument,
+    expiryDate,
   });
+}
+
+function normalizeExpiryDate(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value.trim());
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
 export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
   private readonly client: OpenAI;
   private readonly model: string;
 
-  constructor(apiKey = process.env.OPENAI_API_KEY, model = process.env.OPENAI_VISION_MODEL ?? "gpt-4o-mini") {
+  constructor(apiKey = process.env.OPENAI_API_KEY, model = process.env.OPENAI_ICR_MODEL ?? process.env.OPENAI_VISION_MODEL ?? "gpt-5-mini") {
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY is not configured.");
     }
@@ -189,33 +203,31 @@ export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
     this.model = model;
   }
 
-  async analyzeDocument(file: UploadedFile): Promise<DocumentAIResult> {
-    if (file.mimeType === "application/pdf") {
-      throw new Error("PDF AI analysis needs manual review until PDF page rendering is available.");
+  async analyzeDocument(files: UploadedFile[]): Promise<DocumentAIResult> {
+    if (!files.length) throw new Error("At least one document image is required.");
+    if (files.some((file) => file.mimeType === "application/pdf")) {
+      throw new Error("PDF document analysis needs manual review until PDF page rendering is available.");
     }
 
-    if (!imageMimeTypes.has(file.mimeType)) {
-      throw new Error("AI analysis is currently available for image uploads only.");
+    if (files.some((file) => !imageMimeTypes.has(file.mimeType))) {
+      throw new Error("Document analysis is currently available for image uploads only.");
     }
 
-    const base64Image = await fs.readFile(file.path, "base64");
+    const images = await Promise.all(files.map(async (file) => ({ type: "input_image" as const, image_url: `data:${file.mimeType};base64,${await fs.readFile(file.path, "base64")}`, detail: "auto" as const })));
     const response = await this.client.responses.create({
+      store: false,
       model: this.model,
       input: [
         {
           role: "user",
           content: [
             { type: "input_text", text: prompt },
-            {
-              type: "input_image",
-              image_url: `data:${file.mimeType};base64,${base64Image}`,
-              detail: "auto",
-            },
+            ...images,
           ],
         },
       ],
       text: {
-        format: { type: "json_object" },
+        format: { type: "json_schema", name: "readiness_document_analysis", strict: true, schema: { type: "object", properties: { category: { type: "string", enum: [...documentCategories] }, documentType: { type: "string" }, uniqueNumber: { type: ["string", "null"] }, nameOnDocument: { type: ["string", "null"] }, expiryDate: { type: ["string", "null"] } }, required: ["category", "documentType", "uniqueNumber", "nameOnDocument", "expiryDate"], additionalProperties: false } },
       },
     });
 

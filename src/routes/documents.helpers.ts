@@ -15,7 +15,7 @@ export const idSchema = z.object({
 });
 
 export const saveSchema = z.object({
-  tempFileId: z.string().uuid(),
+  tempFileIds: z.array(z.string().uuid()).min(1).max(10).refine(ids => new Set(ids).size === ids.length, "Duplicate upload references."),
   originalName: z.string().min(1).optional(),
   mimeType: z.string().min(1).optional(),
   size: z.coerce.number().int().nonnegative().optional(),

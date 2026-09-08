@@ -13,8 +13,8 @@ export function getDocumentAnalyzer(): DocumentAnalyzer {
   return analyzer;
 }
 
-export async function analyzeDocument(file: UploadedFile): Promise<DocumentAIResult> {
-  return getDocumentAnalyzer().analyzeDocument(file);
+export async function analyzeDocument(files: UploadedFile[]): Promise<DocumentAIResult> {
+  return getDocumentAnalyzer().analyzeDocument(files);
 }
 
 export { fallbackDocumentAIResult };

@@ -2,6 +2,7 @@ import type { AIReadinessPackage } from "../../ai/intentTypes";
 import { prisma } from "../../lib/prisma";
 import { normalizeRequirementDocumentTypes, normalizeSearchText, slugify } from "./normalization";
 import { scorePackDetailed, type PackMatchReason } from "./readinessScoring";
+import { generatedSearchMetadata } from "./searchMetadata";
 
 const CONFIDENT_MATCH_SCORE = 70;
 
@@ -25,6 +26,7 @@ export async function findDefaultPackMatch(query: string): Promise<DefaultPackSe
       category: true,
       description: true,
       keywords: true,
+      searchMetadata: true,
       sourceTitle: true,
       sourceUrl: true,
       lastCheckedAt: true,
@@ -78,6 +80,7 @@ export async function saveGeneratedDefaultPack(query: string, generated: AIReadi
         description: generated.description,
         aliases: [alias],
         keywords,
+        searchMetadata: generatedSearchMetadata(query, generated.searchMetadata, { category: generated.category, title: generated.packageName }),
         sourceType: "official",
         sourceName: verification.sourceName,
         sourceTitle: verification.sourceTitle,
@@ -94,7 +97,13 @@ export async function saveGeneratedDefaultPack(query: string, generated: AIReadi
             title: requirement.title,
             documentType: normalizeRequirementDocumentTypes(requirement.documentType, requirement.title)[0]!,
             owner: requirement.owner,
-            description: `${requirement.title} required for ${generated.packageName}.`,
+            description: requirement.whyNeeded,
+            metadata: {
+              sourceName: requirement.sourceName,
+              sourceUrl: requirement.sourceUrl,
+              sourceAuthorityTier: requirement.sourceAuthorityTier,
+              lastVerifiedAt: requirement.lastVerifiedAt,
+            },
             required: requirement.required,
             group: requirement.category,
             acceptedDocumentTypes: normalizeRequirementDocumentTypes(requirement.documentType, requirement.title),
@@ -123,6 +132,7 @@ async function addSearchMetadata(slug: string, query: string, generated: AIReadi
     data: {
       aliases: [...new Set([...existing.aliases, alias])],
       keywords: [...new Set([...existing.keywords, ...keywords])],
+      searchMetadata: generatedSearchMetadata(query, generated.searchMetadata, { category: generated.category, title: generated.packageName }),
       ...(!hasVerificationSources(existing.verificationSources) ? verification : {}),
     },
   });

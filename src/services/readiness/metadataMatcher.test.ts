@@ -5,6 +5,7 @@ import { matchRequirementMetadata } from "./metadataMatcher";
 import { buildDocumentMetadata } from "./documentMetadata";
 import { normalizeDocumentType, normalizeRequirementDocumentTypes } from "./normalization";
 import { readinessPackSeeds } from "./readinessPackData";
+import { resolveRequirementCapabilities } from "./capabilityResolver";
 
 const selfPan = document("self-pan", "PAN Card", "self");
 const selfAadhaar = document("self-aadhaar", "Aadhaar", "self");
@@ -47,6 +48,13 @@ assert.equal(buildDocumentMetadata({
   fields: { owner: "unknown", verified: true },
 }).owner, "unknown");
 
+const photographRequirement = requirement("photo", "passport_photo", "self", "Photograph", ["passport_photo", "photo"]);
+assert.equal(matchRequirementMetadata(photographRequirement, [document("passport-size", "Passport Size Photo", "self")]).state, "ready");
+assert.equal(matchRequirementMetadata(photographRequirement, [document("photograph", "Photograph", "self")]).state, "ready");
+assert.equal(matchRequirementMetadata(photographRequirement, [document("photo", "Photo", "self")]).state, "ready");
+assert.equal(matchRequirementMetadata(photographRequirement, [document("random", "Bank Statement", "self")]).state, "missing");
+assert.equal(matchRequirementMetadata(requirement("identity", "identity_proof", "self", "Identity Proof", ["aadhaar", "passport", "identity_proof"]), [document("passport-size", "Passport Size Photo", "self")]).state, "missing");
+
 const expiredPassport = { ...document("passport", "Passport", "self"), expiry: "2020-01-01" };
 const expired = matchRequirementMetadata(requirement("passport", "passport", "self", "Passport"), [expiredPassport], new Date("2026-01-01"));
 assert.equal(expired.state, "partial");
@@ -71,9 +79,10 @@ assert.equal(sellerPanRequirement?.owner, "seller");
 console.log("Metadata readiness matcher tests passed.");
 
 function document(documentId: string, documentType: string, owner: NormalizedDocumentMetadata["owner"]): NormalizedDocumentMetadata {
-  return { documentId, documentType: normalizeDocumentType(documentType), owner, subType: null, expiry: null, verified: true, attributes: {} };
+  const normalizedType = normalizeDocumentType(documentType);
+  return { documentId, documentType: normalizedType, capabilities: buildDocumentMetadata({ id: documentId, documentType, normalizedType, fields: {} }).capabilities, owner, subType: null, expiry: null, verified: true, attributes: {} };
 }
 
-function requirement(id: string, documentType: string, owner: ReadinessRequirementMetadata["owner"], title: string): ReadinessRequirementMetadata {
-  return { id, documentType, acceptedDocumentTypes: [documentType], owner, title, category: "Identity", required: true };
+function requirement(id: string, documentType: string, owner: ReadinessRequirementMetadata["owner"], title: string, acceptedDocumentTypes = [documentType]): ReadinessRequirementMetadata {
+  return { id, documentType, acceptedDocumentTypes, requiredCapabilities: resolveRequirementCapabilities(documentType, acceptedDocumentTypes), owner, title, category: "Identity", required: true };
 }

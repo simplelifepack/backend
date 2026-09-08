@@ -1,3 +1,4 @@
+import { withIsolatedPlaintextFile } from "../documentSecurityValidation";
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -92,11 +93,11 @@ export async function importGmailCandidates(userId: string, candidateIds: string
   if (candidates.length !== new Set(candidateIds).size) throw Object.assign(new Error("One or more Gmail candidates are unavailable."), { statusCode: 404 });
   const results = [];
   for (const candidate of candidates) {
+    let content: Buffer | undefined;
     try {
       if (!isSupportedGmailMime(candidate.mimeType)) throw Object.assign(new Error("Unsupported Gmail attachment type."), { statusCode: 400 });
       if (candidate.size > MAX_SIZE) throw Object.assign(new Error("Gmail attachment exceeds the 25 MB upload limit."), { statusCode: 413 });
       const message = await gmail.users.messages.get({ userId: "me", id: candidate.externalMessageId, format: "full" });
-      let content: Buffer;
       if (candidate.externalAttachmentId) {
         const attachment = await gmail.users.messages.attachments.get({
           userId: "me", messageId: candidate.externalMessageId, id: candidate.externalAttachmentId,
@@ -123,7 +124,7 @@ export async function importGmailCandidates(userId: string, candidateIds: string
       }
       const extension = extensionByMime[candidate.mimeType] ?? path.extname(candidate.filename);
       const filePath = path.join(temporaryUploadsDir, `${crypto.randomUUID()}${extension}`);
-      await fsp.writeFile(filePath, content, { flag: "wx" });
+      await fsp.writeFile(filePath, content, { flag: "wx", mode: 0o600 });
       const upload = await createTemporaryUpload(userId, {
         path: filePath, originalname: candidate.filename, mimetype: candidate.mimeType, size: content.length,
       } as Express.Multer.File);
@@ -133,10 +134,10 @@ export async function importGmailCandidates(userId: string, candidateIds: string
           sourceAttachmentId: candidate.externalAttachmentId, externalCandidateId: candidate.id,
         },
       });
-      const analysis = await ingestDocument({
-        path: temporaryUpload.storagePath, originalName: temporaryUpload.originalName,
+      const analysis = await withIsolatedPlaintextFile(content, extension, plaintextPath => ingestDocument({
+        path: plaintextPath, originalName: temporaryUpload.originalName,
         mimeType: temporaryUpload.detectedMimeType, size: temporaryUpload.size,
-      });
+      }));
       await prisma.externalDocumentCandidate.update({ where: { id: candidate.id }, data: { status: "pending_review", ignoredReason: null } });
       results.push({ candidateId: candidate.id, status: "ready_for_review", analysis: localAnalysisResponse(temporaryUpload, analysis) });
     } catch (error) {
@@ -155,7 +156,7 @@ export async function importGmailCandidates(userId: string, candidateIds: string
         data: { status: "import_failed", ignoredReason: message },
       });
       results.push({ candidateId: candidate.id, status: "failed", message });
-    }
+    } finally { content?.fill(0); }
   }
   return results;
 }

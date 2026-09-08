@@ -11,6 +11,8 @@ export class SmtpEmailProvider implements EmailProvider {
       host: config.smtpHost,
       port: config.smtpPort,
       secure: config.smtpSecure,
+      requireTLS: true,
+      tls: { minVersion: "TLSv1.2", rejectUnauthorized: true },
       auth: {
         user: config.smtpUser,
         pass: config.smtpPass,

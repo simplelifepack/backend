@@ -1,8 +1,9 @@
+import { drainStorageCleanup } from "../services/storageCleanup.service";
+import { getAccountUsage } from "../services/accountUsage.service";
 import { Router } from "express";
 
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
-import { getUserEntitlements } from "../services/entitlements.service";
 import { decryptDocumentRecord } from "./documents.helpers";
 
 const router = Router();
@@ -23,10 +24,23 @@ function readinessFields(value: unknown) {
     "dateOfExpiry",
     "validTill",
     "validUpto",
+    "documentDate",
+    "statementDate",
+    "issueDate",
+    "date",
     "capabilities",
   ];
   return Object.fromEntries(allowed.flatMap((key) => key in fields ? [[key, fields[key]]] : []));
 }
+
+function firstString(fields: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) if (typeof fields[key] === "string" && fields[key]) return fields[key] as string;
+  return null;
+}
+
+router.get("/usage", async (req, res, next) => {
+  try { const id = (req as AuthenticatedRequest).authUser.id; await drainStorageCleanup(id); return res.json(await getAccountUsage(id)); } catch (error) { return next(error); }
+});
 
 router.get("/", async (req, res, next) => {
   try {
@@ -35,14 +49,14 @@ router.get("/", async (req, res, next) => {
       where: { ownerProfileId: authUser.id, deletedAt: null },
       orderBy: { createdAt: "desc" },
     });
-    const entitlements = await getUserEntitlements(authUser.id);
 
     return res.json({
-      user: authUser,
-      entitlements,
+      user: { id: authUser.id, name: authUser.name, email: authUser.email },
+      ...await getAccountUsage(authUser.id),
       familyMembers: [],
       documents: documents.map((document) => {
         const decrypted = decryptDocumentRecord(document);
+        const fields = readinessFields(decrypted.fields) as Record<string, unknown>;
         return {
           id: decrypted.id,
           title: decrypted.title,
@@ -59,8 +73,12 @@ router.get("/", async (req, res, next) => {
           classificationStatus: decrypted.classificationStatus,
           classificationConfidence: decrypted.classificationConfidence,
           ownershipStatus: decrypted.ownershipStatus,
+          owner: typeof fields.owner === "string" ? fields.owner : decrypted.targetProfileId === authUser.id ? "self" : "unknown",
+          expiryDate: firstString(fields, ["expiry", "expiresAt", "dateOfExpiry", "validTill", "validUpto"]),
+          documentDate: firstString(fields, ["documentDate", "statementDate", "issueDate", "date"]),
+          capabilities: Array.isArray(fields.capabilities) ? fields.capabilities.filter((value): value is string => typeof value === "string") : [],
           readinessEligible: decrypted.readinessEligible,
-          fields: readinessFields(decrypted.fields),
+          fields,
           source: decrypted.sourceProvider === "GOOGLE_DRIVE"
             ? "GOOGLE_DRIVE"
             : decrypted.sourceProvider?.toLowerCase() === "gmail" ? "GMAIL" : "MANUAL_UPLOAD",

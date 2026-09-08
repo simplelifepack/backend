@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
-import { analyzeIntent } from "../ai/analyzeIntent";
+import { createAIProvider } from "../ai/providers";
+import { buildPackageInput } from "../ai/packageInput";
 import type { AIReadinessPackage } from "../ai/intentTypes";
 import { prisma } from "../lib/prisma";
 import { normalizeSearchText, slugify } from "../services/readiness/normalization";
@@ -102,7 +103,7 @@ async function main() {
     }
   }
 
-  console.info("[LifePack Package Source Backfill] complete", summary);
+  console.info("[Readiness Package Source Backfill] complete", summary);
 }
 
 async function findMissingSourcePackages(limit: number, cursor?: string) {
@@ -161,7 +162,10 @@ async function resolveSourceMetadata(pack: PackageForBackfill, useAi: boolean): 
   }
 
   if (!useAi) return null;
-  const generated = await analyzeIntent(promptForPack(pack));
+  // Operator-only catalogue maintenance, not an end-user operation.
+  const provider = createAIProvider().provider;
+  if (!provider) throw new Error("Package provider unavailable.");
+  const generated = await provider.analyzeIntent(JSON.stringify(buildPackageInput({ packageType: pack.title, documentLabels: [] })));
   return metadataFromGenerated(generated);
 }
 
@@ -218,19 +222,6 @@ function sourceUpdateForPack(pack: PackageForBackfill, metadata: SourceMetadata)
   return update;
 }
 
-function promptForPack(pack: PackageForBackfill) {
-  const requirements = pack.requirements
-    .map((requirement) => `${requirement.title} (${requirement.documentType}, ${requirement.group}, owner ${requirement.owner}, ${requirement.required ? "required" : "optional"})`)
-    .join("; ");
-  return [
-    `Backfill official source metadata for LifePack package: ${pack.title}.`,
-    `Category: ${pack.category}.`,
-    `Description: ${pack.description}.`,
-    `Requirements: ${requirements}.`,
-    "Find the most specific official authority page supporting these requirements.",
-  ].join("\n");
-}
-
 function normalizeVerificationSources(
   value: unknown,
   title: string,
@@ -284,7 +275,7 @@ function numberOption(value: string | undefined, fallback: number) {
 }
 
 function log(status: "dry-run" | "updated" | "skipped" | "failed", pack: PackageForBackfill, details: Record<string, unknown>) {
-  console.info("[LifePack Package Source Backfill]", {
+  console.info("[Readiness Package Source Backfill]", {
     status,
     id: pack.id,
     slug: pack.slug || slugify(pack.title),
@@ -295,7 +286,7 @@ function log(status: "dry-run" | "updated" | "skipped" | "failed", pack: Package
 
 void main()
   .catch((error) => {
-    console.error("[LifePack Package Source Backfill] fatal", error);
+    console.error("[Readiness Package Source Backfill] fatal", error);
     process.exitCode = 1;
   })
   .finally(async () => {

@@ -20,6 +20,7 @@ export type DocumentAIResult = {
   documentType: string;
   uniqueNumber: string | null;
   nameOnDocument: string | null;
+  expiryDate: string | null;
 };
 
 export type UploadedFile = {
@@ -34,4 +35,5 @@ export const fallbackDocumentAIResult: DocumentAIResult = {
   documentType: "Unknown",
   uniqueNumber: null,
   nameOnDocument: null,
+  expiryDate: null,
 };

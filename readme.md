@@ -1,4 +1,4 @@
-# LifePack local setup
+# Readiness local setup
 
 ## Services and database
 
@@ -109,10 +109,10 @@ OPENAI_API_KEY=
 OPENAI_VISION_MODEL=gpt-4o-mini
 OPENAI_INTENT_MODEL=gpt-5-mini
 OPENAI_REQUEST_TIMEOUT_MS=45000
-LIFEPACK_AI_PROVIDER=mock
+READINESS_AI_PROVIDER=mock
 ```
 
-Use `LIFEPACK_AI_PROVIDER=mock` only for local development. Omit it to use the
+Use `READINESS_AI_PROVIDER=mock` only for local development. Omit it to use the
 configured OpenAI provider.
 
 ### Gmail or Google Drive connection
@@ -135,15 +135,15 @@ Email is disabled by default. To send reset emails through GoDaddy Professional
 Email SMTP:
 
 ```env
-APP_URL=https://your-lifepack-web-app.example.com
+APP_URL=https://your-readiness-web-app.example.com
 SMTP_HOST=smtpout.secureserver.net
 SMTP_PORT=465
 SMTP_SECURE=true
 SMTP_USER=support@readines.info
 SMTP_PASS=
 SMTP_APP_PASSWORD=
-MAIL_FROM="LifePack <support@readines.info>"
-EMAIL_FROM_NAME=LifePack
+MAIL_FROM="Readiness <support@readines.info>"
+EMAIL_FROM_NAME=Readiness
 EMAIL_FROM_ADDRESS=support@readines.info
 TZ=Asia/Kolkata
 ```
@@ -181,7 +181,7 @@ This backend deploys to Vercel through `api/index.ts`, which exports the Express
 Use the backend directory as the Vercel project root:
 
 ```bash
-cd /Users/deepikareddypannala/Code/D/lifepackc/backend
+cd /path/to/readiness/backend
 vercel link
 vercel env add DATABASE_URL production
 vercel env add APP_ENV production
@@ -214,7 +214,7 @@ Production must use secret-manager/KMS-backed RSA configuration. It must never u
 ```env
 NODE_ENV=production
 APP_ENV=production
-DOCUMENT_RSA_ACTIVE_KEY_ID=lifepack-production-primary
+DOCUMENT_RSA_ACTIVE_KEY_ID=readiness-production-primary
 DOCUMENT_RSA_ACTIVE_KEY_VERSION=1
 DOCUMENT_RSA_PUBLIC_KEY=base64:<base64-encoded-public-pem>
 DOCUMENT_RSA_PRIVATE_KEY=base64:<base64-encoded-private-pem>
@@ -229,7 +229,7 @@ Store private keys and `ADMIN_SEED_TOKEN` in the deployment secret manager.
 
 ## Sign in with Google
 
-LifePack uses Google Identity Services to receive a Google ID credential in the browser. The backend verifies it with `google-auth-library`, then issues the same LifePack access and refresh tokens used by email/password login. A Google client secret and redirect callback are not used by this flow.
+Readiness uses Google Identity Services to receive a Google ID credential in the browser. The backend verifies it with `google-auth-library`, then issues the same Readiness access and refresh tokens used by email/password login. A Google client secret and redirect callback are not used by this flow.
 
 1. In Google Cloud Console, create or select an OAuth 2.0 **Web application** client.
 2. Add these **Authorized JavaScript origins**:
@@ -249,7 +249,7 @@ To replace the temporary test client later, update only `VITE_GOOGLE_CLIENT_ID` 
 
 ## Gmail document import
 
-Gmail connection is separate from Google sign-in and is optional. LifePack requests only `https://www.googleapis.com/auth/gmail.readonly`, scans candidate metadata, and downloads content only after the user selects it. It never sends, modifies, labels, marks as read, or deletes email. Selected Gmail content uses the local rules/OCR ingestion pipeline and the normal confirm-before-save flow; it is not sent to an AI provider.
+Gmail connection is separate from Google sign-in and is optional. Readiness requests only `https://www.googleapis.com/auth/gmail.readonly`, scans candidate metadata, and downloads content only after the user selects it. It never sends, modifies, labels, marks as read, or deletes email. Selected Gmail content uses the local rules/OCR ingestion pipeline and the normal confirm-before-save flow; it is not sent to an AI provider.
 
 Add these backend variables to `be/.env` without removing existing values:
 
@@ -277,9 +277,9 @@ Google Cloud billing is not required. Gmail readonly is a restricted scope: Test
 
 ## Google identity linking policy
 
-The backend trusts only claims from a successfully verified Google ID token. A new Google account creates one LifePack user and one separate `ExternalIdentity` record. If the token contains the same normalized, Google-verified email as an existing password user, the Google identity links to that user transactionally. Existing names and password hashes are preserved, so password login continues to work. Unique database constraints on normalized email, provider account ID, and provider per user prevent duplicate accounts; serialization/unique-conflict retries handle concurrent first sign-ins.
+The backend trusts only claims from a successfully verified Google ID token. A new Google account creates one Readiness user and one separate `ExternalIdentity` record. If the token contains the same normalized, Google-verified email as an existing password user, the Google identity links to that user transactionally. Existing names and password hashes are preserved, so password login continues to work. Unique database constraints on normalized email, provider account ID, and provider per user prevent duplicate accounts; serialization/unique-conflict retries handle concurrent first sign-ins.
 
-The Google ID credential is never stored or logged. LifePack continues to use its existing bearer-token and refresh-token storage model.
+The Google ID credential is never stored or logged. Readiness continues to use its existing bearer-token and refresh-token storage model.
 
 ## Verification
 
@@ -299,7 +299,7 @@ npm run lint
 ```
 # Portable PostgreSQL and document storage
 
-LifePack uses Prisma with the single `DATABASE_URL` setting. The same Prisma
+Readiness uses Prisma with the single `DATABASE_URL` setting. The same Prisma
 client and migrations support local PostgreSQL, Supabase PostgreSQL, and AWS
 RDS PostgreSQL; the application does not inspect the provider in the URL.
 
@@ -322,16 +322,16 @@ The RSA private key is a backend/KMS secret. It must never be copied into a
 `VITE_` variable, frontend file, database row, object metadata, or image. To
 create local key material:
 
-For local development, when no RSA environment variables are present, LifePack
+For local development, when no RSA environment variables are present, Readiness
 creates a 4096-bit pair once under `be/.secrets/`. The directory is gitignored;
 the private key is written with owner-only permissions. Production never uses
 this fallback and fails closed unless explicit secret-managed keys are present.
 
 ```bash
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out lifepack-private.pem
-openssl pkey -in lifepack-private.pem -pubout -out lifepack-public.pem
-base64 < lifepack-private.pem | tr -d '\n'
-base64 < lifepack-public.pem | tr -d '\n'
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out readiness-private.pem
+openssl pkey -in readiness-private.pem -pubout -out readiness-public.pem
+base64 < readiness-private.pem | tr -d '\n'
+base64 < readiness-public.pem | tr -d '\n'
 ```
 
 Store those final values with the `base64:` prefix in
@@ -368,7 +368,7 @@ npm run dev
 The existing `docker-compose.yml` remains available for local PostgreSQL.
 
 For isolated tests, copy `.env.example` to a temporary untracked `.env`, set
-`DATABASE_URL` to a separate `lifepack_test` database, run migrations against
+`DATABASE_URL` to a separate `readiness_test` database, run migrations against
 it, and run:
 
 ```bash

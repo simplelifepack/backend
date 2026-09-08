@@ -20,7 +20,7 @@ export function renderPasswordResetEmail({ resetUrl }: { resetUrl: string }): Em
       <td style="font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:30px;line-height:1.16;font-weight:700;color:${EMAIL_STYLE.ink};padding:0 0 12px 0;">Reset your password</td>
     </tr>
     <tr>
-      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 16px 0;">We received a request to reset the password for your LifePack account.</td>
+      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 16px 0;">We received a request to reset the password for your Readiness account.</td>
     </tr>
     <tr>
       <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0;">This link expires in 30 minutes. If you did not request this, you can ignore this email.</td>
@@ -29,12 +29,12 @@ export function renderPasswordResetEmail({ resetUrl }: { resetUrl: string }): Em
       <td>${action}</td>
     </tr>
     <tr>
-      <td style="padding-top:2px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security message - LifePack</td>
+      <td style="padding-top:2px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security message - Readiness</td>
     </tr>`);
 
   return {
-    subject: "Reset your LifePack password",
+    subject: "Reset your Readiness password",
     html,
-    text: `Reset your LifePack password\n\nUse this link within 30 minutes:\n${resetUrl}\n\nIf you did not request this, you can ignore this email.`,
+    text: `Reset your Readiness password\n\nUse this link within 30 minutes:\n${resetUrl}\n\nIf you did not request this, you can ignore this email.`,
   };
 }

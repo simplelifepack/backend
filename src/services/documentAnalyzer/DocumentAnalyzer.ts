@@ -1,5 +1,5 @@
 import type { DocumentAIResult, UploadedFile } from "./types";
 
 export interface DocumentAnalyzer {
-  analyzeDocument(file: UploadedFile): Promise<DocumentAIResult>;
+  analyzeDocument(files: UploadedFile[]): Promise<DocumentAIResult>;
 }

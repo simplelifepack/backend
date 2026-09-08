@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
 
-const defaultUploadsDir = process.env.VERCEL ? path.join("/tmp", "lifepack-uploads") : path.resolve(process.cwd(), "uploads");
+const defaultUploadsDir = process.env.VERCEL ? path.join("/tmp", "readiness-uploads") : path.resolve(process.cwd(), "uploads");
 const uploadsDir = path.resolve(process.env.UPLOADS_DIR || defaultUploadsDir);
 const temporaryUploadsDir = path.join(uploadsDir, "tmp");
 const permanentUploadsDir = path.join(uploadsDir, "documents");
@@ -74,12 +74,12 @@ export const encryptedUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 20 * 1024 * 1024 + 16,
-    files: 1,
-    fields: 14,
-    parts: 15,
+    files: 10,
+    fields: 2,
+    parts: 12,
   },
   fileFilter: (_req, file, cb) => {
-    if (file.fieldname !== "encryptedFile" || file.mimetype !== "application/octet-stream") {
+    if (!["encryptedFile", "encryptedFiles"].includes(file.fieldname) || file.mimetype !== "application/octet-stream") {
       return cb(new Error("INVALID_ENCRYPTION_ENVELOPE"));
     }
     return cb(null, true);

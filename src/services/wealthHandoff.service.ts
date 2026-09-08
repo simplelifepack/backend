@@ -1,3 +1,4 @@
+import { decryptWealthRecord } from "./wealthEncryption";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
@@ -6,7 +7,6 @@ import { prisma } from "../lib/prisma";
 import { decryptString } from "../utils/documentEncryption";
 import { createStoredZip, sanitizeArchiveName, type ArchiveFile } from "./archiveZip";
 import { readDecryptedDocumentFile } from "./documentFileStorage";
-import { assertModuleEntitlement } from "./entitlements.service";
 import { sendWealthHandoffEmail } from "./email/emailService";
 import { createSummaryPdf } from "./wealthHandoffPdf";
 
@@ -75,11 +75,12 @@ async function getRecords(userId: string) {
     wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
   }
   if (!wealthRecordsTableAvailable) return [];
-  return prisma.wealthRecord.findMany({
+  const records = await prisma.wealthRecord.findMany({
     where: { ownerUserId: userId },
     include: { attachments: { include: { document: true } } },
     orderBy: [{ type: "asc" }, { updatedAt: "desc" }],
   });
+  return records.map(decryptWealthRecord);
 }
 
 function summaryLines(records: RecordWithAttachments[], type: HandoffType) {
@@ -100,12 +101,13 @@ function summaryLines(records: RecordWithAttachments[], type: HandoffType) {
 async function buildPackage(userId: string, type: HandoffType) {
   const records = await getRecords(userId);
   const files: ArchiveFile[] = [{
-    name: "LifePack-Wealth-Handoff/Wealth-Summary.pdf",
+    name: "Readiness-Wealth-Handoff/Wealth-Summary.pdf",
     data: createSummaryPdf(summaryLines(records, type)),
   }];
 
+  try {
   for (const record of records) {
-    const prefix = `LifePack-Wealth-Handoff/${folders[record.type]}/${sanitizeArchiveName(record.title)}-${record.id}`;
+    const prefix = `Readiness-Wealth-Handoff/${folders[record.type]}/${sanitizeArchiveName(record.title)}-${record.id}`;
     files.push({
       name: `${prefix}/record.json`,
       data: Buffer.from(JSON.stringify({
@@ -131,10 +133,11 @@ async function buildPackage(userId: string, type: HandoffType) {
   }
 
   return {
-    fileName: `LifePack-Wealth-${type === "family" ? "Family" : "Emergency"}-Handoff.zip`,
+    fileName: `Readiness-Wealth-${type === "family" ? "Family" : "Emergency"}-Handoff.zip`,
     zip: createStoredZip(files),
     counts: counts(records),
   };
+  } finally { files.forEach(file => file.data.fill(0)); }
 }
 
 function contentSummary(type: HandoffType) {
@@ -143,7 +146,6 @@ function contentSummary(type: HandoffType) {
 }
 
 export async function getWealthHandoffSummary(userId: string) {
-  await assertModuleEntitlement(userId, "wealth");
   const [recipients, records] = await Promise.all([getVerifiedRecipients(userId), getRecords(userId)]);
   return {
     generatedAt: new Date().toISOString(),
@@ -162,7 +164,6 @@ export async function getWealthHandoffSummary(userId: string) {
 }
 
 export async function sendWealthHandoff(userId: string, input: unknown) {
-  await assertModuleEntitlement(userId, "wealth");
   const data = sendSchema.parse(input);
   const recipients = await getVerifiedRecipients(userId);
   const groups = [
@@ -179,6 +180,7 @@ export async function sendWealthHandoff(userId: string, input: unknown) {
     if (!group.recipients.length) continue;
     const archive = await buildPackage(userId, group.type);
     const summary = `${group.label}\nRecords included in ZIP. Documents are attached only when linked to Wealth records.`;
+    try {
     for (const recipient of group.recipients) {
       const delivery = await sendWealthHandoffEmail({
         handoffId: randomUUID(),
@@ -191,6 +193,7 @@ export async function sendWealthHandoff(userId: string, input: unknown) {
       });
       results.push({ recipientId: recipient.id, email: recipient.email, handoffType: group.type, ...delivery });
     }
+    } finally { archive.zip.fill(0); }
   }
   return { message: "Wealth SOS handoff completed.", results };
 }

@@ -16,6 +16,7 @@ export type DocumentOwner =
 export type NormalizedDocumentMetadata = {
   documentId: string;
   documentType: string;
+  capabilities: string[];
   owner: DocumentOwner;
   subType: string | null;
   expiry: string | null;
@@ -28,6 +29,7 @@ export type ReadinessRequirementMetadata = {
   title: string;
   documentType: string;
   acceptedDocumentTypes: string[];
+  requiredCapabilities: string[];
   owner: DocumentOwner;
   category: string;
   required: boolean;

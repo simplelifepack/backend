@@ -1,57 +1,70 @@
+import { readProviderStream } from "../providerStream";
 import type { AIReadinessPackage } from "../intentTypes";
-import type { AIProvider } from "./types";
+import type { AIProvider, ProviderRequestOptions } from "./types";
 import { normalizeRequirementDocumentTypes } from "../../services/readiness/normalization";
+import { rankSources } from "../sourceAuthority";
 
 type OpenAIResponse = { output?: Array<{ content?: Array<{ type?: string; text?: string }> }> };
 
 const MAX_ATTEMPTS = 3;
-const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
-const MAX_OUTPUT_TOKENS = 4_000;
+// One bounded server deadline; client disconnection also cancels the upstream request.
+const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
+const MAX_OUTPUT_TOKENS = 2_500;
 
 export class OpenAIProvider implements AIProvider {
   readonly name = "OpenAIProvider";
 
-  constructor(private readonly apiKey: string, readonly model = process.env.OPENAI_INTENT_MODEL ?? "gpt-5-mini") {}
+  constructor(private readonly apiKey: string, readonly model = process.env.OPENAI_REQUIREMENTS_MODEL ?? process.env.OPENAI_INTENT_MODEL ?? "gpt-5.4-mini") {}
 
-  async analyzeIntent(query: string): Promise<AIReadinessPackage> {
+  async analyzeIntent(query: string, options: ProviderRequestOptions = {}): Promise<AIReadinessPackage> {
+    options.signal?.throwIfAborted();
+    const refundBeforeInvocation = await options.beforeRequest?.();
+    if (options.signal?.aborted) {
+      await refundBeforeInvocation?.();
+      options.signal.throwIfAborted();
+    }
     let lastError: Error | null = null;
+    const deadline = Date.now() + readRequestTimeout();
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       const startedAt = Date.now();
       try {
-        const result = await this.requestAnalysis(query);
-        console.info("[LifePack AI] OpenAI request completed", {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) throw new DOMException("Requirements generation timed out.", "TimeoutError");
+        const result = await this.requestAnalysis(query, remainingMs, options);
+        console.info("[Readiness AI] OpenAI request completed", {
           attempt,
           durationMs: Date.now() - startedAt,
         });
         return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error("Unknown OpenAI error.");
-        console.warn("[LifePack AI] OpenAI request attempt failed", {
+        console.warn("[Readiness AI] OpenAI request attempt failed", {
           attempt,
           durationMs: Date.now() - startedAt,
           retryable: isRetryable(lastError),
-          message: lastError.message,
+          name: lastError.name,
         });
-        if (attempt === MAX_ATTEMPTS || !isRetryable(lastError)) break;
-        await delay(200 * 2 ** (attempt - 1));
+        if (options.signal?.aborted || options.onDelta || attempt === MAX_ATTEMPTS || !isRetryable(lastError)) break;
+        await delay(Math.min(200 * 2 ** (attempt - 1), Math.max(0, deadline - Date.now())));
       }
     }
     throw lastError ?? new Error("OpenAI intent analysis failed.");
   }
 
-  private async requestAnalysis(query: string): Promise<AIReadinessPackage> {
-    const timeoutMs = readRequestTimeout();
+  private async requestAnalysis(query: string, timeoutMs: number, options: ProviderRequestOptions): Promise<AIReadinessPackage> {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: this.model,
-        reasoning: { effort: process.env.OPENAI_REASONING_EFFORT ?? "low" },
+        store: false,
+        stream: Boolean(options.onDelta),
+        reasoning: { effort: process.env.OPENAI_REQUIREMENTS_REASONING_EFFORT ?? process.env.OPENAI_REASONING_EFFORT ?? "none" },
         max_output_tokens: MAX_OUTPUT_TOKENS,
-        tools: [{ type: process.env.OPENAI_WEB_SEARCH_TOOL_TYPE ?? "web_search", search_context_size: "medium" }],
+        tools: [{ type: process.env.OPENAI_WEB_SEARCH_TOOL_TYPE ?? "web_search", search_context_size: "low" }],
         instructions: [
-          "LifePack is a readiness engine, not a chatbot.",
+          "Readiness is a readiness engine, not a chatbot.",
           "Use web search to find the official source before creating the package.",
           "Prefer government, embassy, immigration authority, official bank, university, insurance, or regulatory authority websites. Avoid blogs, forums, Reddit, Quora, and SEO pages.",
           "Convert the user's goal into exactly one practical readiness package using only requirements supported by the sources.",
@@ -61,17 +74,23 @@ export class OpenAIProvider implements AIProvider {
           "Include every official source used in verificationSources with title, organization, URL, type, and retrievedAt ISO date.",
           "If no official government, university, embassy, licensing authority, bank, insurer, or organization source can be identified, do not create a package.",
           "Never label a package as AI generated. Never return needs_review.",
-          "Every requirement must include a stable normalized id, normalized documentType, explicit owner, title, category, and required boolean.",
+          "Every requirement must include a stable normalized id, normalized documentType, explicit owner, title, category, required boolean, whyNeeded, sourceName, sourceUrl, sourceAuthorityTier, and lastVerifiedAt.",
           "Use owner self for the user or buyer unless the requirement belongs to another party such as seller, spouse, employer, bank, hospital, or government.",
           "Use concise document names and group each document by category. Never encode owner only in the title.",
+          "Return concise factual searchMetadata for discovery only: intent, subject, purpose, jurisdiction, destination when relevant, and at most 8 natural searchPhrases. Do not invent a jurisdiction or destination.",
         ].join(" "),
         input: query,
-        text: { format: { type: "json_schema", name: "lifepack_readiness_package", strict: true, schema: {
+        text: { format: { type: "json_schema", name: "readiness_readiness_package", strict: true, schema: {
           type: "object",
           properties: {
             packageName: { type: "string" },
             category: { type: "string" },
             description: { type: "string" },
+            searchMetadata: { type: "object", properties: {
+              intent: { type: ["string", "null"] }, subject: { type: ["string", "null"] }, purpose: { type: ["string", "null"] },
+              jurisdiction: { type: ["string", "null"] }, destination: { type: ["string", "null"] },
+              searchPhrases: { type: "array", items: { type: "string" } },
+            }, required: ["intent", "subject", "purpose", "jurisdiction", "destination", "searchPhrases"], additionalProperties: false },
             sourceTitle: { type: "string" },
             sourceUrl: { type: "string" },
             sourceOrganization: { type: "string" },
@@ -96,17 +115,21 @@ export class OpenAIProvider implements AIProvider {
                 id: { type: "string" }, category: { type: "string" },
                 documentType: { type: "string" }, owner: { type: "string", enum: ["self", "spouse", "father", "mother", "child", "seller", "buyer", "employer", "bank", "hospital", "government", "other"] },
                 name: { type: "string" }, title: { type: "string" }, required: { type: "boolean" },
+                whyNeeded: { type: "string" }, sourceName: { type: "string" }, sourceUrl: { type: "string" },
+                sourceAuthorityTier: { type: "string", enum: ["government", "authority", "official", "commercial", "aggregator"] },
+                lastVerifiedAt: { type: "string" },
               },
-              required: ["id", "category", "documentType", "owner", "name", "title", "required"],
+              required: ["id", "category", "documentType", "owner", "name", "title", "required", "whyNeeded", "sourceName", "sourceUrl", "sourceAuthorityTier", "lastVerifiedAt"],
               additionalProperties: false,
             } },
           },
-          required: ["packageName", "category", "description", "sourceTitle", "sourceUrl", "sourceOrganization", "lastChecked", "verificationSources", "lastVerifiedAt", "verificationStatus", "requiredDocuments"],
+          required: ["packageName", "category", "description", "searchMetadata", "sourceTitle", "sourceUrl", "sourceOrganization", "lastChecked", "verificationSources", "lastVerifiedAt", "verificationStatus", "requiredDocuments"],
           additionalProperties: false,
         } } },
       }),
     });
-    if (!response.ok) throw new OpenAIRequestError(response.status, await response.text());
+    if (!response.ok) { await response.body?.cancel(); throw new OpenAIRequestError(response.status); }
+    if (options.onDelta) return validateIntentAnalysis(JSON.parse(await readProviderStream(response, options.onDelta)));
     const payload = (await response.json()) as OpenAIResponse;
     const text = payload.output?.flatMap((item) => item.content ?? []).find((item) => item.type === "output_text")?.text;
     if (!text) throw new Error("OpenAI returned no structured intent output.");
@@ -115,8 +138,8 @@ export class OpenAIProvider implements AIProvider {
 }
 
 class OpenAIRequestError extends Error {
-  constructor(readonly status: number, readonly body = "") {
-    super(`OpenAI intent request failed with status ${status}${body ? `: ${body.slice(0, 500)}` : ""}`);
+  constructor(readonly status: number) {
+    super(`OpenAI intent request failed with status ${status}`);
   }
 }
 
@@ -138,7 +161,7 @@ function isRetryable(error: Error) {
 
 function readRequestTimeout() {
   const configured = Number(process.env.OPENAI_REQUEST_TIMEOUT_MS);
-  return Number.isFinite(configured) && configured >= 1_000 && configured <= 120_000
+  return Number.isFinite(configured) && configured >= 1_000 && configured <= DEFAULT_REQUEST_TIMEOUT_MS
     ? configured
     : DEFAULT_REQUEST_TIMEOUT_MS;
 }
@@ -147,7 +170,7 @@ function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function validateIntentAnalysis(value: unknown): AIReadinessPackage {
+export function validateIntentAnalysis(value: unknown): AIReadinessPackage {
   if (!value || typeof value !== "object") throw new Error("Invalid readiness package output.");
   const result = value as Record<string, unknown>;
   if (typeof result.packageName !== "string" || !result.packageName.trim() || typeof result.category !== "string" || !result.category.trim() || typeof result.description !== "string" || !Array.isArray(result.requiredDocuments)) throw new Error("Invalid readiness package output.");
@@ -161,6 +184,7 @@ function validateIntentAnalysis(value: unknown): AIReadinessPackage {
     packageName: result.packageName.trim().slice(0, 120),
     category: result.category.trim().slice(0, 60),
     description: result.description.trim().slice(0, 200),
+    searchMetadata: validatedSearchMetadata(result.searchMetadata),
     sourceTitle: primarySource.title,
     sourceUrl: primarySource.url,
     sourceOrganization: primarySource.organization,
@@ -172,8 +196,17 @@ function validateIntentAnalysis(value: unknown): AIReadinessPackage {
       id: normalizeId(item.id), category: item.category.trim().slice(0, 60),
       documentType: normalizeRequirementDocumentTypes(item.documentType, item.title)[0]!, owner: item.owner,
       name: item.name.trim().slice(0, 100), title: item.title.trim().slice(0, 100), required: item.required,
+      whyNeeded: item.whyNeeded.trim().slice(0, 300), sourceName: item.sourceName.trim().slice(0, 140),
+      sourceUrl: item.sourceUrl.trim(), sourceAuthorityTier: item.sourceAuthorityTier,
+      lastVerifiedAt: new Date(item.lastVerifiedAt).toISOString(),
     })).filter((item) => item.id && item.category && item.documentType && item.name && item.title).slice(0, 30),
   };
+}
+
+function validatedSearchMetadata(value: unknown): AIReadinessPackage["searchMetadata"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const text = (key: string) => typeof input[key] === "string" && input[key] ? String(input[key]).trim().slice(0, 100) : undefined;
+  return { intent: text("intent"), subject: text("subject"), purpose: text("purpose"), jurisdiction: text("jurisdiction"), destination: text("destination"), searchPhrases: Array.isArray(input.searchPhrases) ? input.searchPhrases.flatMap((item) => typeof item === "string" && item.trim() ? [item.trim().slice(0, 160)] : []).slice(0, 8) : [] };
 }
 
 function authoritativePrimarySource(result: Record<string, unknown>, sources: AIReadinessPackage["verificationSources"]) {
@@ -195,7 +228,7 @@ function authoritativePrimarySource(result: Record<string, unknown>, sources: AI
 
 function verificationSources(value: unknown): AIReadinessPackage["verificationSources"] {
   if (!Array.isArray(value)) return [];
-  return value
+  return rankSources(value
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     .map((item) => ({
       title: typeof item.title === "string" ? item.title.trim().slice(0, 140) : "",
@@ -205,7 +238,7 @@ function verificationSources(value: unknown): AIReadinessPackage["verificationSo
       retrievedAt: typeof item.retrievedAt === "string" && !Number.isNaN(Date.parse(item.retrievedAt)) ? new Date(item.retrievedAt).toISOString() : new Date().toISOString(),
     }))
     .filter((source) => source.title && source.organization && isAuthoritativeUrl(source.url, source.type))
-    .slice(0, 8);
+    .slice(0, 8));
 }
 
 function checkedDate(...values: unknown[]) {
@@ -260,7 +293,7 @@ function sourceTypeForUrl(value: string): AIReadinessPackage["verificationSource
 function isRequiredDocument(item: unknown): item is AIReadinessPackage["requiredDocuments"][number] {
   if (!item || typeof item !== "object") return false;
   const value = item as Record<string, unknown>;
-  return typeof value.id === "string" && typeof value.category === "string" && typeof value.documentType === "string" && typeof value.owner === "string" && typeof value.name === "string" && typeof value.title === "string" && typeof value.required === "boolean";
+  return typeof value.id === "string" && typeof value.category === "string" && typeof value.documentType === "string" && typeof value.owner === "string" && typeof value.name === "string" && typeof value.title === "string" && typeof value.required === "boolean" && typeof value.whyNeeded === "string" && Boolean(value.whyNeeded.trim()) && typeof value.sourceName === "string" && Boolean(value.sourceName.trim()) && typeof value.sourceUrl === "string" && isAuthoritativeUrl(value.sourceUrl, value.sourceAuthorityTier === "government" ? "government" : value.sourceAuthorityTier === "authority" ? "authority" : "official") && ["government", "authority", "official", "commercial", "aggregator"].includes(String(value.sourceAuthorityTier)) && typeof value.lastVerifiedAt === "string" && !Number.isNaN(Date.parse(value.lastVerifiedAt));
 }
 
 function normalizeId(value: string) {

@@ -13,6 +13,8 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
+  authVersion?: number;
+  accountTier?: "free" | "paid";
 };
 
 type AuthResult = {
@@ -59,6 +61,8 @@ function toAuthUser(user: AuthUser): AuthUser {
     id: user.id,
     name: user.name,
     email: user.email,
+    authVersion: user.authVersion ?? 0,
+    accountTier: user.accountTier ?? "free",
   };
 }
 
@@ -89,12 +93,13 @@ function buildPasswordResetUrl(token: string) {
   return resetUrl.toString();
 }
 
-async function createRefreshToken(userId: string) {
+async function createRefreshToken(userId: string, authVersion: number) {
   const refreshToken = randomBytes(48).toString("base64url");
 
   await prisma.refreshToken.create({
     data: {
       tokenHash: hashRefreshToken(refreshToken),
+      authVersion,
       userId,
       expiresAt: getRefreshTokenExpiry(),
     },
@@ -107,12 +112,14 @@ async function buildAuthResult(user: AuthUser): Promise<AuthResult> {
   const accessToken = signAccessToken({
     sub: user.id,
     email: user.email,
+    authVersion: user.authVersion ?? 0,
+
   });
 
   return {
     token: accessToken,
     accessToken,
-    refreshToken: await createRefreshToken(user.id),
+    refreshToken: await createRefreshToken(user.id, user.authVersion ?? 0),
     user: toAuthUser(user),
   };
 }
@@ -144,6 +151,8 @@ export async function signup(input: unknown): Promise<AuthResult> {
       id: true,
       name: true,
       email: true,
+      authVersion: true,
+      accountTier: true,
     },
   });
 
@@ -259,6 +268,8 @@ export async function refresh(input: unknown): Promise<AuthResult> {
           id: true,
           name: true,
           email: true,
+      authVersion: true,
+      accountTier: true,
         },
       },
     },
@@ -267,19 +278,17 @@ export async function refresh(input: unknown): Promise<AuthResult> {
   if (
     !savedRefreshToken ||
     savedRefreshToken.revokedAt ||
-    savedRefreshToken.expiresAt <= new Date()
+    savedRefreshToken.expiresAt <= new Date() ||
+    savedRefreshToken.authVersion !== (savedRefreshToken.user.authVersion ?? 0)
   ) {
     throw httpError("Invalid refresh token.", 401);
   }
 
-  await prisma.refreshToken.update({
-    where: {
-      id: savedRefreshToken.id,
-    },
-    data: {
-      revokedAt: new Date(),
-    },
+  const claimed = await prisma.refreshToken.updateMany({
+    where: { id: savedRefreshToken.id, revokedAt: null },
+    data: { revokedAt: new Date() },
   });
+  if (claimed.count !== 1) throw httpError("Invalid refresh token.", 401);
 
   return buildAuthResult(savedRefreshToken.user);
 }
@@ -300,6 +309,15 @@ export async function logout(input: unknown) {
   return {
     message: "Logged out.",
   };
+}
+
+export async function logoutAll(userId: string) {
+  await prisma.user.update({ where: { id: userId }, data: { authVersion: { increment: 1 } } });
+  await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  return { message: "Logged out on all devices." };
 }
 
 export async function forgotPassword(input: unknown) {
@@ -376,6 +394,8 @@ export async function resetPassword(input: unknown) {
       },
       data: {
         passwordHash,
+        authVersion: { increment: 1 },
+        recoveryVerifier: null,
       },
     });
     await tx.refreshToken.updateMany({
@@ -403,6 +423,8 @@ export async function getUserById(id: string) {
       id: true,
       name: true,
       email: true,
+      authVersion: true,
+      accountTier: true,
     },
   });
 

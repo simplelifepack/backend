@@ -10,7 +10,7 @@ export type AIProviderSelection = {
 };
 
 export function createAIProvider(): AIProviderSelection {
-  const override = process.env.LIFEPACK_AI_PROVIDER?.trim().toLowerCase();
+  const override = (process.env.READINESS_AI_PROVIDER ?? process.env.LIFEPACK_AI_PROVIDER)?.trim().toLowerCase();
   if (override === "mock" && process.env.NODE_ENV !== "production") {
     const provider = new MockAIProvider();
     return { provider, providerName: "MockAIProvider", model: provider.model, reason: "explicit_mock" };

@@ -12,7 +12,7 @@ import type { StorageProvider } from "./StorageProvider";
 import { DocumentStorageService } from "../../services/DocumentStorageService";
 
 async function run() {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lifepack-storage-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "readiness-storage-"));
   try {
     const provider = new LocalStorageProvider(directory);
     const key = "users/user-1/documents/doc-1/document.lpe";

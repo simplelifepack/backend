@@ -4,7 +4,6 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
-import { assertMemberAllowance, assertModuleEntitlement, getUserEntitlements } from "./entitlements.service";
 import * as emailService from "./email/emailService";
 
 const relations = ["SPOUSE", "PARENT", "CHILD", "SIBLING", "GUARDIAN", "RELATIVE", "FRIEND", "OTHER"] as const;
@@ -172,10 +171,8 @@ async function deliverInvitation(member: Prisma.TrustMemberGetPayload<{ include:
 }
 
 export async function getTrustCenter(userId: string) {
-  await assertModuleEntitlement(userId, "trustCenter");
-  const [owner, entitlements, members, connections] = await Promise.all([
+  const [owner, members, connections] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true } }),
-    getUserEntitlements(userId),
     prisma.trustMember.findMany({
       where: { ownerUserId: userId, status: { not: "REVOKED" } },
       include: { permissions: true },
@@ -187,25 +184,18 @@ export async function getTrustCenter(userId: string) {
       orderBy: { acceptedAt: "desc" },
     }),
   ]);
-  const memberLimit = entitlements.rules.memberLimit;
   const manageableCount = members.filter((member) => member.status === "INVITED" || member.status === "ACTIVE").length;
   return {
     role: connections.length ? "BOTH" : "OWNER",
     owner: owner ? { ...owner, accessType: "OWNER", note: "Owner access cannot be changed" } : null,
-    plan: entitlements.plan,
-    entitlements,
-    memberLimit,
     memberCount: manageableCount,
-    remainingSlots: Math.max(0, memberLimit - manageableCount),
     members: members.map((member) => memberDto(member)),
     connections: connections.map((member) => connectionDto(member)),
     accessTypes,
-    modules: entitlements.rules.modules,
   };
 }
 
 export async function addTrustMember(ownerUserId: string, input: unknown) {
-  await assertModuleEntitlement(ownerUserId, "trustCenter");
   const data = trustMemberInputSchema.parse(input);
   const email = normalizeEmail(data.email);
   const accessType = accessTypeDto(data.accessTypeCode);
@@ -213,7 +203,6 @@ export async function addTrustMember(ownerUserId: string, input: unknown) {
   const hashedPin = await pinHash(data.pin);
 
   const member = await prisma.$transaction(async (tx) => {
-    await assertMemberAllowance(ownerUserId, tx);
     const duplicate = await tx.trustMember.findFirst({
       where: { ownerUserId, email, status: { in: ["INVITED", "ACTIVE"] } },
     });
@@ -259,7 +248,6 @@ export async function getMember(ownerUserId: string, memberId: string) {
 }
 
 export async function updateTrustMember(ownerUserId: string, memberId: string, input: unknown) {
-  await assertModuleEntitlement(ownerUserId, "trustCenter");
   const data = trustMemberUpdateSchema.parse(input);
   if (data.accessTypeCode && !accessTypeDto(data.accessTypeCode)) {
     throw Object.assign(new Error("Invalid access type."), { statusCode: 400 });
@@ -282,7 +270,6 @@ export async function updateTrustMember(ownerUserId: string, memberId: string, i
 }
 
 export async function revokeTrustMember(ownerUserId: string, memberId: string) {
-  await assertModuleEntitlement(ownerUserId, "trustCenter");
   const revoked = await prisma.trustMember.updateMany({
     where: { id: memberId, ownerUserId, status: { not: "REVOKED" } },
     data: { status: "REVOKED", revokedAt: new Date(), inviteTokenHash: null, inviteExpiresAt: null },

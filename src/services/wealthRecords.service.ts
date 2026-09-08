@@ -1,9 +1,9 @@
+import { encryptWealthFields, decryptWealthRecord } from "./wealthEncryption";
 import { Prisma, WealthRecordType } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
 import { decryptString } from "../utils/documentEncryption";
-import { assertModuleEntitlement } from "./entitlements.service";
 
 const types = ["ASSET", "LOAN_TAKEN", "LOAN_GIVEN", "INSURANCE", "PAYMENT_PROOF"] as const;
 let wealthRecordsTableAvailable: boolean | null = null;
@@ -80,7 +80,8 @@ function attachmentDto(attachment: Prisma.WealthRecordAttachmentGetPayload<{ inc
   };
 }
 
-function recordDto(record: Prisma.WealthRecordGetPayload<{ include: { attachments: { include: { document: true } } } }>) {
+function recordDto(encrypted: Prisma.WealthRecordGetPayload<{ include: { attachments: { include: { document: true } } } }>) {
+  const record = decryptWealthRecord(encrypted);
   return {
     id: record.id,
     type: record.type,
@@ -97,7 +98,6 @@ function recordDto(record: Prisma.WealthRecordGetPayload<{ include: { attachment
 }
 
 export async function listWealthRecords(userId: string) {
-  await assertModuleEntitlement(userId, "wealth");
   if (wealthRecordsTableAvailable === null) {
     const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
     wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
@@ -112,7 +112,6 @@ export async function listWealthRecords(userId: string) {
 }
 
 export async function createWealthRecord(userId: string, input: unknown) {
-  await assertModuleEntitlement(userId, "wealth");
   if (wealthRecordsTableAvailable === null) {
     const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
     wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
@@ -128,11 +127,8 @@ export async function createWealthRecord(userId: string, input: unknown) {
     data: {
       ownerUserId: userId,
       type: data.type,
-      title: data.title,
-      details: data.details,
-      notes: data.notes || null,
+      ...encryptWealthFields(data),
       followUpDate: parseDate(data.followUpDate),
-      followUpNote: data.followUpNote || null,
       attachments: { create: documentIds.map((documentId) => ({ documentId })) },
     },
     include: { attachments: { include: { document: true } } },

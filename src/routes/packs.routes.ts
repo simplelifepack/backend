@@ -1,12 +1,12 @@
+import { packageInputSchema } from "../ai/packageInput";
+import { buildErrorResponse } from "../middleware/errorHandling";
+import type { ProviderRequestOptions } from "../ai/providers/types";
 import { Router } from "express";
 import { z } from "zod";
 import { AIUnavailableError, PackageGenerationRejectedError, analyzeIntent } from "../ai/analyzeIntent";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { getPackageDefinitions, getReadinessPackDefinitionBySlug, getReadinessPacksBySlugs, listPackageSummaries } from "../services/packs.service";
-import { getReadinessForQuery, getReadinessForSlug } from "../services/readiness/readiness.service";
 import { findDefaultPackMatch, saveGeneratedDefaultPack } from "../services/readiness/defaultPacksRepository";
-import { buildPackZip } from "../services/readiness/readinessZip";
-import { assertAiPackSearchAllowance, incrementAiPackSearchUsage } from "../services/entitlements.service";
 
 const router = Router();
 router.use(requireAuth);
@@ -19,81 +19,128 @@ const searchSchema = z.object({ q: z.string().trim().min(1).max(160) });
 const idsSchema = z.object({ ids: z.string().trim().min(1).max(500) });
 const listSchema = z.object({
   category: z.string().trim().min(1).max(80).optional(),
-  limit: z.coerce.number().int().min(1).max(50).catch(20),
+  limit: z.coerce.number().int().min(1).max(200).catch(200),
   location: z.string().trim().min(1).max(80).optional(),
   page: z.coerce.number().int().min(1).catch(1),
   provider: z.string().trim().min(1).max(80).optional(),
   search: z.string().trim().min(1).max(160).optional(),
   sort: z.enum(["category", "newest", "relevance", "title"]).catch("category"),
 });
-const searchOrGenerateSchema = z.object({
-  query: z.string().trim().min(1).max(500),
-}).strict();
+const searchOrGenerateSchema = packageInputSchema;
+
+type Generation = {
+  promise: Promise<string>;
+  controller: AbortController;
+  listeners: Set<(delta: string) => void>;
+  subscribers: number;
+  text: string;
+};
+const inFlightPackageGenerations = new Map<string, Generation>();
+
+async function generateAndSavePackage(userId: string, packageType: string, documentLabels: string[], options: ProviderRequestOptions) {
+  const key = JSON.stringify({ userId, packageType, documentLabels: [...new Set(documentLabels)].sort() });
+  let entry = inFlightPackageGenerations.get(key);
+  if (!entry) {
+    const controller = new AbortController();
+    const listeners = new Set<(delta: string) => void>();
+    const created: Generation = { controller, listeners, subscribers: 0, text: "", promise: Promise.resolve("") };
+    created.promise = analyzeIntent(userId, { packageType, documentLabels }, {
+      signal: controller.signal,
+      ...(options.onDelta ? { onDelta: (delta: string) => {
+        created.text += delta;
+        for (const listener of listeners) listener(delta);
+      } } : {}),
+    }).then(generated => saveGeneratedDefaultPack(packageType, generated))
+      .finally(() => inFlightPackageGenerations.delete(key));
+    inFlightPackageGenerations.set(key, created);
+    entry = created;
+  }
+  const current = entry;
+  current.subscribers += 1;
+  if (options.onDelta) { current.listeners.add(options.onDelta); if (current.text) options.onDelta(current.text); }
+  let detached = false;
+  const detach = () => {
+    if (detached) return;
+    detached = true;
+    if (options.onDelta) current.listeners.delete(options.onDelta);
+    if (--current.subscribers === 0) current.controller.abort();
+  };
+  options.signal?.addEventListener("abort", detach, { once: true });
+  if (options.signal?.aborted) detach();
+  try { return await current.promise; }
+  finally { options.signal?.removeEventListener("abort", detach); detach(); }
+}
 
 router.get("/search", async (req, res, next) => {
   try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
     const { q } = searchSchema.parse(req.query);
-    return res.json(await getReadinessForQuery(authUser.id, q));
+    const match = await findDefaultPackMatch(q);
+    if (!match) return res.json([]);
+    const pack = await getReadinessPackDefinitionBySlug(match.slug);
+    return res.json(pack ? [pack] : []);
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Package search must be 160 characters or fewer." });
+    }
     return next(error);
   }
 });
 
 router.post("/search-or-generate", async (req, res, next) => {
+  const controller = new AbortController();
+  const streaming = req.get("Accept")?.includes("text/event-stream");
+  const disconnect = () => { if (!res.writableEnded) controller.abort(); };
+  res.on("close", disconnect);
+  const send = (event: string, data: unknown) => {
+    if (controller.signal.aborted || res.destroyed) return;
+    if (res.writableLength > 1_000_000) { controller.abort(); res.destroy(); return; }
+    if (!res.headersSent) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("X-Accel-Buffering", "no");
+    }
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
-    const { query } = searchOrGenerateSchema.parse(req.body);
+    const { packageType, documentLabels } = searchOrGenerateSchema.parse(req.body);
+    const query = packageType;
     const existing = await findDefaultPackMatch(query);
     const shouldGenerate = !existing;
     const source = shouldGenerate ? "official_source" : "existing";
-    if (shouldGenerate) await assertAiPackSearchAllowance(authUser.id);
     const slug = shouldGenerate
-      ? await saveGeneratedDefaultPack(query, await analyzeIntent(query))
+      ? await generateAndSavePackage(authUser.id, packageType, documentLabels, { signal: controller.signal, ...(streaming ? { onDelta: (text: string) => send("delta", { text }) } : {}) })
       : existing.slug;
-    if (shouldGenerate) await incrementAiPackSearchUsage(authUser.id);
-    const [packageDefinition, readiness] = await Promise.all([
-      getReadinessPackDefinitionBySlug(slug),
-      getReadinessForSlug(authUser.id, slug),
-    ]);
+    const packageDefinition = await getReadinessPackDefinitionBySlug(slug);
 
     if (!packageDefinition) {
       return res.status(404).json({ message: "Package could not be loaded." });
     }
 
-    console.info(`[LifePack Package Search]\nQuery: ${query}\nPackage: ${slug}\nSource: ${source}\nAI Called: ${shouldGenerate}`);
-    return res.json({
+    const result = {
       source,
       confidence: existing?.confidence ?? null,
       matchReason: existing?.reason ?? null,
       package: packageDefinition,
-      readiness,
-    });
+    };
+    if (controller.signal.aborted) return;
+    if (streaming) { send("result", result); return res.end(); }
+    return res.json(result);
   } catch (error) {
+    if (controller.signal.aborted) return;
+    if (res.headersSent) {
+      const response = buildErrorResponse({ error, production: true });
+      send("error", response.body);
+      return res.end();
+    }
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Package search must be 160 characters or fewer." });
+    }
     if (error instanceof AIUnavailableError || error instanceof PackageGenerationRejectedError) {
       return res.status(error.statusCode).json({ message: error.message });
     }
     return next(error);
-  }
-});
-
-router.get("/:slug/download", async (req, res, next) => {
-  try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
-    const { slug } = slugSchema.parse(req.params);
-    const bundle = await buildPackZip(authUser.id, slug);
-
-    if (!bundle) {
-      return res.status(404).json({ message: "Pack not found." });
-    }
-
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${bundle.fileName}"`);
-    res.setHeader("Content-Length", bundle.zip.length);
-    return res.send(bundle.zip);
-  } catch (error) {
-    return next(error);
-  }
+  } finally { res.off("close", disconnect); }
 });
 
 router.get("/:slug", async (req, res, next) => {
@@ -123,6 +170,9 @@ router.get("/", async (_req, res, next) => {
     const packs = await getPackageDefinitions();
     return res.json(packs);
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Package search must be 160 characters or fewer." });
+    }
     return next(error);
   }
 });

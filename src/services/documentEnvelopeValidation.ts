@@ -1,3 +1,4 @@
+import { documentValidationMessages, fileTooLargeMessage } from "./documentValidationMessages";
 import crypto from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
@@ -34,7 +35,7 @@ export class DocumentEnvelopeError extends Error {
   readonly code: string;
 
   constructor(code: string, message: string, statusCode = 400) {
-    super(message);
+    super(documentValidationMessages[code] ?? message);
     this.name = "DocumentEnvelopeError";
     this.code = code;
     this.statusCode = statusCode;
@@ -65,6 +66,16 @@ export function validateEncryptedDocumentEnvelope(
       "INVALID_ENCRYPTION_ENVELOPE",
       "An application/octet-stream encryptedFile is required.",
     );
+  }
+  const input = fields && typeof fields === "object" ? fields as Record<string, unknown> : {};
+  if (Number(input.originalSize) > 20 * 1024 * 1024 || file.size > 20 * 1024 * 1024 + 16) {
+    throw new DocumentEnvelopeError("FILE_TOO_LARGE", fileTooLargeMessage(20 * 1024 * 1024), 413);
+  }
+  if (Number(input.originalSize) === 0) {
+    throw new DocumentEnvelopeError("EMPTY_FILE", documentValidationMessages.EMPTY_FILE!, 422);
+  }
+  if (typeof input.originalMimeType === "string" && !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(input.originalMimeType)) {
+    throw new DocumentEnvelopeError("UNSUPPORTED_FILE_TYPE", documentValidationMessages.UNSUPPORTED_FILE_TYPE!, 415);
   }
   const parsed = envelopeFieldsSchema.safeParse(fields);
   if (!parsed.success) {
@@ -114,4 +125,14 @@ export function validateEncryptedDocumentEnvelope(
     encryptionVersion: ENCRYPTION_VERSION,
     ciphertext: file.buffer,
   };
+}
+
+export function validateEncryptedDocumentEnvelopes(fields: unknown, files: Express.Multer.File[] | undefined) {
+  const input = fields && typeof fields === "object" ? fields as Record<string, unknown> : {};
+  let metadata: unknown;
+  try { metadata = JSON.parse(typeof input.envelopes === "string" ? input.envelopes : ""); } catch { metadata = null; }
+  if (!Array.isArray(metadata) || !files?.length || metadata.length !== files.length || files.length > 10) {
+    throw new DocumentEnvelopeError("INVALID_ENCRYPTION_ENVELOPE", "One to ten encrypted document pages are required.");
+  }
+  return metadata.map((item, index) => validateEncryptedDocumentEnvelope({ ...(item as object), aiAnalysisConsent: input.aiAnalysisConsent }, { ...files[index]!, fieldname: "encryptedFile" }));
 }

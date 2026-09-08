@@ -26,7 +26,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const payload = verifyAccessToken(token);
     const user = await getUserById(payload.sub);
 
-    if (!user) {
+    if (!user || (payload.authVersion ?? 0) !== (user.authVersion ?? 0)) {
       return res.status(401).json({
         message: "Unauthorized.",
       });

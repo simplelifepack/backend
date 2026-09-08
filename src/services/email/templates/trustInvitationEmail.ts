@@ -22,8 +22,8 @@ export function renderTrustInvitationEmail(input: TrustInvitationEmailInput): Em
   const content = `
     <tr>
       <td>
-        <h1 style="margin:0 0 14px 0;font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:26px;line-height:1.2;color:${EMAIL_STYLE.ink};">You've been invited to LifePack</h1>
-        <p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};">${escapeHtml(owner)} invited you to become a trusted member in LifePack.</p>
+        <h1 style="margin:0 0 14px 0;font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:26px;line-height:1.2;color:${EMAIL_STYLE.ink};">You've been invited to Readiness</h1>
+        <p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};">${escapeHtml(owner)} invited you to become a trusted member in Readiness.</p>
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:18px 0;border:1px solid ${EMAIL_STYLE.borderDeep};border-radius:16px;background:#FFFFFF;">
           <tr>
             <td style="padding:16px;font-family:Inter,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.8;color:${EMAIL_STYLE.body};">
@@ -40,10 +40,10 @@ export function renderTrustInvitationEmail(input: TrustInvitationEmailInput): Em
     </tr>`;
 
   return {
-    subject: "You've been invited to LifePack",
+    subject: "You've been invited to Readiness",
     html: renderShell(content),
     text: [
-      `${owner} invited you to become a trusted member in LifePack.`,
+      `${owner} invited you to become a trusted member in Readiness.`,
       `Relationship: ${input.relation}`,
       `Access: ${input.accessType}`,
       `Review Invitation: ${input.invitationUrl}`,

@@ -4,6 +4,7 @@ import fsp from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 
 const STRING_PREFIX = "enc:v1";
+// Compatibility: existing encrypted metadata and development ciphertext depend on these legacy identifiers.
 const JSON_ENVELOPE_MARKER = "__lifepackEncrypted";
 const ALGORITHM = "aes-256-gcm";
 const FILE_MAGIC = Buffer.from("LPENC1\n", "utf8");

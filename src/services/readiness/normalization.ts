@@ -39,6 +39,9 @@ const explicitTypeMap: Record<string, string> = {
   itr: "itr",
   income_tax_return: "itr",
   photo: "photo",
+  photograph: "photo",
+  recent_photograph: "photo",
+  profile_photo: "photo",
   passport_photo: "passport_photo",
   passport_size: "passport_photo",
   passport_size_photo: "passport_photo",
@@ -209,4 +212,10 @@ function singularizeSearchTerms(input: string) {
       return token;
     })
     .join(" ");
+}
+
+// Exact public labels only: never use fallback normalization on provider-bound values.
+export function publicDocumentLabel(value: string): string | null {
+  const key = value.trim().toLowerCase().replace(/[ -]+/g, "_");
+  return Object.prototype.hasOwnProperty.call(explicitTypeMap, key) ? explicitTypeMap[key]! : null;
 }

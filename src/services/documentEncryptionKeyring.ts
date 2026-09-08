@@ -17,6 +17,7 @@ function parsePem(value: string | undefined, name: string) {
   return trimmed.replace(/\\n/g, "\n");
 }
 
+// Compatibility: persisted document envelopes reference this legacy key ID.
 const DEVELOPMENT_KEY_ID = "lifepack-development";
 const DEVELOPMENT_KEY_VERSION = 1;
 

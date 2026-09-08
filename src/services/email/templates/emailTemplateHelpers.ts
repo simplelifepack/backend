@@ -58,7 +58,7 @@ export function brandHeader() {
               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <td style="width:36px;height:36px;border-radius:10px;background:${EMAIL_STYLE.goldFill};text-align:center;vertical-align:middle;color:#3A2E12;font-weight:800;font-size:13px;font-family:Arial,Helvetica,sans-serif;">LP</td>
-                  <td style="padding-left:11px;font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:17px;font-weight:700;color:${EMAIL_STYLE.ink};">LifePack</td>
+                  <td style="padding-left:11px;font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:17px;font-weight:700;color:${EMAIL_STYLE.ink};">Readiness</td>
                 </tr>
               </table>
             </td>
@@ -89,7 +89,7 @@ export function renderShell(content: string) {
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LifePack</title>
+    <title>Readiness</title>
   </head>
   <body style="margin:0;padding:0;background:${EMAIL_STYLE.paper};">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${EMAIL_STYLE.paper};">

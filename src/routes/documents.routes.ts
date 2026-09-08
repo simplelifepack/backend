@@ -1,3 +1,5 @@
+import { queueStorageCleanup, drainStorageCleanup } from "../services/storageCleanup.service";
+import { withStorageUpload, lockAccount } from "../services/accountUsage.service";
 /* eslint-disable max-lines */
 import crypto from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -11,7 +13,6 @@ import { ingestDocument } from "../services/ingestion/pipeline";
 import { validateDocumentMetadata } from "../services/ingestion/documentDefinitions";
 import {
   buildAnalyzeResponse,
-  buildIngestionAnalyzeResponse,
   buildMinimalAIValidation,
   fallbackDocumentAIResult,
   warningCodeForAnalysisError,
@@ -34,23 +35,24 @@ import {
 } from "../utils/documentEncryption";
 import {
   consumeTemporaryUpload,
+  deleteTemporaryUploadFile,
   createDecryptedDocumentReadStream,
   createEncryptedTemporaryUpload,
   findOwnedTemporaryUpload,
   removePermanentFile,
   saveEncryptedPermanentFile,
 } from "../services/documentFileStorage";
-import { createIdentityProfile, detectIdentityOwnership } from "../services/identity/ownershipDetection";
 import {
   getPublicDocumentEncryptionKey,
   validateEncryptedDocumentEnvelope,
+  validateEncryptedDocumentEnvelopes,
   verifyAndDecryptEnvelope,
 } from "../services/documentHybridEncryption";
 import {
   validateDecryptedDocument,
   withIsolatedPlaintextFile,
 } from "../services/documentSecurityValidation";
-import { assertStorageAllowance, reconcileCurrentStorageUsage } from "../services/entitlements.service";
+import { normalizeNameForMatch } from "../services/identity/ownershipDetection";
 
 function toAnalysisFile(temporaryUpload: {
   originalName: string;
@@ -86,109 +88,66 @@ async function analyzeEncryptedUpload(
   next: NextFunction,
   statusCode: 200 | 202,
 ) {
-  let plaintext: Buffer | undefined;
+  const plaintexts: Buffer[] = [];
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
-    const envelope = validateEncryptedDocumentEnvelope(req.body, req.file);
-    plaintext = verifyAndDecryptEnvelope(envelope);
-    await validateDecryptedDocument(plaintext, envelope);
-    await assertStorageAllowance(authUser.id, envelope.originalSize);
+    const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? (req.file ? [req.file] : undefined);
+    const envelopes = req.body.envelopes ? validateEncryptedDocumentEnvelopes(req.body, uploadedFiles) : [validateEncryptedDocumentEnvelope(req.body, req.file)];
+    for (const envelope of envelopes) { const plaintext = verifyAndDecryptEnvelope(envelope); plaintexts.push(plaintext); await validateDecryptedDocument(plaintext, envelope); }
 
     const duplicate = await prisma.document.findFirst({
       where: {
         ownerProfileId: authUser.id,
-        userScopedDedupHash: userScopedDocumentHash(authUser.id, envelope.originalSha256),
+        userScopedDedupHash: userScopedDocumentHash(authUser.id, envelopes.map((item) => item.originalSha256).sort().join(":")),
         deletedAt: null,
       },
     });
     if (duplicate) {
       return res.status(409).json({
         code: "DUPLICATE_DOCUMENT",
-        message: "Already in LifePack",
+        message: "Already in Readiness",
         duplicateDocument: toDocumentResponseDto(duplicate),
       });
     }
 
-    const analysis = await withIsolatedPlaintextFile(
-      plaintext,
-      extensionForMimeType(envelope.originalMimeType),
-      async (filePath) => {
-        const analysisInput = {
-          path: filePath,
-          originalName: envelope.originalFilename,
-          mimeType: envelope.originalMimeType,
-          size: envelope.originalSize,
-        };
-        if (!envelope.aiAnalysisConsent) {
-          return {
-            source: "rules" as const,
-            result: await ingestDocument(analysisInput),
-          };
-        }
-        try {
-          return {
-            source: "ai" as const,
-            result: await analyzeDocument(analysisInput),
-          };
-        } catch (error) {
-          return {
-            source: "ai-fallback" as const,
-            result: error,
-          };
-        }
-      },
-    );
-    const temporaryUpload = await createEncryptedTemporaryUpload(authUser.id, envelope);
-    const file = {
-      originalName: temporaryUpload.originalName,
-      mimeType: temporaryUpload.detectedMimeType,
-      size: temporaryUpload.size,
-    };
-    const response = analysis.source === "rules"
-      ? buildIngestionAnalyzeResponse({
-          analysis: analysis.result,
-          file,
-          tempFileId: temporaryUpload.id,
-        })
-      : analysis.source === "ai"
-        ? buildAnalyzeResponse({
-            analysis: analysis.result,
-            file: toAnalysisFile(temporaryUpload),
-            tempFileId: temporaryUpload.id,
-          })
-        : buildAnalyzeResponse({
-            analysis: fallbackDocumentAIResult,
-            file: toAnalysisFile(temporaryUpload),
-            tempFileId: temporaryUpload.id,
-            warning: "AI analysis unavailable. Please review manually.",
-            warningCode: warningCodeForAnalysisError(analysis.result),
-          });
+    const analyzePaths = async (index: number, paths: string[]): Promise<{ result: Awaited<ReturnType<typeof analyzeDocument>> | Error }> => index === plaintexts.length
+      ? analyzeDocument(paths.map((path, i) => ({ path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize }))).then((result) => ({ result })).catch((error) => ({ result: error as Error }))
+      : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), (path) => analyzePaths(index + 1, [...paths, path]));
+    const analysis = envelopes[0]!.aiAnalysisConsent ? await analyzePaths(0, []) : { result: fallbackDocumentAIResult };
+    const temporaryUploads = await Promise.all(envelopes.map((envelope) => createEncryptedTemporaryUpload(authUser.id, envelope)));
+    const aiResult = analysis.result instanceof Error ? fallbackDocumentAIResult : analysis.result;
+    const user = await prisma.user.findUnique({ where: { id: authUser.id }, select: { name: true } });
+    const ownership = !aiResult.nameOnDocument ? "unknown" : user?.name && namesReasonablyMatch(user.name, aiResult.nameOnDocument) ? "mine" : "other";
+    const response = buildAnalyzeResponse({ analysis: aiResult, ownership, files: temporaryUploads.map((item) => ({ tempFileId: item.id, originalName: item.originalName, mimeType: item.detectedMimeType, size: item.size })), ...(analysis.result instanceof Error ? { warning: "Document analysis unavailable. Please review manually.", warningCode: warningCodeForAnalysisError(analysis.result) } : {}) });
     return res.status(statusCode).json(response);
   } catch (error) {
     return next(error);
   } finally {
-    plaintext?.fill(0);
+    plaintexts.forEach((plaintext) => plaintext.fill(0));
   }
 }
 
-router.post("/analyze", uploadLimiter, encryptedUpload.single("encryptedFile"), async (req, res, next) => {
+function namesReasonablyMatch(left: string, right: string) { const a = normalizeNameForMatch(left).split(" "); const b = normalizeNameForMatch(right).split(" "); return a.every((token) => b.some((candidate) => candidate === token || (token.length === 1 && candidate.startsWith(token)) || (candidate.length === 1 && token.startsWith(candidate)))); }
+
+router.post("/analyze", uploadLimiter, encryptedUpload.array("encryptedFiles", 10), async (req, res, next) => {
   return analyzeEncryptedUpload(req, res, next, 200);
 });
 router.post("/", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const payload = saveSchema.parse(req.body);
-    const pendingTemporaryUpload = await findOwnedTemporaryUpload(authUser.id, payload.tempFileId);
-    if (!pendingTemporaryUpload) {
+    const pendingTemporaryUploads = await Promise.all(payload.tempFileIds.map((id) => findOwnedTemporaryUpload(authUser.id, id)));
+    if (pendingTemporaryUploads.some((item) => !item)) {
       return res.status(404).json({
         code: "TEMPORARY_UPLOAD_EXPIRED",
         message: "This upload review has expired. Please select the file again.",
       });
     }
-    if (pendingTemporaryUpload.keyAlgorithm && pendingTemporaryUpload.scanStatus !== "passed") {
+    const activeUploads = pendingTemporaryUploads.filter((item): item is NonNullable<typeof item> => Boolean(item));
+    const pendingTemporaryUpload = activeUploads[0]!;
+    if (activeUploads.some((item) => !item.keyAlgorithm || item.encryptedSize === null || item.scanStatus !== "passed")) {
       return res.status(422).json({ message: "Document security validation has not passed." });
     }
-    await assertStorageAllowance(authUser.id, pendingTemporaryUpload.size);
     const fieldsForValidation = {
       ...payload.fields,
       ...Object.fromEntries(
@@ -213,15 +172,15 @@ router.post("/", async (req, res, next) => {
         validation,
       });
     }
-    const duplicate = await findDuplicate(authUser.id, validation.normalizedType, validation.uniqueIdentifier);
-    const userScopedDedupHash = userScopedDocumentHash(authUser.id, pendingTemporaryUpload.contentHash);
+    let duplicate = await findDuplicate(authUser.id, validation.normalizedType, validation.uniqueIdentifier);
+    const userScopedDedupHash = userScopedDocumentHash(authUser.id, activeUploads.map((item) => item.contentHash).sort().join(":"));
     const contentDuplicate = userScopedDedupHash
       ? await prisma.document.findFirst({ where: { ownerProfileId: authUser.id, userScopedDedupHash, deletedAt: null } })
       : null;
     if (contentDuplicate) {
       return res.status(409).json({
         code: "DUPLICATE_DOCUMENT",
-        message: "Already in LifePack",
+        message: "Already in Readiness",
         duplicateDocument: toDocumentResponseDto(contentDuplicate),
         actions: ["cancel"],
         validation,
@@ -243,28 +202,45 @@ router.post("/", async (req, res, next) => {
       uniqueIdentifierField: validation.uniqueIdentifierField,
     });
     const targetProfileId = payload.targetProfileId ?? authUser.id;
-    const ownership = validation.category === "identity"
-      ? await detectIdentityOwnership(authUser.id, fieldsForValidation, validation.uniqueIdentifier, payload.verified, targetProfileId)
-      : {
-          owner: payload.owner,
-          identity: null,
-          shouldCreateProfile: false,
-          status: payload.verified && targetProfileId === authUser.id ? "verified" as const : "unknown" as const,
-          confidence: payload.verified && targetProfileId === authUser.id ? 100 : 0,
-          matchedFields: payload.verified ? ["userConfirmation"] : [],
-          mismatchedFields: [],
-          targetProfileId,
-        };
-    const temporaryUpload = await consumeTemporaryUpload(authUser.id, payload.tempFileId);
-    if (!temporaryUpload) {
-      return res.status(404).json({
-        code: "TEMPORARY_UPLOAD_EXPIRED",
-        message: "This upload review has expired. Please select the file again.",
-      });
+    const savedName = typeof fieldsForValidation.nameOnDocument === "string" ? fieldsForValidation.nameOnDocument.trim() : "";
+    const user = await prisma.user.findUnique({ where: { id: authUser.id }, select: { name: true } });
+    const isMine = Boolean(savedName && user?.name && namesReasonablyMatch(user.name, savedName));
+    const ownership = {
+      owner: !savedName ? "unknown" : isMine ? "self" : "other",
+      identity: null,
+      shouldCreateProfile: false,
+      status: !savedName ? "unknown" as const : isMine ? "verified" as const : "mismatch" as const,
+      confidence: !savedName ? 0 : isMine ? 100 : 90,
+      matchedFields: isMine ? ["nameOnDocument"] : [],
+      mismatchedFields: savedName && !isMine ? ["nameOnDocument"] : [],
+      targetProfileId,
+    };
+    const newStorageKeys: string[] = [];
+    const uploadedReferences: Array<Awaited<ReturnType<typeof saveEncryptedPermanentFile>>> = [];
+    await drainStorageCleanup(authUser.id);
+    let result;
+    try {
+      result = await withStorageUpload(authUser.id,
+        activeUploads.reduce((total, file) => total + (file.encryptedSize ?? file.size), 0),
+        duplicate && payload.duplicateAction === "replace" ? duplicate.id : null,
+        async tx => {
+    if (duplicate && payload.duplicateAction === "replace") duplicate = await tx.document.findUniqueOrThrow({ where: { id: duplicate.id } });
+    const consumedUploads = await Promise.all(payload.tempFileIds.map((id) => consumeTemporaryUpload(authUser.id, id, tx)));
+    if (consumedUploads.some((item) => !item)) {
+      throw Object.assign(new Error("This upload review has expired. Please select the file again."), { statusCode: 404, code: "TEMPORARY_UPLOAD_EXPIRED" });
     }
     const storageObjectId = crypto.randomUUID();
     const documentId = duplicate && payload.duplicateAction === "replace" ? duplicate.id : storageObjectId;
-    const encryptedFile = await saveEncryptedPermanentFile(authUser.id, storageObjectId, temporaryUpload);
+    const temporaryUploads = consumedUploads.filter((item): item is NonNullable<typeof item> => Boolean(item));
+    const temporaryUpload = temporaryUploads[0]!;
+    const encryptedFiles: Array<Awaited<ReturnType<typeof saveEncryptedPermanentFile>>> = [];
+    for (const [index, item] of temporaryUploads.entries()) {
+      const file = await saveEncryptedPermanentFile(authUser.id, `${storageObjectId}/page-${index + 1}`, item, { preserveTemporaryFile: true });
+      encryptedFiles.push(file);
+      newStorageKeys.push(file.storageKey);
+      uploadedReferences.push(file);
+    }
+    const encryptedFile = encryptedFiles[0]!;
     const classificationSignals = payload.evidence.flatMap((item) => {
       if (!item || typeof item !== "object") return [];
       const label = (item as Record<string, unknown>).label;
@@ -365,49 +341,63 @@ router.post("/", async (req, res, next) => {
       let savedDocument;
       try {
         const { id: _existingDocumentId, ...replacementData } = documentData;
-        savedDocument = await prisma.document.update({
+        savedDocument = await tx.document.update({
           where: { id: duplicate.id },
           data: replacementData,
         });
       } catch (error) {
-        await removePermanentFile(encryptedFile.path);
+        await Promise.all(encryptedFiles.map((file) => removePermanentFile(file.storageKey ?? file.path)));
         throw error;
       }
-      await removePermanentFile(duplicate.storageKey ?? duplicate.path);
-      await reconcileCurrentStorageUsage(authUser.id);
-      if (ownership.identity) await createIdentityProfile(authUser.id, savedDocument.id, ownership);
-      return res.status(200).json({
+      const previousFiles = await tx.documentFile.findMany({ where: { documentId: duplicate.id } });
+      await queueStorageCleanup(tx, authUser.id, [duplicate, ...previousFiles]);
+      await replaceDocumentFiles(tx, savedDocument.id, temporaryUploads, encryptedFiles);
+      return { status: 200, body: {
         document: toDocumentResponseDto(savedDocument),
         validation,
         replaced: true,
-      });
+      } };
     }
     let savedDocument;
     try {
-      savedDocument = await prisma.document.create({
+      savedDocument = await tx.document.create({
         data: documentData,
       });
     } catch (error) {
-      await removePermanentFile(encryptedFile.path);
+      await Promise.all(encryptedFiles.map((file) => removePermanentFile(file.storageKey ?? file.path)));
       throw error;
     }
     if (temporaryUpload.externalCandidateId) {
-      await prisma.externalDocumentCandidate.updateMany({
+      await tx.externalDocumentCandidate.updateMany({
         where: { id: temporaryUpload.externalCandidateId, userId: authUser.id },
         data: { status: "imported" },
       });
     }
-    await reconcileCurrentStorageUsage(authUser.id);
-    if (ownership.identity) await createIdentityProfile(authUser.id, savedDocument.id, ownership);
-    return res.status(201).json({
+    await replaceDocumentFiles(tx, savedDocument.id, temporaryUploads, encryptedFiles);
+    return { status: 201, body: {
       document: toDocumentResponseDto(savedDocument),
       validation,
-    });
+    } };
+      });
+    } catch (error) {
+      const cleanup = await Promise.allSettled(newStorageKeys.map(removePermanentFile));
+      const retained = uploadedReferences.filter((_file, index) => cleanup[index]?.status === "rejected");
+      if (retained.length) await prisma.$transaction(tx => queueStorageCleanup(tx, authUser.id, retained.map(file => ({ ...file, size: file.encryptedSize ?? 0 }))));
+      throw error;
+    }
+    await Promise.allSettled(activeUploads.map(deleteTemporaryUploadFile));
+    await drainStorageCleanup(authUser.id);
+    return res.status(result.status).json(result.body);
   } catch (error) {
     return next(error);
   }
 });
-router.post("/upload", uploadLimiter, encryptedUpload.single("encryptedFile"), async (req, res, next) => {
+
+async function replaceDocumentFiles(tx: Prisma.TransactionClient, documentId: string, uploads: Array<{ originalName: string; detectedMimeType: string; size: number }>, stored: Array<Awaited<ReturnType<typeof saveEncryptedPermanentFile>>>) {
+  await tx.documentFile.deleteMany({ where: { documentId } });
+  await tx.documentFile.createMany({ data: stored.map((file, pageIndex) => ({ documentId, pageIndex, originalName: encryptString(uploads[pageIndex]!.originalName)!, mimeType: uploads[pageIndex]!.detectedMimeType, size: uploads[pageIndex]!.size, storageKey: file.storageKey, storedName: file.storedName, encryptionVersion: file.encryptionVersion, contentAlgorithm: file.contentAlgorithm, keyAlgorithm: file.keyAlgorithm, keyId: file.keyId, keyVersion: file.keyVersion, encryptionIv: file.encryptionIv, wrappedKey: file.wrappedKey, encryptedSize: file.encryptedSize, ciphertextHash: file.encryptedSha256 })) });
+}
+router.post("/upload", uploadLimiter, encryptedUpload.array("encryptedFiles", 10), async (req, res, next) => {
   return analyzeEncryptedUpload(req, res, next, 202);
 });
 router.get("/", async (_req, res, next) => {
@@ -445,9 +435,14 @@ router.delete("/:id", async (req, res, next) => {
     if (!document) {
       return res.status(404).json({ message: "Document not found." });
     }
-    await removePermanentFile(document.storageKey ?? document.path);
-    await prisma.document.delete({ where: { id: document.id } });
-    await reconcileCurrentStorageUsage(authUser.id);
+    await prisma.$transaction(async tx => {
+      await lockAccount(tx, authUser.id);
+      const owned = await tx.document.findFirst({ where: { id, ownerProfileId: authUser.id }, include: { files: true } });
+      if (!owned) return;
+      await queueStorageCleanup(tx, authUser.id, [owned, ...owned.files]);
+      await tx.document.delete({ where: { id: owned.id } });
+    }, { maxWait: 30_000, timeout: 60_000 });
+    await drainStorageCleanup(authUser.id);
     return res.status(204).send();
   } catch (error) {
     return next(error);

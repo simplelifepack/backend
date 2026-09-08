@@ -44,12 +44,16 @@ function resolveSmtpPass(env: NodeJS.ProcessEnv) {
 
 function resolveMailFrom(env: NodeJS.ProcessEnv) {
   const mailFrom = env.MAIL_FROM?.trim();
-  if (mailFrom) return mailFrom;
+  if (mailFrom) {
+    // Compatibility: rebrand display names only; external mailbox addresses remain unchanged.
+    const boundary = mailFrom.indexOf("<");
+    return boundary < 0 ? mailFrom : mailFrom.slice(0, boundary).replace(/life[-_ ]?pack(?: ai)?/ig, "Readiness") + mailFrom.slice(boundary);
+  }
 
   const fromAddress = env.EMAIL_FROM_ADDRESS?.trim();
   if (!fromAddress) return "";
 
-  const fromName = env.EMAIL_FROM_NAME?.trim();
+  const fromName = env.EMAIL_FROM_NAME?.trim().replace(/life[-_ ]?pack(?: ai)?/ig, "Readiness");
   return fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 }
 
@@ -64,6 +68,7 @@ export function loadEmailConfig(env: NodeJS.ProcessEnv = process.env): EmailConf
     const parsed = new URL(appUrl);
     if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Invalid APP_URL protocol.");
     const frontend = new URL(frontendUrl);
+    if (isProductionEnv(env) && (parsed.protocol !== "https:" || frontend.protocol !== "https:")) throw new Error("Production URLs require HTTPS.");
     if (!["http:", "https:"].includes(frontend.protocol)) throw new Error("Invalid FRONTEND_URL protocol.");
   } catch {
     throw new Error("APP_URL and FRONTEND_URL must be valid http or https URLs.");

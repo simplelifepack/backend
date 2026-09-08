@@ -1,3 +1,4 @@
+import { documentValidationMessages, fileTooLargeMessage } from "./documentValidationMessages";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -49,7 +50,7 @@ async function validatePdf(plaintext: Buffer) {
     const info = await parser.getInfo({ parsePageInfo: true });
     if (info.total < 1 || info.total > MAX_PDF_PAGES) {
       throw new DocumentEnvelopeError(
-        "UNSAFE_FILE",
+        "PDF_PAGE_LIMIT_EXCEEDED",
         `PDFs must contain between 1 and ${MAX_PDF_PAGES} pages.`,
         422,
       );
@@ -129,14 +130,17 @@ async function validateImage(
       metadata.width * metadata.height > MAX_IMAGE_PIXELS
     ) {
       throw new DocumentEnvelopeError(
-        "UNSAFE_FILE",
-        "The image dimensions exceed LifePack's safe decoding limits.",
+        "IMAGE_DIMENSIONS_EXCEEDED",
+        `This image is too large. Please resize it to at most ${MAX_IMAGE_WIDTH} × ${MAX_IMAGE_HEIGHT} pixels and ${MAX_IMAGE_PIXELS / 1_000_000} megapixels.`,
         422,
       );
     }
     await image.resize({ width: 1, height: 1, fit: "inside" }).toBuffer();
   } catch (error) {
     if (error instanceof DocumentEnvelopeError) throw error;
+    if (error instanceof Error && /pixel limit/i.test(error.message)) {
+      throw new DocumentEnvelopeError("IMAGE_DIMENSIONS_EXCEEDED", `This image is too large. Please resize it to at most ${MAX_IMAGE_PIXELS / 1_000_000} megapixels.`, 422);
+    }
     throw new DocumentEnvelopeError("FILE_CORRUPTED", "The image could not be safely decoded.", 422);
   }
 }
@@ -146,14 +150,14 @@ export async function withIsolatedPlaintextFile<T>(
   extension: string,
   callback: (filePath: string) => Promise<T>,
 ) {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lifepack-document-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "readiness-document-"));
   const filePath = path.join(directory, `document${extension}`);
   try {
     await fs.chmod(directory, 0o700);
     await fs.writeFile(filePath, plaintext, { flag: "wx", mode: 0o600 });
     return await callback(filePath);
   } finally {
-    await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
+    await fs.rm(directory, { recursive: true, force: true });
   }
 }
 
@@ -164,7 +168,11 @@ export async function validateDecryptedDocument(
     "originalFilename" | "originalMimeType" | "originalSize"
   >,
 ) {
-  if (!plaintext.length || plaintext.length !== envelope.originalSize) {
+  if (plaintext.length > 20 * 1024 * 1024 || envelope.originalSize > 20 * 1024 * 1024) {
+    throw new DocumentEnvelopeError("FILE_TOO_LARGE", fileTooLargeMessage(20 * 1024 * 1024), 413);
+  }
+  if (!plaintext.length) throw new DocumentEnvelopeError("EMPTY_FILE", documentValidationMessages.EMPTY_FILE!, 422);
+  if (plaintext.length !== envelope.originalSize) {
     throw new DocumentEnvelopeError("FILE_CORRUPTED", "The decrypted document size is invalid.", 422);
   }
   if (plaintext.includes(EICAR_MARKER) || plaintext.subarray(0, 2).toString("latin1") === "MZ") {
@@ -178,9 +186,9 @@ export async function validateDecryptedDocument(
     "image/png": [".png"],
     "image/webp": [".webp"],
   };
-  if (!expected[envelope.originalMimeType].includes(extension)) {
+  if (!expected[envelope.originalMimeType]?.includes(extension)) {
     throw new DocumentEnvelopeError(
-      "FILE_SIGNATURE_MISMATCH",
+      "UNSUPPORTED_FILE_TYPE",
       "The filename extension does not match the validated document type.",
       422,
     );

@@ -63,7 +63,7 @@ async function run() {
   });
   assert.equal(provider.sent.length, 1, "new signup sends one welcome email");
   assert.equal(provider.sent[0].to, created.user.email, "welcome email goes to the registered email");
-  assert.equal(provider.sent[0].subject, "Welcome to LifePack");
+  assert.equal(provider.sent[0].subject, "Welcome to Readiness");
   assert.match(provider.sent[0].html, /Welcome, Deepika/);
   assert.doesNotMatch(provider.sent[0].html, /attacker@example.com/, "request input cannot override sender or template content");
 
@@ -73,7 +73,7 @@ async function run() {
   );
   assert.equal(provider.sent.length, 1, "duplicate signup does not send another welcome email");
   assert.equal(
-    provider.sent.filter((message) => message.subject === "New login to your LifePack account").length,
+    provider.sent.filter((message) => message.subject === "New login to your Readiness account").length,
     0,
     "signup automatic login does not send a login alert",
   );
@@ -89,7 +89,7 @@ async function run() {
     { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0", ip: "203.0.113.42" },
   );
   assert.equal(provider.sent.length, 2, "successful existing-user login sends one alert");
-  assert.equal(provider.sent[1].subject, "New login to your LifePack account");
+  assert.equal(provider.sent[1].subject, "New login to your Readiness account");
   assert.match(provider.sent[1].text, /203\.0\.113\.x/);
 
   const missingReset = await forgotPassword({ email: email("missing") });
@@ -99,7 +99,7 @@ async function run() {
   const resetResponse = await forgotPassword({ email: email("new") });
   assert.match(resetResponse.message, /If an account exists/);
   assert.equal(provider.sent.length, 3, "forgot password sends one reset email for password account");
-  assert.equal(provider.sent[2].subject, "Reset your LifePack password");
+  assert.equal(provider.sent[2].subject, "Reset your Readiness password");
   assert.equal(provider.sent[2].to, email("new"));
   const resetUrl = provider.sent[2].text.match(/http[^\s]+/)?.[0];
   assert.ok(resetUrl, "reset email includes reset URL");
@@ -133,7 +133,7 @@ async function run() {
   setEmailProviderForTests(googleProvider);
   await googleLogin({ credential: "google-new" }, async () => googlePayload("google-new"));
   assert.equal(googleProvider.sent.length, 1, "new Google-created user sends one welcome email");
-  assert.equal(googleProvider.sent[0].subject, "Welcome to LifePack");
+  assert.equal(googleProvider.sent[0].subject, "Welcome to Readiness");
 
   await googleLogin(
     { credential: "google-existing" },
@@ -141,11 +141,11 @@ async function run() {
     { userAgent: "Mozilla/5.0 Firefox/126.0", ip: "198.51.100.12" },
   );
   assert.equal(googleProvider.sent.length, 2, "existing Google login sends one alert");
-  assert.equal(googleProvider.sent[1].subject, "New login to your LifePack account");
+  assert.equal(googleProvider.sent[1].subject, "New login to your Readiness account");
 
   await forgotPassword({ email: email("google-new") });
   assert.equal(googleProvider.sent.length, 3, "forgot password sends reset email for Google-created account");
-  assert.equal(googleProvider.sent[2].subject, "Reset your LifePack password");
+  assert.equal(googleProvider.sent[2].subject, "Reset your Readiness password");
   const googleResetUrl = googleProvider.sent[2].text.match(/http[^\s]+/)?.[0];
   assert.ok(googleResetUrl, "Google reset email includes reset URL");
   const googleResetToken = new URL(googleResetUrl).searchParams.get("token");

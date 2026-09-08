@@ -3,6 +3,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
+      # Compatibility: keep the existing database inside the persistent volume.
       POSTGRES_DB: lifepack
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

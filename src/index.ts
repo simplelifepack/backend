@@ -13,7 +13,7 @@ async function start() {
   }
 
   app.listen(port, () => {
-    console.log(`LifePack backend listening on http://localhost:${port}`);
+    console.log(`Readiness backend listening on http://localhost:${port}`);
   });
 }
 

@@ -37,6 +37,7 @@ export function loadStorageConfig(env: NodeJS.ProcessEnv = process.env): Storage
     };
   }
   if (driver === "s3") {
+    if (env.STORAGE_ENDPOINT && new URL(env.STORAGE_ENDPOINT).protocol !== "https:" && env.NODE_ENV === "production") throw new Error("Production storage requires HTTPS.");
     return {
       driver,
       endpoint: env.STORAGE_ENDPOINT?.trim() || undefined,

@@ -33,6 +33,7 @@ export {
 export {
   DocumentEnvelopeError,
   validateEncryptedDocumentEnvelope,
+  validateEncryptedDocumentEnvelopes,
 } from "./documentEnvelopeValidation";
 
 function findKey(keyId: string, keyVersion: number) {

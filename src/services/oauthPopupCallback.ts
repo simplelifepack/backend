@@ -74,7 +74,7 @@ export function renderOAuthPopupCallback(result: OAuthPopupCallbackResult, nonce
   const appOrigin = new URL(frontendUrl()).origin;
   const redirectUrl = directOAuthRedirectUrl(result);
   const message = {
-    type: `lifepack:${result.provider}-oauth`,
+    type: `readiness:${result.provider}-oauth`,
     provider: result.provider,
     status: result.status,
     reason: result.reason,
@@ -86,7 +86,7 @@ export function renderOAuthPopupCallback(result: OAuthPopupCallbackResult, nonce
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LifePack connection complete</title>
+  <title>Readiness connection complete</title>
   <style nonce="${nonce}">
     body { margin: 0; background: #10151f; color: #f7efe0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     main { display: none; min-height: 100vh; place-items: center; padding: 1.5rem; text-align: center; }
@@ -95,8 +95,8 @@ export function renderOAuthPopupCallback(result: OAuthPopupCallbackResult, nonce
 </head>
 <body>
   <main>
-    <h1>Returning to LifePack...</h1>
-    <p>This window was opened directly, so LifePack will reopen the Documents page.</p>
+    <h1>Returning to Readiness...</h1>
+    <p>This window was opened directly, so Readiness will reopen the Documents page.</p>
   </main>
   <script nonce="${nonce}">
     (() => {

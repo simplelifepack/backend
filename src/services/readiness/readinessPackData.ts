@@ -2,6 +2,7 @@
 import type { DocumentOwner } from "./metadataTypes";
 import { normalizeDocumentType, slugify } from "./normalization";
 import { sourceMetadataForSeed } from "./readinessPackSources";
+import type { PackageSearchMetadata } from "./searchMetadata";
 
 export type SeedRequirement = {
   title: string;
@@ -31,6 +32,7 @@ export type SeedReadinessPack = {
   lastVerifiedAt?: Date;
   verificationStatus?: "verified" | "needs_review";
   requirements: SeedRequirement[];
+  searchMetadata: PackageSearchMetadata;
 };
 
 export type VerificationSource = {
@@ -116,7 +118,7 @@ function req(title: string, description: string, group: string, acceptedDocument
   };
 }
 
-function pack(title: string, category: string, aliases: string[], refs: RequirementRef[], description?: string, metadata: Partial<Pick<SeedReadinessPack, "lastCheckedAt" | "lastVerifiedAt" | "sourceName" | "sourceTitle" | "sourceType" | "sourceUrl" | "subtitle" | "verificationSources" | "verificationStatus">> = {}): SeedReadinessPack {
+function pack(title: string, category: string, aliases: string[], refs: RequirementRef[], description?: string, metadata: Partial<Pick<SeedReadinessPack, "lastCheckedAt" | "lastVerifiedAt" | "searchMetadata" | "sourceName" | "sourceTitle" | "sourceType" | "sourceUrl" | "subtitle" | "verificationSources" | "verificationStatus">> = {}): SeedReadinessPack {
   const source = metadata.sourceTitle && metadata.sourceUrl
     ? metadata
     : sourceMetadataForSeed(title, category);
@@ -128,6 +130,7 @@ function pack(title: string, category: string, aliases: string[], refs: Requirem
     category,
     aliases,
     description: description ?? `${title} readiness pack with the commonly requested Indian-context documents.`,
+    searchMetadata: metadata.searchMetadata ?? { intent: category, subject: title, searchPhrases: aliases },
     requirements: refs.map((ref) => {
       const key = typeof ref === "string" ? ref : ref.key;
       const template = requirementCatalog[key];
@@ -171,10 +174,10 @@ export const readinessPackSeeds: SeedReadinessPack[] = [
   pack("Home Loan Balance Transfer", "Banking & Finance", ["home loan transfer", "balance transfer"], ["identity", "pan", "bank", "itr", "propertyDeed", "loanStatement", { key: "propertyTax", required: false }]),
   pack("Personal Loan", "Banking & Finance", ["instant personal loan"], ["identity", "pan", "address", "salary", "bank", { key: "itr", required: false }]),
   pack("Car Loan", "Banking & Finance", ["auto loan"], ["identity", "pan", "address", "bank", "income", "drivingLicence"]),
-  pack("Bike Loan", "Banking & Finance", ["two wheeler loan"], ["identity", "pan", "address", "bank", "income"]),
+  pack("Bike Loan", "Banking & Finance", ["two wheeler loan", "motorcycle loan"], ["identity", "pan", "address", "bank", "income"], undefined, { searchMetadata: { intent: "vehicle financing", subject: "bike", searchPhrases: ["buy a bike with finance", "finance a motorcycle", "purchase a two wheeler on loan"] } }),
   pack("Gold Loan", "Banking & Finance", ["loan against gold"], ["identity", "pan", "address", "bank", { key: "income", required: false }]),
   pack("Education Loan", "Banking & Finance", ["student education loan"], ["identity", "pan", "address", "academic", "income", "bank", "bonafide"]),
-  pack("Credit Card Application", "Banking & Finance", ["apply credit card"], ["identity", "pan", "address", "salary", "bank", { key: "itr", required: false }]),
+  pack("Credit Card Application", "Banking & Finance", ["apply credit card", "bank credit card"], ["identity", "pan", "address", "salary", "bank", { key: "itr", required: false }], undefined, { searchMetadata: { intent: "credit card", subject: "credit card", searchPhrases: ["card from bank for spending", "apply for a credit card", "get a credit card"] } }),
   pack("Fixed Deposit", "Banking & Finance", ["fd opening"], ["identity", "pan", "address", "bank", "cancelledCheque"]),
   pack("Demat Account", "Banking & Finance", ["trading account", "brokerage account"], ["identity", "pan", "address", "bank", "cancelledCheque", "photo"]),
   pack("Mutual Fund KYC", "Banking & Finance", ["mf kyc", "cams kyc"], ["identity", "pan", "address", "bank", "photo"]),
@@ -204,7 +207,7 @@ export const readinessPackSeeds: SeedReadinessPack[] = [
   pack("Student Visa", "Travel & Visa", ["study visa"], ["passport", "photo", "academic", "bank", "income", "bonafide"], "Student visa pack with passport, admission/academic proof, funding documents, and photographs."),
   pack("Work Visa", "Travel & Visa", ["employment visa"], ["passport", "photo", "employment", "academic", "bank", "police"]),
   pack("Business Visa", "Travel & Visa", ["business travel visa"], ["passport", "photo", "business", "bank", "itr", "gst"]),
-  pack("Schengen Visa", "Travel & Visa", ["europe visa"], ["passport", "photo", "bank", "income", "insurance", "employment"]),
+  pack("Schengen Visa", "Travel & Visa", ["europe visa", "germany tourist visa", "germany visitor visa", "schengen tourist visa"], ["passport", "photo", "bank", "income", "insurance", "employment"], undefined, { searchMetadata: { destination: "Germany", intent: "tourist travel", purpose: "tourism", subject: "visitor visa", searchPhrases: ["going to germany for vacation", "visit germany for holiday", "travel to germany as a tourist"] } }),
   pack("US Visa", "Travel & Visa", ["usa visa", "b1 b2 visa"], ["passport", "photo", "bank", "income", "employment", { key: "academic", required: false }]),
   pack("UK Visa", "Travel & Visa", ["britain visa"], ["passport", "photo", "bank", "income", "employment", { key: "insurance", required: false }]),
   pack("Canada visa", "Travel & Visa", ["canadian visa", "visitor visa"], ["passport", "photo", "bank", "income", "employment", "academic"], undefined, {

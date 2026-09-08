@@ -49,6 +49,7 @@ function packageResult(packageName: string, category: string, documents: Array<[
     packageName,
     category,
     description: `${packageName} readiness pack`,
+    searchMetadata: { intent: category, subject: packageName, searchPhrases: [packageName] },
     sourceTitle: "Ministry of Electronics and Information Technology citizen services",
     sourceUrl: "https://www.meity.gov.in/",
     sourceOrganization: "Ministry of Electronics and Information Technology",
@@ -62,7 +63,13 @@ function packageResult(packageName: string, category: string, documents: Array<[
     }],
     lastVerifiedAt: checkedAt,
     verificationStatus: "verified",
-    requiredDocuments: documents.map(([id, documentCategory, documentType, owner, title]) => ({ id, category: documentCategory, documentType, owner, name: title, title, required: true })),
+    requiredDocuments: documents.map(([id, documentCategory, documentType, owner, title]) => ({
+      id, category: documentCategory, documentType, owner, name: title, title, required: true,
+      whyNeeded: `${title} is listed by the official source for this package.`,
+      sourceName: "Ministry of Electronics and Information Technology",
+      sourceUrl: "https://www.meity.gov.in/", sourceAuthorityTier: "government",
+      lastVerifiedAt: checkedAt,
+    })),
   };
 }
 

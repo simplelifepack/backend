@@ -1,5 +1,6 @@
 import type { DocumentOwner, NormalizedDocumentMetadata } from "./metadataTypes";
 import { normalizeDocumentType } from "./normalization";
+import { getDocumentDefinition } from "../ingestion/documentDefinitions";
 
 const owners = new Set<DocumentOwner>([
   "self", "spouse", "father", "mother", "child", "seller", "buyer",
@@ -11,6 +12,7 @@ export function buildDocumentMetadata(document: {
   documentType: string;
   normalizedType: string | null;
   fields: unknown;
+  readinessVerified?: boolean;
 }, unknownOwnerFallback?: DocumentOwner): NormalizedDocumentMetadata {
   const fields = objectValue(document.fields);
   const storedOwner = owners.has(fields.owner as DocumentOwner) ? fields.owner as DocumentOwner : "self";
@@ -19,16 +21,27 @@ export function buildDocumentMetadata(document: {
   const subType = firstString(fields, ["subType", "documentSubType"]);
   const documentDate = firstString(fields, ["documentDate", "statementDate", "issueDate", "date", "month"]);
   const attributes = scalarAttributes(fields);
+  const documentType = normalizeDocumentType(document.normalizedType ?? document.documentType);
+  const storedCapabilities = [...arrayStrings(fields.capabilities), ...arrayStrings(fields.satisfies)];
+  const capabilities = [...new Set([
+    ...getDocumentDefinition(documentType).supportedReadinessCapabilities,
+    ...storedCapabilities.map((value) => normalizeDocumentType(value)),
+  ])];
   if (documentDate) attributes.documentDate = documentDate;
   return {
     documentId: document.id,
-    documentType: normalizeDocumentType(document.normalizedType ?? document.documentType),
+    documentType,
+    capabilities,
     owner,
     subType,
     expiry,
-    verified: typeof fields.verified === "boolean" ? fields.verified : true,
+    verified: document.readinessVerified ?? (typeof fields.verified === "boolean" ? fields.verified : true),
     attributes,
   };
+}
+
+function arrayStrings(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
 }
 
 export function normalizeDocumentOwner(value: unknown): DocumentOwner {

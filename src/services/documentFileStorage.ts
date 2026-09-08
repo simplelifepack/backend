@@ -4,7 +4,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { TemporaryUpload } from "@prisma/client";
+import type { Prisma, TemporaryUpload } from "@prisma/client";
 
 import { prisma } from "../lib/prisma";
 import { getStorageProvider } from "../infrastructure/storage/createStorageProvider";
@@ -143,22 +143,19 @@ async function validateUploadFile(file: StoredUploadFile): Promise<ValidatedFile
 }
 
 export async function createTemporaryUpload(ownerProfileId: string, file: Express.Multer.File) {
+  let plaintext: Buffer | undefined;
   try {
     const validated = await validateUploadFile(file);
-    return prisma.temporaryUpload.create({
-      data: {
-        id: crypto.randomUUID(),
-        ownerProfileId,
-        storagePath: file.path,
-        originalName: validated.originalName,
-        detectedMimeType: validated.detectedMimeType,
-        size: validated.size,
-        expiresAt: new Date(Date.now() + TEMP_UPLOAD_TTL_MS),
-      },
+    plaintext = await fsp.readFile(file.path);
+    // Import validation accepts additional text/office formats; envelope encryption is MIME-independent.
+    const envelope = encryptDocumentOnBackend(plaintext, {
+      filename: validated.originalName,
+      mimeType: validated.detectedMimeType as ValidatedEncryptedEnvelope["originalMimeType"],
     });
-  } catch (error) {
+    return await createEncryptedTemporaryUpload(ownerProfileId, envelope);
+  } finally {
+    plaintext?.fill(0);
     await safeUnlink(file.path);
-    throw error;
   }
 }
 
@@ -213,9 +210,9 @@ export async function findOwnedTemporaryUpload(ownerProfileId: string, temporary
   });
 }
 
-export async function consumeTemporaryUpload(ownerProfileId: string, temporaryUploadId: string) {
+export async function consumeTemporaryUpload(ownerProfileId: string, temporaryUploadId: string, db: Prisma.TransactionClient = prisma) {
   const now = new Date();
-  const temporaryUpload = await prisma.temporaryUpload.findFirst({
+  const temporaryUpload = await db.temporaryUpload.findFirst({
     where: {
       id: temporaryUploadId,
       ownerProfileId,
@@ -226,7 +223,7 @@ export async function consumeTemporaryUpload(ownerProfileId: string, temporaryUp
   });
   if (!temporaryUpload) return null;
 
-  const consumed = await prisma.temporaryUpload.updateMany({
+  const consumed = await db.temporaryUpload.updateMany({
     where: {
       id: temporaryUpload.id,
       ownerProfileId,
@@ -252,6 +249,7 @@ export async function saveEncryptedPermanentFile(
   ownerProfileId: string,
   documentId: string,
   temporaryUpload: TemporaryUpload,
+  options: { preserveTemporaryFile?: boolean } = {},
 ) {
   const storageKey = `${ownerProfileId}/${documentId}/v1${ENCRYPTED_FILE_EXTENSION}`;
   try {
@@ -308,7 +306,7 @@ export async function saveEncryptedPermanentFile(
           key: storageKey,
           plaintext: temporaryBytes,
         });
-    await safeUnlink(temporaryUpload.storagePath);
+    if (!options.preserveTemporaryFile) await safeUnlink(temporaryUpload.storagePath);
     return {
       storageKey: stored.key,
       storageBucket: stored.bucket ?? null,
@@ -330,7 +328,6 @@ export async function saveEncryptedPermanentFile(
     };
   } catch (error) {
     await getStorageProvider().delete(storageKey).catch(() => undefined);
-    await safeUnlink(temporaryUpload.storagePath);
     throw error;
   }
 }
