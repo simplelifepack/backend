@@ -6,7 +6,7 @@ import { authLimiter, tokenRefreshLimiter } from "../middleware/security";
 import * as authService from "../services/auth.service";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../auth/refreshCookie";
 
-import { getRecoveryStatus, saveRecoveryKey, redeemRecoveryKey } from "../services/recovery.service";
+import { getRecoveryStatus, saveRecoveryKey, emailRecoveryKey, redeemRecoveryKey } from "../services/recovery.service";
 
 const router = Router();
 router.get("/recovery", requireAuth, async (req, res, next) => {
@@ -14,6 +14,9 @@ router.get("/recovery", requireAuth, async (req, res, next) => {
 });
 router.post("/recovery", authLimiter, requireAuth, async (req, res, next) => {
   try { return res.json(await saveRecoveryKey((req as AuthenticatedRequest).authUser.id, req.body)); } catch (error) { next(error); }
+});
+router.post("/recovery/email", authLimiter, requireAuth, async (req, res, next) => {
+  try { return res.json(await emailRecoveryKey((req as AuthenticatedRequest).authUser.id, req.body)); } catch (error) { next(error); }
 });
 router.post("/recover", authLimiter, async (req, res, next) => {
   try { const result = await redeemRecoveryKey(req.body); clearRefreshCookie(res); return res.json(result); } catch (error) { next(error); }

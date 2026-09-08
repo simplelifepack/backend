@@ -7,6 +7,7 @@ import { renderLoginAlertEmail } from "./templates/loginAlertEmail";
 import { renderWelcomeEmail } from "./templates/welcomeEmail";
 import { renderTrustInvitationEmail } from "./templates/trustInvitationEmail";
 import { renderWealthHandoffEmail } from "./templates/wealthHandoffEmail";
+import { renderRecoveryKeyEmail } from "./templates/recoveryKeyEmail";
 
 const EMAIL_TIMEOUT_MS = 5000;
 const RECIPIENT_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -17,7 +18,7 @@ export type LoginAlertContext = {
   timeZone?: string | null;
 };
 
-type SendType = "welcome" | "login_alert" | "password_reset" | "trust_invitation" | "wealth_handoff";
+type SendType = "welcome" | "login_alert" | "password_reset" | "trust_invitation" | "wealth_handoff" | "recovery_key";
 
 let providerOverride: EmailProvider | null = null;
 let cachedProvider: EmailProvider | null | undefined;
@@ -213,6 +214,26 @@ export async function sendPasswordResetEmail(user: { id: string; email: string }
     await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
   } catch (error) {
     logEmailFailure("password_reset", user.id, error);
+  }
+}
+
+export async function sendRecoveryKeyEmail(user: { id: string; email: string }, recoveryDocument: string) {
+  const provider = getEmailProvider();
+  if (!provider) {
+    return { sent: false, reason: "email_disabled" as const };
+  }
+  if (!isValidRecipient(user.email)) {
+    return { sent: false, reason: "invalid_recipient" as const };
+  }
+
+  const rendered = renderRecoveryKeyEmail({ recoveryDocument });
+
+  try {
+    const result = await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
+    return { sent: true, messageId: result?.messageId ?? null };
+  } catch (error) {
+    logEmailFailure("recovery_key", user.id, error);
+    return { sent: false, reason: "delivery_failed" as const, errorCode: errorCode(error) };
   }
 }
 

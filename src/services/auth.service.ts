@@ -15,6 +15,7 @@ export type AuthUser = {
   email: string;
   authVersion?: number;
   accountTier?: "free" | "paid";
+  recoverySetupComplete?: boolean;
 };
 
 type AuthResult = {
@@ -63,6 +64,7 @@ function toAuthUser(user: AuthUser): AuthUser {
     email: user.email,
     authVersion: user.authVersion ?? 0,
     accountTier: user.accountTier ?? "free",
+    recoverySetupComplete: user.recoverySetupComplete ?? false,
   };
 }
 
@@ -153,6 +155,7 @@ export async function signup(input: unknown): Promise<AuthResult> {
       email: true,
       authVersion: true,
       accountTier: true,
+      recoverySetupComplete: true,
     },
   });
 
@@ -268,8 +271,9 @@ export async function refresh(input: unknown): Promise<AuthResult> {
           id: true,
           name: true,
           email: true,
-      authVersion: true,
-      accountTier: true,
+          authVersion: true,
+          accountTier: true,
+          recoverySetupComplete: true,
         },
       },
     },
@@ -396,6 +400,7 @@ export async function resetPassword(input: unknown) {
         passwordHash,
         authVersion: { increment: 1 },
         recoveryVerifier: null,
+        recoverySetupComplete: false,
       },
     });
     await tx.refreshToken.updateMany({
@@ -425,6 +430,7 @@ export async function getUserById(id: string) {
       email: true,
       authVersion: true,
       accountTier: true,
+      recoverySetupComplete: true,
     },
   });
 

@@ -26,6 +26,7 @@ router.get("/", async (req, res, next) => {
       user: { id: authUser.id, name: authUser.name, email: authUser.email },
       ...usage,
       documentCount,
+      recoverySetupComplete: authUser.recoverySetupComplete,
       version: "1",
     });
   } catch (error) {
