@@ -1,15 +1,8 @@
 import cors from "cors";
-import express from "express";
+import express, { type Router } from "express";
 import helmet from "helmet";
 import authRouter from "./routes/auth.routes";
-import documentsRouter from "./routes/documents.routes";
-import packsRouter from "./routes/packs.routes";
-import { adminReadinessRouter } from "./routes/readiness.admin.routes";
-import gmailRouter from "./routes/gmail.routes";
-import driveRouter from "./routes/drive.routes";
 import bootstrapRouter from "./routes/bootstrap.routes";
-import trustRouter from "./routes/trust.routes";
-import wealthRouter from "./routes/wealth.routes";
 import { corsOptions, generalApiLimiter, jsonBodyLimit, securityHeadersOptions } from "./middleware/security";
 import { assertDocumentEncryptionConfigured } from "./utils/documentEncryption";
 import { errorHandler } from "./middleware/errorHandling";
@@ -18,7 +11,6 @@ import { loadEmailConfig } from "./config/email";
 import { loadBackendEnv } from "./config/env";
 import { loadStorageConfig } from "./config/storage";
 import { getActiveDocumentEncryptionKey } from "./services/documentHybridEncryption";
-import { assertDocumentSecurityScannerConfigured } from "./services/documentSecurityValidation";
 import { verifyEmailProviderOnStartup } from "./services/email/emailService";
 
 loadBackendEnv();
@@ -27,7 +19,6 @@ loadEmailConfig();
 loadStorageConfig();
 assertDocumentEncryptionConfigured();
 getActiveDocumentEncryptionKey();
-assertDocumentSecurityScannerConfigured();
 verifyEmailProviderOnStartup();
 
 const app = express();
@@ -54,6 +45,21 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: jsonBodyLimit }));
 
+function lazyRouter(loader: () => Promise<Record<string, unknown>>, exportName = "default") {
+  let loaded: Router | null = null;
+  return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    try {
+      if (!loaded) {
+        const mod = await loader();
+        loaded = mod[exportName] as Router;
+      }
+      return loaded(req, res, next);
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -64,16 +70,16 @@ app.get("/health", (_req, res) => {
 
 app.use(generalApiLimiter);
 app.use("/auth", authRouter);
-app.use("/documents", documentsRouter);
-app.use("/packs", packsRouter);
-app.use("/packages", packsRouter);
-app.use("/api/packages", packsRouter);
-app.use("/admin/readiness", adminReadinessRouter);
-app.use("/api/integrations/gmail", gmailRouter);
-app.use("/api/integrations/drive", driveRouter);
 app.use("/api/bootstrap", bootstrapRouter);
-app.use("/api/trust", trustRouter);
-app.use("/api/wealth", wealthRouter);
+app.use("/documents", lazyRouter(() => import("./routes/documents.routes")));
+app.use("/packs", lazyRouter(() => import("./routes/packs.routes")));
+app.use("/packages", lazyRouter(() => import("./routes/packs.routes")));
+app.use("/api/packages", lazyRouter(() => import("./routes/packs.routes")));
+app.use("/admin/readiness", lazyRouter(() => import("./routes/readiness.admin.routes"), "adminReadinessRouter"));
+app.use("/api/integrations/gmail", lazyRouter(() => import("./routes/gmail.routes")));
+app.use("/api/integrations/drive", lazyRouter(() => import("./routes/drive.routes")));
+app.use("/api/trust", lazyRouter(() => import("./routes/trust.routes")));
+app.use("/api/wealth", lazyRouter(() => import("./routes/wealth.routes")));
 
 app.use(errorHandler);
 

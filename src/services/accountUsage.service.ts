@@ -93,18 +93,20 @@ export async function releaseUninvokedAIAction(userId: string, period: string) {
 }
 
 export async function getAccountUsage(userId: string, now = new Date()) {
-  return prisma.$transaction(async tx => {
-    const tier = await lockAccount(tx, userId);
-    const usedBytes = await storedBytes(userId, tx);
-    const period = quotaPeriod(now ?? new Date());
-    const usage = await tx.userAIUsage.findUnique({ where: { userId_period: { userId, period } } });
-    const unlimited = tier === "paid";
-    const used = usage?.actionCount ?? 0;
-    return {
-      accountTier: tier,
-      storage: { usedBytes, limitBytes: unlimited ? null : FREE_STORAGE_LIMIT_BYTES, unlimited },
-      aiUsage: { used: unlimited ? null : used, limit: unlimited ? null : FREE_AI_ACTION_LIMIT,
-        remaining: unlimited ? null : Math.max(0, FREE_AI_ACTION_LIMIT - used), unlimited, period },
-    };
-  });
+  const period = quotaPeriod(now ?? new Date());
+  const [user, usedBytes, usage] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { accountTier: true } }),
+    storedBytes(userId),
+    prisma.userAIUsage.findUnique({ where: { userId_period: { userId, period } } }),
+  ]);
+  if (!user) throw Object.assign(new Error("Unauthorized."), { statusCode: 401 });
+  const tier = user.accountTier;
+  const unlimited = tier === "paid";
+  const used = usage?.actionCount ?? 0;
+  return {
+    accountTier: tier,
+    storage: { usedBytes, limitBytes: unlimited ? null : FREE_STORAGE_LIMIT_BYTES, unlimited },
+    aiUsage: { used: unlimited ? null : used, limit: unlimited ? null : FREE_AI_ACTION_LIMIT,
+      remaining: unlimited ? null : Math.max(0, FREE_AI_ACTION_LIMIT - used), unlimited, period },
+  };
 }
