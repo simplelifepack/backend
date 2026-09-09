@@ -9,7 +9,7 @@ type OpenAIResponse = { output?: Array<{ content?: Array<{ type?: string; text?:
 const MAX_ATTEMPTS = 3;
 // One bounded server deadline; client disconnection also cancels the upstream request.
 const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
-const MAX_OUTPUT_TOKENS = 2_500;
+const MAX_OUTPUT_TOKENS = 8_500;
 
 export class OpenAIProvider implements AIProvider {
   readonly name = "OpenAIProvider";
