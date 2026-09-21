@@ -6,3 +6,5 @@
 .vercel
 .env.*
 !.env.example
+
+/uploads

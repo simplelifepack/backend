@@ -50,6 +50,13 @@ model User {
   ownedTrustMembers          TrustMember[]               @relation("TrustMemberOwner")
   linkedTrustMemberships     TrustMember[]               @relation("TrustMemberLinkedUser")
   wealthRecords              WealthRecord[]
+  healthMembers              HealthMember[]
+  healthDocuments            HealthDocument[]
+  healthMeasurements         HealthMeasurement[]
+  trackedHealthMetrics       TrackedHealthMetric[]
+  healthMedications          HealthMedication[]
+  healthFollowUps            HealthFollowUp[]
+  healthReminders            HealthReminder[]
 }
 
 model TrustMember {
@@ -249,6 +256,7 @@ model Document {
   deletedAt                 DateTime?
   wealthAttachments         WealthRecordAttachment[]
   files                     DocumentFile[]
+  healthDocuments           HealthDocument[]
 
   @@unique([ownerProfileId, contentHash])
   @@unique([ownerProfileId, driveFileId])
@@ -266,6 +274,175 @@ model Document {
   @@index([uniqueIdentifierHash])
   @@index([sourceProvider, sourceMessageId])
   @@index([ownerProfileId, sourceChecksum])
+}
+
+model HealthMember {
+  id           String                @id @default(cuid())
+  userId       String
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  relation     String
+  bloodGroup   String?
+  dateOfBirth  DateTime?
+  conditions   String?
+  allergies    String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  primaryDoctor         String?
+  insuranceProvider     String?
+  insurancePolicyNumber String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  documents    HealthDocument[]
+  measurements HealthMeasurement[]
+  tracked      TrackedHealthMetric[]
+  medications  HealthMedication[]
+  followUps    HealthFollowUp[]
+  reminders    HealthReminder[]
+
+  @@index([userId])
+  @@map("health_members")
+}
+
+model HealthDocument {
+  id               String              @id @default(cuid())
+  userId           String
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId         String?
+  member           HealthMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  documentId       String
+  document         Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  type             String
+  documentDate     DateTime?
+  provider         String?
+  doctor           String?
+  processingStatus String              @default("pending")
+  processingError  String?
+  patientName      String?
+  patientDateOfBirth DateTime?
+  pendingExtraction Json?
+  createdAt        DateTime            @default(now())
+  processedAt      DateTime?
+  measurements     HealthMeasurement[]
+  medications      HealthMedication[]
+  followUps        HealthFollowUp[]
+  reminders        HealthReminder[]
+
+  @@unique([userId, documentId])
+  @@index([userId, memberId, documentDate])
+  @@index([documentId])
+  @@map("health_documents")
+}
+
+model HealthMeasurement {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId         String
+  member           HealthMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sourceDocumentId String
+  sourceDocument   HealthDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  metricKey        String
+  displayName      String
+  originalName     String
+  value            Float
+  secondaryValue   Float?
+  unit             String
+  context          String?
+  bodySite         String?
+  referenceMin     Float?
+  referenceMax     Float?
+  referenceText    String?
+  measuredAt       DateTime
+  createdAt        DateTime       @default(now())
+
+  @@index([userId, memberId, metricKey, measuredAt])
+  @@index([sourceDocumentId])
+  @@map("health_measurements")
+}
+
+model TrackedHealthMetric {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId    String
+  member      HealthMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  metricKey   String
+  displayName String
+  context     String?
+  bodySite    String?
+  enabled     Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([userId, memberId, metricKey, context, bodySite])
+  @@index([userId, memberId, enabled])
+  @@map("tracked_health_metrics")
+}
+
+model HealthMedication {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId         String
+  member           HealthMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sourceDocumentId String
+  sourceDocument   HealthDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  name             String
+  dose             String?
+  frequency        String?
+  duration         String?
+  quantity         String?
+  createdAt        DateTime       @default(now())
+
+  @@index([userId, memberId])
+  @@index([sourceDocumentId])
+  @@map("health_medications")
+}
+
+model HealthFollowUp {
+  id                    String           @id @default(cuid())
+  userId                String
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId              String
+  member                HealthMember     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sourceDocumentId      String
+  sourceDocument        HealthDocument   @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  title                 String
+  explicitDate          DateTime?
+  recommendedAfterValue Int?
+  recommendedAfterUnit  String?
+  dueDate               DateTime?
+  sourceText            String?
+  createdAt             DateTime         @default(now())
+  reminders             HealthReminder[]
+
+  @@index([userId, memberId, dueDate])
+  @@index([sourceDocumentId])
+  @@map("health_follow_ups")
+}
+
+model HealthReminder {
+  id               String          @id @default(cuid())
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId         String
+  member           HealthMember    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sourceFollowUpId String?
+  sourceFollowUp   HealthFollowUp? @relation(fields: [sourceFollowUpId], references: [id], onDelete: Cascade)
+  sourceDocumentId String?
+  sourceDocument   HealthDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  title            String
+  dueDate          DateTime
+  origin           String
+  recurrence       String?
+  status           String          @default("active")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([userId, memberId, dueDate, status])
+  @@index([sourceDocumentId])
+  @@map("health_reminders")
 }
 
 model DocumentFile {

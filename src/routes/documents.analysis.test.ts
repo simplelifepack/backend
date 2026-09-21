@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
-import { buildAnalyzeResponse, safeAnalysis } from "./documents.analysis";
+import { buildAnalyzeResponse, buildManualValidation, prepareManualFields, safeAnalysis } from "./documents.analysis";
+import { saveSchema } from "./documents.helpers";
 
 const invalid = safeAnalysis({
   category: "Something Else" as "Other",
@@ -34,5 +35,34 @@ assert.deepEqual(
 );
 assert.equal(response.files.length, 2);
 assert.equal(response.document.ownership, "mine");
+
+const manualPayload = {
+  tempFileIds: ["bc604f4c-5f38-4d9f-849b-72c0efbdafbd"],
+  category: "Identity",
+  analysisSource: "manual" as const,
+};
+const categoryOnly = saveSchema.parse(manualPayload);
+assert.equal(categoryOnly.documentType, "");
+assert.equal(categoryOnly.confidence, 0);
+assert.equal(categoryOnly.title, undefined);
+const categoryOnlyValidation = buildManualValidation(categoryOnly, prepareManualFields("", {}), "upload.png");
+assert.equal(categoryOnlyValidation.canSave, true);
+assert.equal(categoryOnlyValidation.category, "identity");
+assert.equal(categoryOnlyValidation.uniqueIdentifier, null);
+assert.equal(categoryOnlyValidation.displayName, "upload.png");
+
+const panPayload = saveSchema.parse({ ...manualPayload, documentType: "PAN" });
+const panWithoutNumber = buildManualValidation(panPayload, prepareManualFields("PAN", {}), "pan.png");
+assert.equal(panWithoutNumber.canSave, true);
+assert.deepEqual(panWithoutNumber.missingRequiredFields, []);
+const panFields = prepareManualFields("PAN", { uniqueNumber: "ABCDE1234F" });
+assert.equal(panFields.panNumber, "ABCDE1234F");
+const panWithNumber = buildManualValidation(panPayload, panFields, "pan.png");
+assert.equal(panWithNumber.uniqueIdentifierField, "panNumber");
+assert.equal(panWithNumber.uniqueIdentifier, "ABCDE1234F");
+
+const medicalPayload = saveSchema.parse({ ...manualPayload, category: "Medical" });
+assert.equal(buildManualValidation(medicalPayload, prepareManualFields("", {}), "report.png").category, "medical");
+assert.equal(saveSchema.safeParse({ ...manualPayload, category: "" }).success, false);
 
 console.log("document analysis response tests passed");

@@ -13,8 +13,10 @@ import { ingestDocument } from "../services/ingestion/pipeline";
 import { validateDocumentMetadata } from "../services/ingestion/documentDefinitions";
 import {
   buildAnalyzeResponse,
+  buildManualValidation,
   buildMinimalAIValidation,
   fallbackDocumentAIResult,
+  prepareManualFields,
   warningCodeForAnalysisError,
 } from "./documents.analysis";
 import {
@@ -135,7 +137,17 @@ router.post("/analyze", uploadLimiter, encryptedUpload.array("encryptedFiles", 1
 router.post("/", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
+    if (req.body?.analysisSource === "manual" && (typeof req.body.category !== "string" || !req.body.category.trim())) {
+      return res.status(422).json({ code: "CATEGORY_REQUIRED", message: "Please select a category." });
+    }
     const payload = saveSchema.parse(req.body);
+    if (payload.analysisSource === "manual" && payload.expiry) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(payload.expiry);
+      const date = match && new Date(`${payload.expiry}T00:00:00.000Z`);
+      if (!match || !date || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== payload.expiry) {
+        return res.status(422).json({ code: "INVALID_EXPIRY_DATE", message: "Please enter a valid expiry date." });
+      }
+    }
     const pendingTemporaryUploads = await Promise.all(payload.tempFileIds.map((id) => findOwnedTemporaryUpload(authUser.id, id)));
     if (pendingTemporaryUploads.some((item) => !item)) {
       return res.status(404).json({
@@ -148,7 +160,7 @@ router.post("/", async (req, res, next) => {
     if (activeUploads.some((item) => !item.keyAlgorithm || item.encryptedSize === null || item.scanStatus !== "passed")) {
       return res.status(422).json({ message: "Document security validation has not passed." });
     }
-    const fieldsForValidation = {
+    const suppliedFields = {
       ...payload.fields,
       ...Object.fromEntries(
         payload.reviewFields
@@ -156,8 +168,13 @@ router.post("/", async (req, res, next) => {
           .map((field) => [field.key as string, (field.value as string).trim()]),
       ),
     };
+    const fieldsForValidation = payload.analysisSource === "manual"
+      ? prepareManualFields(payload.documentType, suppliedFields, payload.expiry)
+      : suppliedFields;
     const validation = payload.analysisSource === "ai"
       ? buildMinimalAIValidation(payload, fieldsForValidation)
+      : payload.analysisSource === "manual"
+        ? buildManualValidation(payload, fieldsForValidation, pendingTemporaryUpload.originalName)
       : validateDocumentMetadata({
           documentType: payload.documentType,
           rawText: payload.rawExtractedText,

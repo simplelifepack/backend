@@ -80,6 +80,7 @@ app.use("/api/integrations/gmail", lazyRouter(() => import("./routes/gmail.route
 app.use("/api/integrations/drive", lazyRouter(() => import("./routes/drive.routes")));
 app.use("/api/trust", lazyRouter(() => import("./routes/trust.routes")));
 app.use("/api/wealth", lazyRouter(() => import("./routes/wealth.routes")));
+app.use("/api/health", lazyRouter(() => import("./routes/health.routes")));
 
 app.use(errorHandler);
 

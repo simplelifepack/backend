@@ -14,13 +14,13 @@ export const idSchema = z.object({
   id: z.string().min(1),
 });
 
-export const saveSchema = z.object({
+const baseSaveSchema = z.object({
   tempFileIds: z.array(z.string().uuid()).min(1).max(10).refine(ids => new Set(ids).size === ids.length, "Duplicate upload references."),
   originalName: z.string().min(1).optional(),
   mimeType: z.string().min(1).optional(),
   size: z.coerce.number().int().nonnegative().optional(),
   title: z.string().trim().min(1).optional(),
-  category: z.string().min(1),
+  category: z.string().trim().min(1),
   documentType: z.string().min(1),
   confidence: z.coerce.number().min(0).max(100),
   fields: z.record(z.unknown()).default({}),
@@ -38,6 +38,15 @@ export const saveSchema = z.object({
   verified: z.boolean().default(false),
   targetProfileId: z.string().min(1).optional(),
 });
+
+export const saveSchema = z.union([
+  baseSaveSchema.extend({
+    analysisSource: z.literal("manual"),
+    documentType: z.string().default(""),
+    confidence: z.coerce.number().min(0).max(100).default(0),
+  }),
+  baseSaveSchema,
+]);
 
 const categoryMap: Record<string, string> = {
   Identity: "identity",
