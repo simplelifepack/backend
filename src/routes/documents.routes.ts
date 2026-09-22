@@ -38,7 +38,7 @@ import {
 import {
   consumeTemporaryUpload,
   deleteTemporaryUploadFile,
-  createDecryptedDocumentReadStream,
+  createDecryptedDocumentReadStreamFromLocation,
   createEncryptedTemporaryUpload,
   findOwnedTemporaryUpload,
   removePermanentFile,
@@ -78,6 +78,25 @@ function extensionForMimeType(mimeType: string) {
 }
 const router = Router();
 router.use(requireAuth);
+
+type DocumentWithFiles = Prisma.DocumentGetPayload<{ include: { files: true } }>;
+
+async function createDocumentPreviewStream(document: DocumentWithFiles) {
+  const locations = [
+    document,
+    ...document.files.sort((a, b) => a.pageIndex - b.pageIndex),
+  ];
+  let lastError: unknown;
+  for (const location of locations) {
+    try {
+      return await createDecryptedDocumentReadStreamFromLocation(location);
+    } catch (error) {
+      if ((error as { code?: unknown })?.code !== "DOCUMENT_FILE_MISSING") throw error;
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error("Document file is missing.");
+}
 
 router.get("/encryption-key", (_req, res) => {
   res.setHeader("Cache-Control", "private, max-age=300");
@@ -469,23 +488,22 @@ router.get("/:id/download", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { id } = idSchema.parse(req.params);
-    const document = await prisma.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null } });
+    const document = await prisma.document.findFirst({
+      where: { id, ownerProfileId: authUser.id, deletedAt: null },
+      include: { files: true },
+    });
     if (!document) {
       return res.status(404).json({ message: "Document not found." });
     }
     if (document.sourceProvider === "GOOGLE_DRIVE" && document.driveFileId) {
       return res.redirect(302, `https://drive.google.com/open?id=${encodeURIComponent(document.driveFileId)}`);
     }
+    const decrypted = await createDocumentPreviewStream(document);
     res.setHeader("Content-Type", document.mimeType || "application/octet-stream");
     const safeName = decryptString(document.originalName) ?? "document";
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeName)}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    const decrypted = await createDecryptedDocumentReadStream(
-      document.storageKey ?? document.path,
-      document.storedName,
-      document,
-    );
     return decrypted.pipe(res);
   } catch (error) {
     return next(error);
@@ -495,23 +513,22 @@ router.get("/:id/preview", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { id } = idSchema.parse(req.params);
-    const document = await prisma.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null } });
+    const document = await prisma.document.findFirst({
+      where: { id, ownerProfileId: authUser.id, deletedAt: null },
+      include: { files: true },
+    });
     if (!document) {
       return res.status(404).json({ message: "Document not found." });
     }
     if (document.sourceProvider === "GOOGLE_DRIVE" && document.driveFileId) {
       return res.redirect(302, `https://drive.google.com/open?id=${encodeURIComponent(document.driveFileId)}`);
     }
+    const decrypted = await createDocumentPreviewStream(document);
     res.setHeader("Content-Type", document.mimeType || "application/octet-stream");
     const safeName = decryptString(document.originalName) ?? "document";
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(safeName)}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    const decrypted = await createDecryptedDocumentReadStream(
-      document.storageKey ?? document.path,
-      document.storedName,
-      document,
-    );
     return decrypted.pipe(res);
   } catch (error) {
     return next(error);

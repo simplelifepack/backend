@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises";
 import type { Prisma, TemporaryUpload } from "@prisma/client";
 
 import { prisma } from "../lib/prisma";
+import { StorageObjectNotFoundError } from "../infrastructure/storage/StorageProvider";
 import { getStorageProvider } from "../infrastructure/storage/createStorageProvider";
 import { DocumentStorageService } from "./DocumentStorageService";
 import { permanentUploadsDir, temporaryUploadsDir, uploadsDir } from "../middleware/upload";
@@ -42,6 +43,22 @@ type ValidatedFile = {
   detectedMimeType: string;
   size: number;
 };
+
+type StoredDocumentLocation = Partial<StoredHybridEncryptionMetadata> & {
+  storageKey?: string | null;
+  path?: string | null;
+  storedName?: string | null;
+};
+
+export class DocumentFileMissingError extends Error {
+  statusCode = 410;
+  code = "DOCUMENT_FILE_MISSING";
+
+  constructor() {
+    super("The saved document file is no longer available.");
+    this.name = "DocumentFileMissingError";
+  }
+}
 
 class UploadValidationError extends Error {
   statusCode = 400;
@@ -411,6 +428,55 @@ async function readStoredDocumentBytes(
   if (isOwnedLegacyFile) return fsp.readFile(resolved);
 
   throw new Error("Document storage path is invalid.");
+}
+
+function distinctStoredDocumentLocations(document: StoredDocumentLocation) {
+  const candidates: Array<{
+    filePath: string;
+    storedName?: string;
+    encryption: StoredHybridEncryptionMetadata;
+  }> = [];
+  const seen = new Set<string>();
+  const add = (filePath: string | null | undefined) => {
+    if (!filePath || seen.has(filePath)) return;
+    seen.add(filePath);
+    candidates.push({
+      filePath,
+      storedName: document.storedName ?? undefined,
+      encryption: document as StoredHybridEncryptionMetadata,
+    });
+  };
+
+  add(document.storageKey);
+  add(document.path);
+  return candidates;
+}
+
+export async function readDecryptedDocumentLocation(document: StoredDocumentLocation) {
+  let missing = false;
+  for (const candidate of distinctStoredDocumentLocations(document)) {
+    try {
+      return await readStoredDocumentBytes(
+        candidate.filePath,
+        candidate.storedName,
+        candidate.encryption,
+      );
+    } catch (error) {
+      if (error instanceof StorageObjectNotFoundError) {
+        missing = true;
+        continue;
+      }
+      throw error;
+    }
+  }
+  if (missing) throw new DocumentFileMissingError();
+  throw new Error("Document storage path is invalid.");
+}
+
+export async function createDecryptedDocumentReadStreamFromLocation(
+  document: StoredDocumentLocation,
+) {
+  return Readable.from(await readDecryptedDocumentLocation(document));
 }
 
 export async function createDecryptedDocumentReadStream(

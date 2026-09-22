@@ -11,6 +11,7 @@ import { buildErrorResponse } from "../middleware/errorHandling";
 import {
   consumeTemporaryUpload,
   createTemporaryUpload,
+  readDecryptedDocumentLocation,
   readDecryptedDocumentFile,
   removePermanentFile,
   saveEncryptedPermanentFile,
@@ -20,7 +21,7 @@ import { getStorageProvider } from "../infrastructure/storage/createStorageProvi
 process.env.STORAGE_DRIVER = "local";
 process.env.LOCAL_STORAGE_PATH = path.join(os.tmpdir(), "readiness-document-security-storage");
 import { toDocumentResponseDto } from "./documents.helpers";
-import { encryptJson, encryptString } from "../utils/documentEncryption";
+import { encryptDocumentFile, encryptJson, encryptString } from "../utils/documentEncryption";
 
 const ownerA = `security-owner-a-${crypto.randomUUID()}`;
 const ownerB = `security-owner-b-${crypto.randomUUID()}`;
@@ -148,6 +149,40 @@ async function run() {
     assert.equal(permanentBytes.length, document.encryptedSize);
     assert.equal((await readDecryptedDocumentFile(encryptedFile.path, document)).toString("utf8"), content);
     await assert.rejects(readDecryptedDocumentFile(encryptedFile.path, { ...document, encryptedSha256: "0".repeat(64) }), "Tampered ciphertext metadata must be rejected.");
+
+    const legacyPlaintext = await writeTempFixture("legacy-source.txt", "legacy encrypted bytes");
+    createdPaths.push(legacyPlaintext);
+    const legacyPath = path.join(permanentUploadsDir, `${crypto.randomUUID()}.lpe`);
+    await encryptDocumentFile(legacyPlaintext, legacyPath);
+    createdPaths.push(legacyPath);
+    const legacyFallbackDocument = await prisma.document.update({
+      where: { id: document.id },
+      data: {
+        storageKey: `${ownerA}/missing/v1.bin`,
+        path: legacyPath,
+        storedName: path.basename(legacyPath),
+        encryptionVersion: 1,
+        contentAlgorithm: null,
+        keyAlgorithm: null,
+        keyId: null,
+        keyVersion: null,
+        encryptionIv: null,
+        wrappedKey: null,
+        originalSha256: null,
+        encryptedSha256: null,
+        ciphertextHash: null,
+        encryptedSize: null,
+      },
+    });
+    assert.equal(
+      (await readDecryptedDocumentLocation(legacyFallbackDocument)).toString("utf8"),
+      "legacy encrypted bytes",
+      "Preview/download must fall back from a missing provider storage key to the legacy encrypted path.",
+    );
+    await assert.rejects(
+      () => readDecryptedDocumentLocation({ ...legacyFallbackDocument, path: `${ownerA}/also-missing.bin` }),
+      { code: "DOCUMENT_FILE_MISSING" },
+    );
 
     const ownerDocument = await prisma.document.findFirst({ where: { id: document.id, ownerProfileId: ownerA } });
     const otherUserDocument = await prisma.document.findFirst({ where: { id: document.id, ownerProfileId: ownerB } });

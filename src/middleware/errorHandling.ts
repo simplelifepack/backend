@@ -39,6 +39,16 @@ export function buildErrorResponse(input: {
   const status = statusCodeForError(input.error);
   const candidateCode = input.error instanceof Error && input.error.message === "INVALID_ENCRYPTION_ENVELOPE"
     ? "INVALID_ENCRYPTION_ENVELOPE" : (input.error as { code?: unknown })?.code;
+  if (candidateCode === "DOCUMENT_FILE_MISSING") {
+    return {
+      status,
+      body: {
+        code: "DOCUMENT_FILE_MISSING",
+        message: "The saved document file is no longer available. Please re-upload the document.",
+        errorId,
+      },
+    };
+  }
   const safeCodes = new Set([
     "EMPTY_FILE",
     "IMAGE_DIMENSIONS_EXCEEDED",
