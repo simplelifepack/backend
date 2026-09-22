@@ -28,6 +28,7 @@
     "test:drive": "tsx src/services/drive/drive.test.ts",
     "test:storage": "tsx src/infrastructure/storage/storage.test.ts",
     "keys:rewrap": "tsx src/scripts/rewrapDocumentKeys.ts",
+    "documents:audit-storage": "tsx src/scripts/auditDocumentStorage.ts",
     "documents:migrate-trust-state": "tsx src/scripts/migrateDocumentTrustState.ts",
     "packages:backfill-sources": "tsx -r dotenv/config src/scripts/backfillPackageSources.ts",
     "email:verify-smtp": "tsx src/scripts/verifySmtp.ts",
