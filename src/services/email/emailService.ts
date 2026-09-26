@@ -8,7 +8,7 @@ import { renderWelcomeEmail } from "./templates/welcomeEmail";
 import { renderTrustInvitationEmail } from "./templates/trustInvitationEmail";
 import { renderWealthHandoffEmail } from "./templates/wealthHandoffEmail";
 
-const EMAIL_TIMEOUT_MS = 5000;
+const DEFAULT_EMAIL_TIMEOUT_MS = 30_000;
 const RECIPIENT_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type LoginAlertContext = {
@@ -22,6 +22,11 @@ type SendType = "welcome" | "login_alert" | "password_reset" | "trust_invitation
 let providerOverride: EmailProvider | null = null;
 let cachedProvider: EmailProvider | null | undefined;
 let startupVerificationStarted = false;
+
+function emailTimeoutMs() {
+  const configured = Number(process.env.EMAIL_TIMEOUT_MS ?? process.env.SMTP_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_EMAIL_TIMEOUT_MS;
+}
 
 function getEmailProvider(): EmailProvider | null {
   if (providerOverride) return providerOverride;
@@ -72,7 +77,7 @@ function withTimeout<T>(send: Promise<T>) {
       const error = new Error("Email delivery timed out.");
       error.name = "EmailTimeoutError";
       reject(error);
-    }, EMAIL_TIMEOUT_MS);
+    }, emailTimeoutMs());
   });
 
   return Promise.race([send, timeoutPromise]).finally(() => {

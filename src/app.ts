@@ -1,7 +1,6 @@
 import cors from "cors";
 import express, { type Router } from "express";
 import helmet from "helmet";
-import swaggerUi from "swagger-ui-express";
 import authRouter from "./routes/auth.routes";
 import bootstrapRouter from "./routes/bootstrap.routes";
 import { openApiDocument } from "./docs/openapi";
@@ -75,16 +74,65 @@ app.get("/openapi.json", (_req, res) => {
   res.json(openApiDocument);
 });
 
-app.use(
-  "/api-docs",
-  swaggerUi.serve,
-  swaggerUi.setup(openApiDocument, {
-    swaggerOptions: {
-      persistAuthorization: true,
-      withCredentials: true,
-    },
-  }),
-);
+const swaggerUiVersion = "5.33.0";
+const swaggerUiCdnBase = `https://cdn.jsdelivr.net/npm/swagger-ui-dist@${swaggerUiVersion}`;
+
+app.get(["/api-docs", "/api-docs/"], (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      `script-src 'self' 'unsafe-inline' ${swaggerUiCdnBase}`,
+      `style-src 'self' 'unsafe-inline' ${swaggerUiCdnBase}`,
+      "img-src 'self' data:",
+      "font-src 'self' https: data:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-ancestors 'self'",
+    ].join(";"),
+  );
+  res.type("html").send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Readiness API Docs</title>
+  <link rel="stylesheet" href="${swaggerUiCdnBase}/swagger-ui.css" />
+  <style>
+    html { box-sizing: border-box; overflow-y: scroll; }
+    *, *::before, *::after { box-sizing: inherit; }
+    body { margin: 0; background: #fafafa; }
+    .swagger-ui .topbar .download-url-wrapper { display: none; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="${swaggerUiCdnBase}/swagger-ui-bundle.js"></script>
+  <script src="${swaggerUiCdnBase}/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function () {
+      window.ui = SwaggerUIBundle({
+        url: "/openapi.json",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        persistAuthorization: true,
+        withCredentials: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout"
+      });
+    };
+  </script>
+</body>
+</html>`);
+});
 
 app.use(generalApiLimiter);
 app.use("/auth", authRouter);
