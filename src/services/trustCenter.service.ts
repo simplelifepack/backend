@@ -89,7 +89,8 @@ function inviteExpiry() {
 }
 
 function relationLabel(relation: string, customRelation: string | null | undefined) {
-  if (relation === "OTHER") return customRelation ?? "Other";
+  if (customRelation) return customRelation;
+  if (relation === "OTHER") return "Other";
   return relation.toLowerCase().replace(/(^|_)([a-z])/g, (_match, prefix: string, letter: string) =>
     `${prefix ? " " : ""}${letter.toUpperCase()}`,
   );
@@ -232,6 +233,31 @@ export async function addTrustMember(ownerUserId: string, input: unknown) {
   const invitationDelivery = await deliverInvitation(member, token);
   const saved = await getMemberRecord(ownerUserId, member.id);
   return memberDto(saved, invitationDelivery);
+}
+
+export async function addFamilyMember(ownerUserId: string, input: unknown) {
+  const data = trustMemberBaseSchema.refine((value) => value.relation !== "OTHER" || Boolean(value.customRelation), {
+    message: "Custom relation is required when relation is OTHER.",
+    path: ["customRelation"],
+  }).parse(input);
+  const email = normalizeEmail(data.email);
+  const member = await prisma.$transaction(async (tx) => {
+    const duplicate = await tx.trustMember.findFirst({ where: { ownerUserId, email, status: { in: ["INVITED", "ACTIVE"] } } });
+    if (duplicate) throw Object.assign(new Error("This family member already exists."), { statusCode: 409 });
+    const created = await tx.trustMember.create({
+      data: {
+        ownerUserId, email, name: data.name, relation: data.relation, customRelation: data.customRelation,
+        dateOfBirth: data.dateOfBirth, bloodGroup: data.bloodGroup, accessType: data.accessTypeCode,
+        status: "ACTIVE", acceptedAt: new Date(),
+      },
+      include: { permissions: true },
+    });
+    for (const permission of data.permissions) {
+      await tx.trustMemberPermission.create({ data: { trustMemberId: created.id, ...permission } });
+    }
+    return created;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return memberDto(member);
 }
 
 async function getMemberRecord(ownerUserId: string, memberId: string) {

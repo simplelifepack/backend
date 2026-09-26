@@ -31,10 +31,6 @@ model User {
   id                         String                      @id @default(cuid())
   name                       String
   email                      String                      @unique
-  recoveryVerifier           String?
-  recoveryVersion            Int                         @default(0)
-  recoveryCreatedAt          DateTime?
-  recoverySetupComplete      Boolean                     @default(false)
   authVersion                Int                         @default(0)
   passwordHash               String?
   welcomeEmailSentAt         DateTime?
@@ -386,13 +382,15 @@ model HealthMedication {
   user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   memberId         String
   member           HealthMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  sourceDocumentId String
-  sourceDocument   HealthDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceDocumentId String?
+  sourceDocument   HealthDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
   name             String
   dose             String?
   frequency        String?
   duration         String?
   quantity         String?
+  repeats          Boolean        @default(false)
+  runsOutAt        DateTime?
   createdAt        DateTime       @default(now())
 
   @@index([userId, memberId])

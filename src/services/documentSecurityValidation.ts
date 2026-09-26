@@ -9,6 +9,7 @@ import {
   DocumentEnvelopeError,
   type ValidatedEncryptedEnvelope,
 } from "./documentHybridEncryption";
+import { MAX_DOCUMENT_UPLOAD_BYTES } from "./documentUploadLimits";
 
 const MAX_IMAGE_WIDTH = Number(process.env.MAX_DOCUMENT_IMAGE_WIDTH) || 12_000;
 const MAX_IMAGE_HEIGHT = Number(process.env.MAX_DOCUMENT_IMAGE_HEIGHT) || 12_000;
@@ -17,6 +18,60 @@ const MAX_PDF_PAGES = Number(process.env.MAX_DOCUMENT_PDF_PAGES) || 500;
 const EICAR_MARKER = Buffer.from("EICAR-STANDARD-ANTIVIRUS-TEST-FILE");
 
 export { assertDocumentSecurityScannerConfigured };
+
+type PdfIndirectObject = {
+  objectNumber: string;
+  generation: string;
+  body: string;
+};
+
+function decodePdfName(value: string) {
+  return value.replace(/#([0-9a-fA-F]{2})/g, (_, hex: string) =>
+    String.fromCharCode(Number.parseInt(hex, 16)),
+  );
+}
+
+function readPdfNameValue(source: string, key: string) {
+  const match = new RegExp(`/${key}(?:\\s+/|\\s+|/)([^/\\s<>()\\[\\]{}%]+)`).exec(source);
+  return match ? decodePdfName(match[1]!.replace(/^\//, "")) : null;
+}
+
+function parsePdfIndirectObjects(source: string): PdfIndirectObject[] {
+  return Array.from(source.matchAll(/(\d+)\s+(\d+)\s+obj\b([\s\S]*?)\bendobj\b/g)).map(
+    (match) => ({
+      objectNumber: match[1]!,
+      generation: match[2]!,
+      body: match[3]!,
+    }),
+  );
+}
+
+function isC2paEmbeddedFileObject(body: string) {
+  return readPdfNameValue(body, "Type") === "EmbeddedFile" &&
+    readPdfNameValue(body, "Subtype") === "application/c2pa";
+}
+
+function hasUnsupportedPdfEmbeddedFiles(source: string) {
+  const objects = parsePdfIndirectObjects(source);
+  const embeddedFileObjects = objects.filter((object) =>
+    readPdfNameValue(object.body, "Type") === "EmbeddedFile",
+  );
+  if (!embeddedFileObjects.length) {
+    return /\/EmbeddedFile\b/.test(source);
+  }
+  if (embeddedFileObjects.some((object) => !isC2paEmbeddedFileObject(object.body))) {
+    return true;
+  }
+
+  return false;
+}
+
+function hasUnsupportedPdfActiveContent(source: string) {
+  return /\/S\s*\/(?:JavaScript|Launch)\b/.test(source) ||
+    /\/(?:JavaScript|JS)\s*(?:\(|<|[0-9]+\s+[0-9]+\s+R)/.test(source) ||
+    hasUnsupportedPdfEmbeddedFiles(source) ||
+    /\/AA\s*<</.test(source);
+}
 
 function assertStaticPdfSafety(plaintext: Buffer) {
   if (!plaintext.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
@@ -33,7 +88,7 @@ function assertStaticPdfSafety(plaintext: Buffer) {
       422,
     );
   }
-  if (/\/(?:JavaScript|JS|Launch|EmbeddedFile|Filespec)\b|\/AA\s*<</.test(source)) {
+  if (hasUnsupportedPdfActiveContent(source)) {
     throw new DocumentEnvelopeError(
       "UNSAFE_FILE",
       "The PDF contains unsupported active or embedded content.",
@@ -168,8 +223,8 @@ export async function validateDecryptedDocument(
     "originalFilename" | "originalMimeType" | "originalSize"
   >,
 ) {
-  if (plaintext.length > 20 * 1024 * 1024 || envelope.originalSize > 20 * 1024 * 1024) {
-    throw new DocumentEnvelopeError("FILE_TOO_LARGE", fileTooLargeMessage(20 * 1024 * 1024), 413);
+  if (plaintext.length > MAX_DOCUMENT_UPLOAD_BYTES || envelope.originalSize > MAX_DOCUMENT_UPLOAD_BYTES) {
+    throw new DocumentEnvelopeError("FILE_TOO_LARGE", fileTooLargeMessage(MAX_DOCUMENT_UPLOAD_BYTES), 413);
   }
   if (!plaintext.length) throw new DocumentEnvelopeError("EMPTY_FILE", documentValidationMessages.EMPTY_FILE!, 422);
   if (plaintext.length !== envelope.originalSize) {

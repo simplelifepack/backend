@@ -62,6 +62,14 @@ export const reminderSchema = z.object({
   recurrence: z.string().trim().max(80).optional().nullable(),
 }).strict();
 
+export const manualMedicationSchema = z.object({
+  name: z.string().trim().min(1).max(180),
+  dose: z.string().trim().min(1).max(120),
+  frequency: z.string().trim().max(160).optional().nullable(),
+  repeats: z.boolean().default(false),
+  runsOutAt: z.string().trim().optional().nullable(),
+}).strict();
+
 function iso(date: Date | null | undefined) {
   return date ? date.toISOString().slice(0, 10) : null;
 }
@@ -587,7 +595,7 @@ export async function getOverview(userId: string, memberId: string) {
 
 export async function listActiveHealthReminders(userId: string) {
   const reminders = await prisma.healthReminder.findMany({
-    where: { userId, status: "active", dueDate: { gte: new Date() } },
+    where: { userId, status: "active" },
     include: { member: { select: { name: true } } },
     orderBy: { dueDate: "asc" },
     take: 20,
@@ -596,6 +604,7 @@ export async function listActiveHealthReminders(userId: string) {
     id: item.id,
     title: item.title,
     dueDate: iso(item.dueDate),
+    memberId: item.memberId,
     memberName: item.member.name,
     origin: item.origin,
   }));
@@ -632,13 +641,34 @@ export async function getTimeline(userId: string, memberId: string) {
       id: item.id,
       eventType: "medication" as const,
       recordId: item.sourceDocumentId,
-      occurredAt: iso(item.sourceDocument.documentDate ?? item.createdAt),
+      occurredAt: iso(item.runsOutAt ?? item.sourceDocument?.documentDate ?? item.createdAt),
       title: item.name,
-      detail: [item.dose, item.frequency, item.duration].filter(Boolean).join(" · ") || null,
-      source: "Medication recorded",
-      sourceType: item.sourceDocument.type,
+      detail: [
+        item.dose,
+        item.frequency,
+        item.repeats ? "Ongoing" : item.duration,
+        item.runsOutAt ? `Runs out ${iso(item.runsOutAt)}` : null,
+      ].filter(Boolean).join(" · ") || null,
+      source: item.sourceDocument ? "Medication recorded" : "Manual medication",
+      sourceType: item.sourceDocument?.type ?? "manual",
     })),
   ].sort((a, b) => (b.occurredAt ?? "").localeCompare(a.occurredAt ?? ""));
+}
+
+export async function createManualMedication(userId: string, memberId: string, input: unknown) {
+  await assertMember(userId, memberId);
+  const data = manualMedicationSchema.parse(input);
+  return prisma.healthMedication.create({
+    data: {
+      userId,
+      memberId,
+      name: data.name,
+      dose: data.dose,
+      frequency: data.frequency || null,
+      repeats: data.repeats,
+      runsOutAt: parseDate(data.runsOutAt),
+    },
+  });
 }
 
 export async function createManualReminder(userId: string, input: unknown) {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import {
   acceptInvitation,
+  addFamilyMember,
   addTrustMember,
   getTrustCenter,
   getInvitation,
@@ -61,6 +62,15 @@ router.post("/members", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.status(201).json(await addTrustMember(authUser.id, req.body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/family-members", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.status(201).json(await addFamilyMember(authUser.id, req.body));
   } catch (error) {
     return next(error);
   }

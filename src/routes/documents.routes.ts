@@ -4,6 +4,7 @@ import { withStorageUpload, lockAccount } from "../services/accountUsage.service
 import crypto from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { uploadLimiter } from "../middleware/security";
@@ -54,6 +55,7 @@ import {
   validateDecryptedDocument,
   withIsolatedPlaintextFile,
 } from "../services/documentSecurityValidation";
+import { createStoredZip, sanitizeArchiveName } from "../services/archiveZip";
 import { normalizeNameForMatch } from "../services/identity/ownershipDetection";
 
 function toAnalysisFile(temporaryUpload: {
@@ -80,6 +82,7 @@ const router = Router();
 router.use(requireAuth);
 
 type DocumentWithFiles = Prisma.DocumentGetPayload<{ include: { files: true } }>;
+const bulkDocumentSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).strict();
 
 async function createDocumentPreviewStream(document: DocumentWithFiles) {
   const locations = [
@@ -96,6 +99,25 @@ async function createDocumentPreviewStream(document: DocumentWithFiles) {
     }
   }
   throw lastError ?? new Error("Document file is missing.");
+}
+
+async function streamToBuffer(stream: NodeJS.ReadableStream) {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+function uniqueArchiveName(name: string, used: Set<string>) {
+  const safe = sanitizeArchiveName(name);
+  if (!used.has(safe)) { used.add(safe); return safe; }
+  const dot = safe.lastIndexOf(".");
+  const base = dot > 0 ? safe.slice(0, dot) : safe;
+  const ext = dot > 0 ? safe.slice(dot) : "";
+  let index = 2;
+  while (used.has(`${base} (${index})${ext}`)) index += 1;
+  const unique = `${base} (${index})${ext}`;
+  used.add(unique);
+  return unique;
 }
 
 router.get("/encryption-key", (_req, res) => {
@@ -450,6 +472,49 @@ router.get("/", async (_req, res, next) => {
     return next(error);
   }
 });
+router.post("/bulk-download", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { ids } = bulkDocumentSchema.parse(req.body);
+    const documents = await prisma.document.findMany({
+      where: { id: { in: ids }, ownerProfileId: authUser.id, deletedAt: null },
+      include: { files: true },
+    });
+    if (documents.length !== new Set(ids).size) return res.status(404).json({ message: "One or more documents were not found." });
+    const byId = new Map(documents.map(document => [document.id, document]));
+    const used = new Set<string>();
+    const files = await Promise.all(ids.map(async id => {
+      const document = byId.get(id)!;
+      const data = await streamToBuffer(await createDocumentPreviewStream(document));
+      return { name: uniqueArchiveName(decryptString(document.originalName) ?? "document", used), data, modifiedAt: document.updatedAt };
+    }));
+    const zip = createStoredZip(files);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", 'attachment; filename="readiness-documents.zip"');
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.send(zip);
+  } catch (error) {
+    return next(error);
+  }
+});
+router.post("/bulk-delete", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { ids } = bulkDocumentSchema.parse(req.body);
+    await prisma.$transaction(async tx => {
+      await lockAccount(tx, authUser.id);
+      const documents = await tx.document.findMany({ where: { id: { in: ids }, ownerProfileId: authUser.id, deletedAt: null }, include: { files: true } });
+      if (documents.length !== new Set(ids).size) throw Object.assign(new Error("One or more documents were not found."), { statusCode: 404 });
+      await queueStorageCleanup(tx, authUser.id, documents.flatMap(document => [document, ...document.files]));
+      await tx.document.deleteMany({ where: { id: { in: ids }, ownerProfileId: authUser.id } });
+    }, { maxWait: 30_000, timeout: 60_000 });
+    await drainStorageCleanup(authUser.id);
+    return res.status(204).send();
+  } catch (error) {
+    return next(error);
+  }
+});
 router.get("/:id", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
@@ -494,9 +559,6 @@ router.get("/:id/download", async (req, res, next) => {
     });
     if (!document) {
       return res.status(404).json({ message: "Document not found." });
-    }
-    if (document.sourceProvider === "GOOGLE_DRIVE" && document.driveFileId) {
-      return res.redirect(302, `https://drive.google.com/open?id=${encodeURIComponent(document.driveFileId)}`);
     }
     const decrypted = await createDocumentPreviewStream(document);
     res.setHeader("Content-Type", document.mimeType || "application/octet-stream");

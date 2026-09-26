@@ -11,7 +11,7 @@ let wealthRecordsTableAvailable: boolean | null = null;
 const recordSchema = z.object({
   type: z.enum(types),
   title: z.string().trim().min(1).max(160),
-  details: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),
+  details: z.record(z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())])).default({}),
   notes: z.string().trim().max(4000).optional(),
   followUpDate: z.string().trim().optional().nullable(),
   followUpNote: z.string().trim().max(2000).optional(),
@@ -82,6 +82,7 @@ function attachmentDto(attachment: Prisma.WealthRecordAttachmentGetPayload<{ inc
 
 function recordDto(encrypted: Prisma.WealthRecordGetPayload<{ include: { attachments: { include: { document: true } } } }>) {
   const record = decryptWealthRecord(encrypted);
+  const attachments = record.attachments.map(attachmentDto);
   return {
     id: record.id,
     type: record.type,
@@ -92,7 +93,8 @@ function recordDto(encrypted: Prisma.WealthRecordGetPayload<{ include: { attachm
     followUpNote: record.followUpNote,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-    attachments: record.attachments.map(attachmentDto),
+    attachmentDocumentIds: attachments.map((attachment) => attachment.documentId),
+    attachments,
     loanBreakdown: loanBreakdown(record),
   };
 }
@@ -134,4 +136,45 @@ export async function createWealthRecord(userId: string, input: unknown) {
     include: { attachments: { include: { document: true } } },
   });
   return recordDto(record);
+}
+
+export async function updateWealthRecord(userId: string, recordId: string, input: unknown) {
+  if (wealthRecordsTableAvailable === null) {
+    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
+    wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
+  }
+  if (!wealthRecordsTableAvailable) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
+  const existing = await prisma.wealthRecord.findFirst({ where: { id: recordId, ownerUserId: userId } });
+  if (!existing) throw Object.assign(new Error("Wealth record not found."), { statusCode: 404 });
+  const data = recordSchema.parse(input);
+  const documentIds = [...new Set(data.attachmentDocumentIds)];
+  if (documentIds.length) {
+    const count = await prisma.document.count({ where: { id: { in: documentIds }, ownerProfileId: userId, deletedAt: null } });
+    if (count !== documentIds.length) throw Object.assign(new Error("One or more attached documents could not be found."), { statusCode: 400 });
+  }
+  const record = await prisma.wealthRecord.update({
+    where: { id: recordId },
+    data: {
+      type: data.type,
+      ...encryptWealthFields(data),
+      followUpDate: parseDate(data.followUpDate),
+      attachments: {
+        deleteMany: {},
+        create: documentIds.map((documentId) => ({ documentId })),
+      },
+    },
+    include: { attachments: { include: { document: true } } },
+  });
+  return recordDto(record);
+}
+
+export async function deleteWealthRecord(userId: string, recordId: string) {
+  if (wealthRecordsTableAvailable === null) {
+    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
+    wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
+  }
+  if (!wealthRecordsTableAvailable) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
+  const existing = await prisma.wealthRecord.findFirst({ where: { id: recordId, ownerUserId: userId } });
+  if (!existing) throw Object.assign(new Error("Wealth record not found."), { statusCode: 404 });
+  await prisma.wealthRecord.delete({ where: { id: recordId } });
 }

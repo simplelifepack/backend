@@ -10,6 +10,8 @@ import {
 } from "./types";
 
 const allowedCategories = new Set<string>(documentCategories);
+const MAX_CLASSIFICATION_PAGES = Number(process.env.MAX_CLASSIFICATION_PDF_PAGES) || 3;
+const MAX_CLASSIFICATION_TEXT_CHARS = Number(process.env.MAX_CLASSIFICATION_TEXT_CHARS) || 12_000;
 const imageMimeTypes = new Set([
   "image/bmp",
   "image/heic",
@@ -82,6 +84,17 @@ Category guidance:
 - Sale deed, property tax receipt, electricity bill, water bill, rental agreement -> Property
 - Agreement, affidavit, legal notice, court document -> Legal
 - Anything else -> Other`;
+
+async function extractPdfClassificationText(file: UploadedFile) {
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ url: file.path });
+  try {
+    const result = await parser.getText({ first: MAX_CLASSIFICATION_PAGES });
+    return result.text.slice(0, MAX_CLASSIFICATION_TEXT_CHARS).trim();
+  } finally {
+    await parser.destroy().catch(() => undefined);
+  }
+}
 
 function parseJsonObject(input: string) {
   try {
@@ -205,8 +218,28 @@ export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
 
   async analyzeDocument(files: UploadedFile[]): Promise<DocumentAIResult> {
     if (!files.length) throw new Error("At least one document image is required.");
-    if (files.some((file) => file.mimeType === "application/pdf")) {
-      throw new Error("PDF document analysis needs manual review until PDF page rendering is available.");
+    const pdfs = files.filter((file) => file.mimeType === "application/pdf");
+    if (pdfs.length) {
+      if (pdfs.length !== files.length) throw new Error("PDF and image uploads cannot be analyzed together.");
+      const extractedText = (await Promise.all(pdfs.map(extractPdfClassificationText))).join("\n\n").slice(0, MAX_CLASSIFICATION_TEXT_CHARS);
+      if (!extractedText.trim()) throw new Error("PDF did not contain enough readable text for classification.");
+      const response = await this.client.responses.create({
+        store: false,
+        model: this.model,
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: prompt },
+              { type: "input_text", text: `Classify this PDF from only the bounded initial text below. Filename(s): ${pdfs.map((file) => file.originalName).join(", ")}\n\n${extractedText}` },
+            ],
+          },
+        ],
+        text: {
+          format: { type: "json_schema", name: "readiness_document_analysis", strict: true, schema: { type: "object", properties: { category: { type: "string", enum: [...documentCategories] }, documentType: { type: "string" }, uniqueNumber: { type: ["string", "null"] }, nameOnDocument: { type: ["string", "null"] }, expiryDate: { type: ["string", "null"] } }, required: ["category", "documentType", "uniqueNumber", "nameOnDocument", "expiryDate"], additionalProperties: false } },
+        },
+      });
+      return validateDocumentAIResult(parseJsonObject(response.output_text));
     }
 
     if (files.some((file) => !imageMimeTypes.has(file.mimeType))) {

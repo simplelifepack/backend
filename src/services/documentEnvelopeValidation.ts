@@ -11,6 +11,7 @@ import {
   type ValidatedEncryptedEnvelope,
 } from "./documentEncryptionConstants";
 import { loadDocumentEncryptionKeys } from "./documentEncryptionKeyring";
+import { AES_GCM_TAG_BYTES, MAX_DOCUMENT_UPLOAD_BYTES } from "./documentUploadLimits";
 
 const base64UrlSchema = z.string().min(1).max(4096).regex(/^[A-Za-z0-9_-]+$/);
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -24,7 +25,7 @@ const envelopeFieldsSchema = z.object({
   keyAlgorithm: z.literal(KEY_ALGORITHM),
   originalFilename: z.string().trim().min(1).max(255),
   originalMimeType: z.enum(["application/pdf", "image/jpeg", "image/png", "image/webp"]),
-  originalSize: z.coerce.number().int().positive().max(20 * 1024 * 1024),
+  originalSize: z.coerce.number().int().positive().max(MAX_DOCUMENT_UPLOAD_BYTES),
   originalSha256: sha256Schema,
   encryptedSha256: sha256Schema,
   aiAnalysisConsent: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
@@ -68,8 +69,11 @@ export function validateEncryptedDocumentEnvelope(
     );
   }
   const input = fields && typeof fields === "object" ? fields as Record<string, unknown> : {};
-  if (Number(input.originalSize) > 20 * 1024 * 1024 || file.size > 20 * 1024 * 1024 + 16) {
-    throw new DocumentEnvelopeError("FILE_TOO_LARGE", fileTooLargeMessage(20 * 1024 * 1024), 413);
+  if (
+    Number(input.originalSize) > MAX_DOCUMENT_UPLOAD_BYTES ||
+    file.size > MAX_DOCUMENT_UPLOAD_BYTES + AES_GCM_TAG_BYTES
+  ) {
+    throw new DocumentEnvelopeError("FILE_TOO_LARGE", fileTooLargeMessage(MAX_DOCUMENT_UPLOAD_BYTES), 413);
   }
   if (Number(input.originalSize) === 0) {
     throw new DocumentEnvelopeError("EMPTY_FILE", documentValidationMessages.EMPTY_FILE!, 422);

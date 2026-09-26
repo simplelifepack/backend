@@ -2,12 +2,11 @@ import { loadEmailConfig } from "../../config/email";
 import { prisma } from "../../lib/prisma";
 import { SmtpEmailProvider } from "./SmtpEmailProvider";
 import type { EmailProvider, SendEmailInput } from "./EmailProvider";
-import { renderPasswordResetEmail } from "./templates/passwordResetEmail";
+import { renderPasswordResetEmail, renderPasswordResetOtpEmail } from "./templates/passwordResetEmail";
 import { renderLoginAlertEmail } from "./templates/loginAlertEmail";
 import { renderWelcomeEmail } from "./templates/welcomeEmail";
 import { renderTrustInvitationEmail } from "./templates/trustInvitationEmail";
 import { renderWealthHandoffEmail } from "./templates/wealthHandoffEmail";
-import { renderRecoveryKeyEmail } from "./templates/recoveryKeyEmail";
 
 const EMAIL_TIMEOUT_MS = 5000;
 const RECIPIENT_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -18,7 +17,7 @@ export type LoginAlertContext = {
   timeZone?: string | null;
 };
 
-type SendType = "welcome" | "login_alert" | "password_reset" | "trust_invitation" | "wealth_handoff" | "recovery_key";
+type SendType = "welcome" | "login_alert" | "password_reset" | "trust_invitation" | "wealth_handoff";
 
 let providerOverride: EmailProvider | null = null;
 let cachedProvider: EmailProvider | null | undefined;
@@ -217,7 +216,7 @@ export async function sendPasswordResetEmail(user: { id: string; email: string }
   }
 }
 
-export async function sendRecoveryKeyEmail(user: { id: string; email: string }, recoveryDocument: string) {
+export async function sendPasswordResetOtpEmail(user: { id: string; email: string }, otp: string) {
   const provider = getEmailProvider();
   if (!provider) {
     return { sent: false, reason: "email_disabled" as const };
@@ -226,13 +225,13 @@ export async function sendRecoveryKeyEmail(user: { id: string; email: string }, 
     return { sent: false, reason: "invalid_recipient" as const };
   }
 
-  const rendered = renderRecoveryKeyEmail({ recoveryDocument });
+  const rendered = renderPasswordResetOtpEmail({ otp });
 
   try {
     const result = await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
     return { sent: true, messageId: result?.messageId ?? null };
   } catch (error) {
-    logEmailFailure("recovery_key", user.id, error);
+    logEmailFailure("password_reset", user.id, error);
     return { sent: false, reason: "delivery_failed" as const, errorCode: errorCode(error) };
   }
 }

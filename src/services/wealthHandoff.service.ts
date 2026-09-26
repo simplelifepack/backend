@@ -53,9 +53,13 @@ function counts(records: RecordWithAttachments[]) {
   };
 }
 
-async function getVerifiedRecipients(userId: string) {
+async function getVerifiedRecipients(userId: string, includeUnavailable = false) {
   const members = await prisma.trustMember.findMany({
-    where: { ownerUserId: userId, status: "ACTIVE", permissions: { some: { module: "WEALTH", canView: true, canDownload: true } } },
+    where: {
+      ownerUserId: userId,
+      status: "ACTIVE",
+      ...(includeUnavailable ? {} : { permissions: { some: { module: "WEALTH", canView: true, canDownload: true } } }),
+    },
     include: { permissions: true },
     orderBy: { acceptedAt: "desc" },
   });
@@ -64,6 +68,9 @@ async function getVerifiedRecipients(userId: string) {
     name: member.name,
     email: member.email,
     relationship: member.customRelation ?? member.relation,
+    accessType: member.accessType,
+    accessTypeLabel: member.accessType === "FAMILY_MEMBER" ? "Full member" : member.accessType === "EMERGENCY_ACCESS" ? "Emergency access" : "View only",
+    canReceiveHandoff: member.permissions.some((permission) => permission.module === "WEALTH" && permission.canView && permission.canDownload),
     verificationStatus: "verified" as const,
     type: member.accessType === "FAMILY_MEMBER" ? "family" as const : member.accessType === "EMERGENCY_ACCESS" ? "emergency" as const : "other" as const,
   }));
@@ -146,12 +153,13 @@ function contentSummary(type: HandoffType) {
 }
 
 export async function getWealthHandoffSummary(userId: string) {
-  const [recipients, records] = await Promise.all([getVerifiedRecipients(userId), getRecords(userId)]);
+  const [recipients, records] = await Promise.all([getVerifiedRecipients(userId, true), getRecords(userId)]);
   return {
     generatedAt: new Date().toISOString(),
     recipients: {
       family: recipients.filter((recipient) => recipient.type === "family"),
       emergency: recipients.filter((recipient) => recipient.type === "emergency"),
+      other: recipients.filter((recipient) => recipient.type === "other"),
     },
     handoffTypes: (["family", "emergency"] as const).map((type) => ({
       type,

@@ -1,8 +1,10 @@
 import cors from "cors";
 import express, { type Router } from "express";
 import helmet from "helmet";
+import swaggerUi from "swagger-ui-express";
 import authRouter from "./routes/auth.routes";
 import bootstrapRouter from "./routes/bootstrap.routes";
+import { openApiDocument } from "./docs/openapi";
 import { corsOptions, generalApiLimiter, jsonBodyLimit, securityHeadersOptions } from "./middleware/security";
 import { assertDocumentEncryptionConfigured } from "./utils/documentEncryption";
 import { errorHandler } from "./middleware/errorHandling";
@@ -67,6 +69,22 @@ app.get("/health", (_req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+app.get("/openapi.json", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(openApiDocument);
+});
+
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(openApiDocument, {
+    swaggerOptions: {
+      persistAuthorization: true,
+      withCredentials: true,
+    },
+  }),
+);
 
 app.use(generalApiLimiter);
 app.use("/auth", authRouter);

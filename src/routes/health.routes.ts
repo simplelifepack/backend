@@ -3,6 +3,7 @@ import { Router } from "express";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import {
   createHealthMember,
+  createManualMedication,
   createHealthRecord,
   createManualReminder,
   deleteHealthMember,
@@ -167,6 +168,15 @@ router.get("/members/:memberId/timeline", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.json(await getTimeline(authUser.id, req.params.memberId));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/members/:memberId/medications", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.status(201).json(await createManualMedication(authUser.id, req.params.memberId, req.body));
   } catch (error) {
     return next(error);
   }

@@ -1,10 +1,10 @@
-import fs from "node:fs/promises";
-
 import type { DocumentExtractor, ExtractedDocument } from "../types";
 import { logPipelineStage } from "../logger";
 import { ocrImage } from "../ocr/ocrService";
 
 const MIN_EMBEDDED_TEXT_LENGTH = 80;
+const MAX_CLASSIFICATION_PAGES = Number(process.env.MAX_CLASSIFICATION_PDF_PAGES) || 3;
+const MAX_CLASSIFICATION_TEXT_CHARS = Number(process.env.MAX_CLASSIFICATION_TEXT_CHARS) || 12_000;
 
 async function ensurePdfRuntime() {
   const runtime = globalThis as Record<string, unknown>;
@@ -18,24 +18,29 @@ async function ensurePdfRuntime() {
 export const pdfExtractor: DocumentExtractor = {
   supports: (_file, signature) => signature.kind === "pdf",
   async extract(file, signature): Promise<ExtractedDocument> {
-    const buffer = await fs.readFile(file.path);
     const warnings = [...signature.warnings];
     let parser: InstanceType<(typeof import("pdf-parse"))["PDFParse"]> | null = null;
 
     try {
       await ensurePdfRuntime();
       const { PDFParse } = await import("pdf-parse");
-      parser = new PDFParse({ data: buffer });
-      const textResult = await parser.getText();
+      parser = new PDFParse({ url: file.path });
+      const textResult = await parser.getText({ first: MAX_CLASSIFICATION_PAGES });
       const embeddedPages = textResult.pages.map((page) => ({
         pageNumber: page.num,
-        text: page.text,
+        text: page.text.slice(0, MAX_CLASSIFICATION_TEXT_CHARS),
       }));
-      const embeddedText = textResult.text || embeddedPages.map((page) => page.text).join("\n\n");
+      const embeddedText = (textResult.text || embeddedPages.map((page) => page.text).join("\n\n")).slice(0, MAX_CLASSIFICATION_TEXT_CHARS);
+      if (textResult.total > MAX_CLASSIFICATION_PAGES) {
+        warnings.push({
+          code: "PDF_CLASSIFICATION_BOUNDED",
+          message: `Only the first ${MAX_CLASSIFICATION_PAGES} PDF pages were inspected for classification.`,
+        });
+      }
 
       if (embeddedText.trim().length >= MIN_EMBEDDED_TEXT_LENGTH) {
         logPipelineStage("pdf_embedded_text_extracted", {
-          pages: textResult.total,
+          pages: Math.min(textResult.total, MAX_CLASSIFICATION_PAGES),
           textLength: embeddedText.length,
         });
 
@@ -46,7 +51,7 @@ export const pdfExtractor: DocumentExtractor = {
           combinedText: embeddedText,
           pages: embeddedPages,
           warnings,
-          partial: false,
+          partial: textResult.total > MAX_CLASSIFICATION_PAGES,
         };
       }
 
@@ -60,6 +65,7 @@ export const pdfExtractor: DocumentExtractor = {
       const screenshots = await parser.getScreenshot({
         imageBuffer: true,
         scale: 2,
+        first: MAX_CLASSIFICATION_PAGES,
       });
       const pages = [];
 
@@ -76,7 +82,7 @@ export const pdfExtractor: DocumentExtractor = {
         })));
       }
 
-      const text = pages.map((page) => page.text).join("\n\n");
+      const text = pages.map((page) => page.text).join("\n\n").slice(0, MAX_CLASSIFICATION_TEXT_CHARS);
 
       return {
         kind: "pdf",

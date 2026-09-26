@@ -81,7 +81,25 @@ async function run() {
     const aiUpload = await prepare();
     const ai = await save({ tempFileIds: [aiUpload.id], analysisSource: 'ai', category: 'Identity', documentType: 'PAN Card', confidence: 90, fields: { uniqueNumber: 'FGHIJ5678K' } });
     assert.equal(ai.status, 201, JSON.stringify(ai.result));
-    console.log('PASS: manual category-only, optional PAN number, medical upload, missing-category error, AI save, and persisted records over authenticated HTTP.');
+    const zipResponse = await fetch(`http://127.0.0.1:${address.port}/documents/bulk-download`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [categoryOnly.result.document.id, panOnly.result.document.id] }),
+    });
+    assert.equal(zipResponse.status, 200);
+    assert.equal(zipResponse.headers.get('content-type'), 'application/zip');
+    const zip = Buffer.from(await zipResponse.arrayBuffer());
+    assert.equal(zip.subarray(0, 2).toString(), 'PK');
+    assert.match(zip.toString('utf8'), new RegExp(categoryOnlyUpload.originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+    const bulkDeleteResponse = await fetch(`http://127.0.0.1:${address.port}/documents/bulk-delete`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [medical.result.document.id, ai.result.document.id] }),
+    });
+    assert.equal(bulkDeleteResponse.status, 204);
+    assert.equal(await prisma.document.count({ where: { id: { in: [medical.result.document.id, ai.result.document.id] } } }), 0);
+    console.log('PASS: manual saves, authenticated bulk ZIP download, bulk delete cleanup, and persisted records over HTTP.');
   } finally {
     for (const id of savedIds) {
       await fetch(`http://127.0.0.1:${address.port}/documents/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });

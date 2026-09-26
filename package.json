@@ -7,6 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "node scripts/prisma-command.mjs generate && tsc",
     "lint": "eslint .",
+    "openapi:check": "tsx src/docs/openapi.check.ts",
     "start": "node dist/index.js",
     "test:ingestion": "tsx src/services/ingestion/pipeline.test.ts",
     "test:documents:security": "tsx src/routes/documents.security.test.ts",
@@ -41,6 +42,7 @@
     "test:usage:integration": "node --import tsx src/services/accountUsage.integration.test.ts && node --import tsx src/routes/usage.http.integration.test.ts && node --import tsx src/routes/packageQuota.http.integration.test.ts"
   },
   "dependencies": {
+    "@apidevtools/swagger-parser": "^13.1.0",
     "@aws-sdk/client-s3": "^3.1097.0",
     "@aws-sdk/s3-request-presigner": "^3.1097.0",
     "@prisma/client": "^6.10.1",
@@ -63,6 +65,7 @@
     "pdf-parse": "^2.4.5",
     "sanitize-html": "^2.17.6",
     "sharp": "^0.35.2",
+    "swagger-ui-express": "^5.0.1",
     "tesseract.js": "^7.0.0",
     "word-extractor": "^1.0.4",
     "zod": "^3.25.76"
@@ -75,6 +78,7 @@
     "@types/node": "^24.0.10",
     "@types/nodemailer": "^8.0.1",
     "@types/sanitize-html": "^2.16.1",
+    "@types/swagger-ui-express": "^4.1.8",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",

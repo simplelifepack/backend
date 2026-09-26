@@ -8,7 +8,6 @@ export type AuthenticatedRequest = Request & {
     id: string;
     name: string;
     email: string;
-    recoverySetupComplete?: boolean;
   };
 };
 

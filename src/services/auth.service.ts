@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
@@ -15,7 +15,6 @@ export type AuthUser = {
   email: string;
   authVersion?: number;
   accountTier?: "free" | "paid";
-  recoverySetupComplete?: boolean;
 };
 
 type AuthResult = {
@@ -45,6 +44,17 @@ const resetPasswordSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters."),
 });
 
+const resetPasswordOtpSchema = z.object({
+  email: z.string().trim().email("A valid email is required."),
+  otp: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from your email."),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters.")
+    .regex(/[a-z]/, "Password must include a lowercase letter.")
+    .regex(/[A-Z]/, "Password must include an uppercase letter.")
+    .regex(/\d/, "Password must include a number.")
+    .regex(/[^A-Za-z0-9]/, "Password must include a symbol."),
+});
+
 const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, "Refresh token is required."),
 });
@@ -64,7 +74,6 @@ function toAuthUser(user: AuthUser): AuthUser {
     email: user.email,
     authVersion: user.authVersion ?? 0,
     accountTier: user.accountTier ?? "free",
-    recoverySetupComplete: user.recoverySetupComplete ?? false,
   };
 }
 
@@ -74,6 +83,10 @@ function hashRefreshToken(refreshToken: string) {
 
 function hashPasswordResetToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function hashPasswordResetOtp(userId: string, otp: string) {
+  return hashPasswordResetToken(`otp:${userId}:${otp}`);
 }
 
 function getRefreshTokenExpiry() {
@@ -155,7 +168,6 @@ export async function signup(input: unknown): Promise<AuthResult> {
       email: true,
       authVersion: true,
       accountTier: true,
-      recoverySetupComplete: true,
     },
   });
 
@@ -273,7 +285,6 @@ export async function refresh(input: unknown): Promise<AuthResult> {
           email: true,
           authVersion: true,
           accountTier: true,
-          recoverySetupComplete: true,
         },
       },
     },
@@ -354,6 +365,106 @@ export async function forgotPassword(input: unknown) {
   };
 }
 
+export async function requestPasswordResetOtp(input: unknown) {
+  const { email } = forgotPasswordSchema.parse(input);
+  const user = await findUserByEmail(email);
+
+  if (!user) {
+    throw httpError("Email not valid.", 404);
+  }
+
+  const otp = String(randomInt(100000, 1000000));
+  await prisma.passwordResetToken.updateMany({
+    where: {
+      userId: user.id,
+      usedAt: null,
+    },
+    data: {
+      usedAt: new Date(),
+    },
+  });
+  await prisma.passwordResetToken.create({
+    data: {
+      tokenHash: hashPasswordResetOtp(user.id, otp),
+      userId: user.id,
+      expiresAt: getPasswordResetExpiry(),
+    },
+  });
+  const delivery = await emailService.sendPasswordResetOtpEmail(user, otp);
+  if (!delivery.sent) {
+    throw httpError("Unable to send OTP email. Please contact support@readiness.com.", 502);
+  }
+
+  return {
+    message: "We sent a 6-digit password reset code to your email.",
+  };
+}
+
+export async function resetPasswordWithOtp(input: unknown) {
+  const { email, otp, password } = resetPasswordOtpSchema.parse(input);
+  const user = await findUserByEmail(email);
+  const tokenHash = user ? hashPasswordResetOtp(user.id, otp) : hashPasswordResetToken(`missing:${otp}`);
+  const savedToken = await prisma.passwordResetToken.findUnique({
+    where: {
+      tokenHash,
+    },
+    select: {
+      id: true,
+      userId: true,
+      usedAt: true,
+      expiresAt: true,
+    },
+  });
+
+  if (!user || !savedToken || savedToken.userId !== user.id || savedToken.usedAt || savedToken.expiresAt <= new Date()) {
+    throw httpError("Invalid or expired password reset code.", 400);
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.passwordResetToken.updateMany({
+      where: {
+        id: savedToken.id,
+        userId: user.id,
+        usedAt: null,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    if (claimed.count !== 1) {
+      throw httpError("Invalid or expired password reset code.", 400);
+    }
+
+    await tx.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        passwordHash,
+        authVersion: { increment: 1 },
+      },
+    });
+    await tx.refreshToken.updateMany({
+      where: {
+        userId: user.id,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+  });
+
+  return {
+    message: "Password updated. Please sign in again.",
+  };
+}
+
 export async function resetPassword(input: unknown) {
   const { token, password } = resetPasswordSchema.parse(input);
   const tokenHash = hashPasswordResetToken(token);
@@ -399,8 +510,6 @@ export async function resetPassword(input: unknown) {
       data: {
         passwordHash,
         authVersion: { increment: 1 },
-        recoveryVerifier: null,
-        recoverySetupComplete: false,
       },
     });
     await tx.refreshToken.updateMany({
@@ -430,7 +539,6 @@ export async function getUserById(id: string) {
       email: true,
       authVersion: true,
       accountTier: true,
-      recoverySetupComplete: true,
     },
   });
 

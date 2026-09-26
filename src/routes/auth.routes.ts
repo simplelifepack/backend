@@ -6,21 +6,7 @@ import { authLimiter, tokenRefreshLimiter } from "../middleware/security";
 import * as authService from "../services/auth.service";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../auth/refreshCookie";
 
-import { getRecoveryStatus, saveRecoveryKey, emailRecoveryKey, redeemRecoveryKey } from "../services/recovery.service";
-
 const router = Router();
-router.get("/recovery", requireAuth, async (req, res, next) => {
-  try { return res.json(await getRecoveryStatus((req as AuthenticatedRequest).authUser.id)); } catch (error) { next(error); }
-});
-router.post("/recovery", authLimiter, requireAuth, async (req, res, next) => {
-  try { return res.json(await saveRecoveryKey((req as AuthenticatedRequest).authUser.id, req.body)); } catch (error) { next(error); }
-});
-router.post("/recovery/email", authLimiter, requireAuth, async (req, res, next) => {
-  try { return res.json(await emailRecoveryKey((req as AuthenticatedRequest).authUser.id, req.body)); } catch (error) { next(error); }
-});
-router.post("/recover", authLimiter, async (req, res, next) => {
-  try { const result = await redeemRecoveryKey(req.body); clearRefreshCookie(res); return res.json(result); } catch (error) { next(error); }
-});
 
 function sendAuthResult(res: Parameters<typeof setRefreshCookie>[0], result: Awaited<ReturnType<typeof authService.login>>, status = 200) {
   setRefreshCookie(res, result.refreshToken);
@@ -104,9 +90,27 @@ router.post("/forgot-password", authLimiter, async (req, res, next) => {
   }
 });
 
+router.post("/forgot-password/otp", authLimiter, async (req, res, next) => {
+  try {
+    const result = await authService.requestPasswordResetOtp(req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/reset-password", authLimiter, async (req, res, next) => {
   try {
     const result = await authService.resetPassword(req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/reset-password/otp", authLimiter, async (req, res, next) => {
+  try {
+    const result = await authService.resetPasswordWithOtp(req.body);
     res.json(result);
   } catch (error) {
     next(error);

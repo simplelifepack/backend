@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 
@@ -9,12 +10,20 @@ import {
   withIsolatedPlaintextFile,
 } from "./documentSecurityValidation";
 
-function minimalPdf(extra = "") {
+function minimalPdf(input: string | {
+  catalogExtra?: string;
+  content?: string;
+  extraObjects?: string[];
+} = "") {
+  const options = typeof input === "string" ? { content: input } : input;
+  const catalogExtra = options.catalogExtra ? ` ${options.catalogExtra}` : "";
+  const content = options.content ?? "";
   const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Catalog /Pages 2 0 R${catalogExtra} >>`,
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
     "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Contents 4 0 R >>",
-    `<< /Length ${extra.length} >>\nstream\n${extra}\nendstream`,
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    ...(options.extraObjects ?? []),
   ];
   let body = "%PDF-1.4\n";
   const offsets = [0];
@@ -31,6 +40,35 @@ function minimalPdf(extra = "") {
   return Buffer.from(body, "latin1");
 }
 
+function pdfWithEmbeddedFile(subtype: string, filename = "attachment.bin") {
+  return minimalPdf({
+    catalogExtra: "/Names << /EmbeddedFiles << /Names [(Content Credentials) 5 0 R] >> >>",
+    extraObjects: [
+      `<< /Type /Filespec /F (${filename}) /EF << /F 6 0 R >> >>`,
+      `<< /Type /EmbeddedFile /Subtype /${subtype} /Length 4 >>\nstream\ndata\nendstream`,
+    ],
+  });
+}
+
+async function assertPdfAllowed(pdf: Buffer, filename: string) {
+  await validateDecryptedDocument(pdf, {
+    originalFilename: filename,
+    originalMimeType: "application/pdf",
+    originalSize: pdf.length,
+  });
+}
+
+async function assertPdfRejectedAsUnsafe(pdf: Buffer, filename: string) {
+  await assert.rejects(
+    () => validateDecryptedDocument(pdf, {
+      originalFilename: filename,
+      originalMimeType: "application/pdf",
+      originalSize: pdf.length,
+    }),
+    /plain PDF or image copy/,
+  );
+}
+
 async function run() {
   assert.doesNotThrow(() => assertDocumentSecurityScannerConfigured({ NODE_ENV: "production" }));
   assert.throws(
@@ -45,19 +83,34 @@ async function run() {
     }),
   );
   const pdf = minimalPdf("BT /F1 12 Tf ET");
-  await validateDecryptedDocument(pdf, {
-    originalFilename: "valid.pdf",
-    originalMimeType: "application/pdf",
-    originalSize: pdf.length,
-  });
+  await assertPdfAllowed(pdf, "valid.pdf");
+  const c2paPdf = pdfWithEmbeddedFile("application#2Fc2pa", "content-credentials.c2pa");
+  await assertPdfAllowed(c2paPdf, "c2pa.pdf");
+  const downloadedBankStatement = path.resolve(
+    os.homedir(),
+    "Downloads/test_bank_statement_august_2026.pdf",
+  );
+  try {
+    const bankStatementPdf = await fs.readFile(downloadedBankStatement);
+    await assertPdfAllowed(bankStatementPdf, "test_bank_statement_august_2026.pdf");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   const unsafePdf = minimalPdf("/JavaScript /JS (app.alert)");
-  await assert.rejects(
-    () => validateDecryptedDocument(unsafePdf, {
-      originalFilename: "unsafe.pdf",
-      originalMimeType: "application/pdf",
-      originalSize: unsafePdf.length,
-    }),
-    /plain PDF or image copy/,
+  await assertPdfRejectedAsUnsafe(unsafePdf, "unsafe.pdf");
+  await assertPdfRejectedAsUnsafe(
+    minimalPdf("<< /S /Launch /F (run.exe) >>"),
+    "launch-action.pdf",
+  );
+  const benignPdf = minimalPdf("/Filespec /JSName (not an action)");
+  await assertPdfAllowed(benignPdf, "benign.pdf");
+  await assertPdfRejectedAsUnsafe(
+    pdfWithEmbeddedFile("text#2Fplain", "notes.txt"),
+    "attached-document.pdf",
+  );
+  await assertPdfRejectedAsUnsafe(
+    pdfWithEmbeddedFile("application#2Fx-msdownload", "run.exe"),
+    "attached-executable.pdf",
   );
   for (const marker of ["/Encrypt", "/EmbeddedFile /Filespec"]) {
     const rejectedPdf = minimalPdf(marker);

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
+import { AES_GCM_TAG_BYTES, MAX_DOCUMENT_UPLOAD_BYTES } from "../services/documentUploadLimits";
 
 const defaultUploadsDir = process.env.VERCEL ? path.join("/tmp", "readiness-uploads") : path.resolve(process.cwd(), "uploads");
 const uploadsDir = path.resolve(process.env.UPLOADS_DIR || defaultUploadsDir);
@@ -57,7 +58,7 @@ const allowedExtensions = new Set([
 export const upload = multer({
   storage,
   limits: {
-    fileSize: 25 * 1024 * 1024,
+    fileSize: MAX_DOCUMENT_UPLOAD_BYTES,
   },
   fileFilter: (_req, file, cb) => {
     const extension = path.extname(file.originalname).toLowerCase();
@@ -73,7 +74,7 @@ export const upload = multer({
 export const encryptedUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 20 * 1024 * 1024 + 16,
+    fileSize: MAX_DOCUMENT_UPLOAD_BYTES + AES_GCM_TAG_BYTES,
     files: 10,
     fields: 2,
     parts: 12,

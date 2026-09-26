@@ -20,6 +20,21 @@ npm run dev
 
 The default frontend is `http://localhost:5173` and the backend is `http://localhost:4000`.
 
+## API documentation
+
+After starting the backend, open:
+
+- Swagger UI: `http://localhost:<PORT>/api-docs`
+- Raw OpenAPI JSON: `http://localhost:<PORT>/openapi.json`
+
+Use Swagger by calling `POST /auth/signup` or `POST /auth/login`, copying the
+returned `accessToken`, clicking **Authorize**, and entering it as the bearer
+token. Protected APIs then send `Authorization: Bearer <token>`.
+
+Login, signup, Google login, and refresh also set or rotate the HttpOnly
+`readiness_refresh` cookie. Same-origin Swagger requests can send that cookie
+for `POST /auth/refresh`; the cookie value is not returned in JSON.
+
 ## Backend environment setup
 
 The tracked `.env.example` contains only the variables required for the normal

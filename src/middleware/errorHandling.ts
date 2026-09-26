@@ -1,5 +1,6 @@
 import { documentValidationMessages, fileTooLargeMessage } from "../services/documentValidationMessages";
 import { DocumentEnvelopeError } from "../services/documentEnvelopeValidation";
+import { MAX_DOCUMENT_UPLOAD_BYTES } from "../services/documentUploadLimits";
 import { UsageLimitError } from "../services/accountUsage.service";
 import crypto from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
@@ -73,7 +74,7 @@ export function buildErrorResponse(input: {
         ? "FILE_TOO_LARGE"
         : undefined;
   const validationMessage = code === "FILE_TOO_LARGE"
-    ? fileTooLargeMessage(20 * 1024 * 1024)
+    ? fileTooLargeMessage(MAX_DOCUMENT_UPLOAD_BYTES)
     : code ? documentValidationMessages[code] : undefined;
   if (validationMessage || (input.error instanceof DocumentEnvelopeError && ["IMAGE_DIMENSIONS_EXCEEDED", "PDF_PAGE_LIMIT_EXCEEDED"].includes(code ?? ""))) {
     return { status, body: { code, message: validationMessage ?? (input.error as Error).message, errorId } };
