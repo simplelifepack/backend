@@ -66,3 +66,5 @@ WHERE COALESCE(d."storageKey", d.path) IS NOT NULL
   );
 
 CREATE INDEX "DocumentFile_documentId_pageIndex_idx" ON "DocumentFile"("documentId", "pageIndex");
+
+ALTER TABLE "DocumentFile" ALTER COLUMN "updatedAt" DROP DEFAULT;
