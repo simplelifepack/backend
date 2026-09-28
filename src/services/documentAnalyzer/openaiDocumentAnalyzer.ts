@@ -24,7 +24,7 @@ const imageMimeTypes = new Set([
 
 const prompt = `You are the document vision classifier for Readiness.
 
-All supplied images belong to ONE logical document and may represent the front, back, or additional pages of the same document. Analyze all images together. Use visual layout, logos, headings, issuer information, labels, identifier patterns, and only the visible text needed for recognition. Do not perform or return full-document OCR.
+The supplied inputs are candidate pages from ONE logical document. Use them to identify the likely document type and primary page details. Use visual layout, logos, headings, issuer information, labels, identifier patterns, and only the visible text needed for recognition. Do not perform or return full-document OCR.
 
 Return ONLY valid JSON with exactly these keys:
 
@@ -203,6 +203,11 @@ function normalizeExpiryDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
+function imageClassificationCandidates(files: UploadedFile[]) {
+  if (files.length <= MAX_CLASSIFICATION_PAGES) return files;
+  return files.slice(0, MAX_CLASSIFICATION_PAGES);
+}
+
 export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
   private readonly client: OpenAI;
   private readonly model: string;
@@ -246,7 +251,8 @@ export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
       throw new Error("Document analysis is currently available for image uploads only.");
     }
 
-    const images = await Promise.all(files.map(async (file) => ({ type: "input_image" as const, image_url: `data:${file.mimeType};base64,${await fs.readFile(file.path, "base64")}`, detail: "auto" as const })));
+    const candidateFiles = imageClassificationCandidates(files);
+    const images = await Promise.all(candidateFiles.map(async (file) => ({ type: "input_image" as const, image_url: `data:${file.mimeType};base64,${await fs.readFile(file.path, "base64")}`, detail: "low" as const })));
     const response = await this.client.responses.create({
       store: false,
       model: this.model,
@@ -255,6 +261,7 @@ export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
           role: "user",
           content: [
             { type: "input_text", text: prompt },
+            { type: "input_text", text: `Classify from ${candidateFiles.length} candidate page(s) out of ${files.length} uploaded page(s). If these candidates do not confidently show a primary identifying page, return category "Other", documentType "Unknown", and null metadata rather than guessing.` },
             ...images,
           ],
         },

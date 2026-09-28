@@ -4,9 +4,11 @@ import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAut
 import {
   createHealthMember,
   createManualMedication,
+  createManualMeasurement,
   createHealthRecord,
   createManualReminder,
   deleteHealthMember,
+  deleteMedication,
   deleteHealthRecord,
   reprocessHealthRecord,
   disableTrackedMetric,
@@ -21,6 +23,8 @@ import {
   listTrackedMetrics,
   searchAvailableMetrics,
   updateHealthMember,
+  updateMedication,
+  updateHealthRecord,
 } from "../services/health.service";
 
 const router = Router();
@@ -99,6 +103,15 @@ router.get("/records/:recordId", async (req, res, next) => {
   }
 });
 
+router.patch("/records/:recordId", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.json(await updateHealthRecord(authUser.id, req.params.recordId, req.body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.delete("/records/:recordId", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
@@ -122,6 +135,15 @@ router.get("/members/:memberId/measurements", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.json(await listMeasurements(authUser.id, req.params.memberId, { metric: typeof req.query.metric === "string" ? req.query.metric : undefined }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/members/:memberId/measurements", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.status(201).json(await createManualMeasurement(authUser.id, req.params.memberId, req.body));
   } catch (error) {
     return next(error);
   }
@@ -177,6 +199,25 @@ router.post("/members/:memberId/medications", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.status(201).json(await createManualMedication(authUser.id, req.params.memberId, req.body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/medications/:medicationId", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.json(await updateMedication(authUser.id, req.params.medicationId, req.body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/medications/:medicationId", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    await deleteMedication(authUser.id, req.params.medicationId);
+    return res.status(204).send();
   } catch (error) {
     return next(error);
   }

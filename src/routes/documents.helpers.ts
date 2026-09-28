@@ -1,4 +1,4 @@
-import type { Document } from "@prisma/client";
+import type { Document, DocumentFile } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
@@ -15,7 +15,7 @@ export const idSchema = z.object({
 });
 
 const baseSaveSchema = z.object({
-  tempFileIds: z.array(z.string().uuid()).min(1).max(10).refine(ids => new Set(ids).size === ids.length, "Duplicate upload references."),
+  tempFileIds: z.array(z.string().uuid()).min(1).max(50).refine(ids => new Set(ids).size === ids.length, "Duplicate upload references."),
   originalName: z.string().min(1).optional(),
   mimeType: z.string().min(1).optional(),
   size: z.coerce.number().int().nonnegative().optional(),
@@ -81,6 +81,42 @@ type EncryptedDocumentRecord = {
   fields?: unknown;
 };
 
+type EncryptedDocumentFileRecord = Pick<DocumentFile,
+  "id" | "pageIndex" | "sourceType" | "pageCount" | "originalName" | "mimeType" | "size" | "createdAt" | "updatedAt"
+>;
+
+export type DocumentPageDto = {
+  id: string;
+  position: number;
+  label: string;
+  sourceType: string;
+  pageCount: number | null;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const twoSidedDocumentTypes = new Set(["aadhaar", "aadhar", "pan", "pan_card", "driving_licence", "driving_license", "driver_license", "voter_id", "identity_card"]);
+
+export function toDocumentPageDto(file: EncryptedDocumentFileRecord, documentType?: string | null): DocumentPageDto {
+  const position = file.pageIndex + 1;
+  const twoSided = documentType ? twoSidedDocumentTypes.has(documentType) : false;
+  return {
+    id: file.id,
+    position,
+    label: twoSided && position === 1 ? "Front" : twoSided && position === 2 ? "Back" : `Page ${position}`,
+    sourceType: file.sourceType,
+    pageCount: file.pageCount,
+    originalName: decryptString(file.originalName) ?? file.originalName,
+    mimeType: file.mimeType,
+    size: file.size,
+    createdAt: file.createdAt,
+    updatedAt: file.updatedAt,
+  };
+}
+
 export function decryptDocumentRecord<T extends EncryptedDocumentRecord>(document: T): T {
   return {
     ...document,
@@ -121,10 +157,14 @@ export type DocumentResponseDto = {
   lastAnalyzed: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  pages: DocumentPageDto[];
 };
 
-export function toDocumentResponseDto(document: Document): DocumentResponseDto {
+export function toDocumentResponseDto(document: Document & { files?: EncryptedDocumentFileRecord[] }): DocumentResponseDto {
   const decrypted = decryptDocumentRecord(document);
+  const pages = [...(document.files ?? [])]
+    .sort((a, b) => a.pageIndex - b.pageIndex)
+    .map((file) => toDocumentPageDto(file, document.normalizedType ?? document.documentType));
   const source = decrypted.sourceProvider === "GOOGLE_DRIVE"
     ? "GOOGLE_DRIVE"
     : decrypted.sourceProvider?.toLowerCase() === "gmail" ? "GMAIL" : "MANUAL_UPLOAD";
@@ -156,6 +196,7 @@ export function toDocumentResponseDto(document: Document): DocumentResponseDto {
     lastAnalyzed: decrypted.lastAnalyzed,
     createdAt: decrypted.createdAt,
     updatedAt: decrypted.updatedAt,
+    pages,
   };
 }
 

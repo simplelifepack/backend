@@ -3,9 +3,10 @@ import { buildErrorResponse } from "../middleware/errorHandling";
 import type { ProviderRequestOptions } from "../ai/providers/types";
 import { Router } from "express";
 import { z } from "zod";
+import { prisma } from "../lib/prisma";
 import { AIUnavailableError, PackageGenerationRejectedError, analyzeIntent } from "../ai/analyzeIntent";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
-import { getPackageDefinitions, getReadinessPackDefinitionBySlug, getReadinessPacksBySlugs, listPackageSummaries } from "../services/packs.service";
+import { getPackageDefinitions, getReadinessPackDefinitionBySlug, getReadinessPackDefinitionBySlugForUser, getReadinessPacksBySlugs, listPackageSummaries } from "../services/packs.service";
 import { findDefaultPackMatch, saveGeneratedDefaultPack } from "../services/readiness/defaultPacksRepository";
 
 const router = Router();
@@ -13,6 +14,14 @@ router.use(requireAuth);
 
 const slugSchema = z.object({
   slug: z.string().trim().min(1),
+});
+const assignmentParamsSchema = z.object({
+  requirementId: z.string().trim().min(1),
+  slug: z.string().trim().min(1),
+});
+const assignmentSchema = z.object({
+  assignmentSource: z.enum(["USER_SELECTED", "USER_OVERRIDE"]),
+  documentId: z.string().trim().min(1),
 });
 
 const searchSchema = z.object({ q: z.string().trim().min(1).max(160) });
@@ -145,12 +154,62 @@ router.post("/search-or-generate", async (req, res, next) => {
 
 router.get("/:slug", async (req, res, next) => {
   try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
     const { slug } = slugSchema.parse(req.params);
-    const pack = await getReadinessPackDefinitionBySlug(slug);
+    const pack = await getReadinessPackDefinitionBySlugForUser(slug, authUser.id);
     if (!pack) {
       return res.status(404).json({ message: "Pack not found." });
     }
     return res.json(pack);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:slug/requirements/:requirementId/assignment", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { slug, requirementId } = assignmentParamsSchema.parse(req.params);
+    const { assignmentSource, documentId } = assignmentSchema.parse(req.body);
+    const pack = await getReadinessPackDefinitionBySlug(slug);
+    const requirement = pack?.requirements.find((item) => item.id === requirementId);
+    if (!pack || !requirement) return res.status(404).json({ message: "Requirement not found." });
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, ownerProfileId: authUser.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!document) return res.status(404).json({ message: "Document not found." });
+    await prisma.requirementAssignment.upsert({
+      where: { userId_requirementId: { userId: authUser.id, requirementId } },
+      create: {
+        userId: authUser.id,
+        requirementId,
+        documentId,
+        assignmentSource,
+        overriddenAt: assignmentSource === "USER_OVERRIDE" ? new Date() : null,
+      },
+      update: {
+        documentId,
+        assignmentSource,
+        overriddenAt: assignmentSource === "USER_OVERRIDE" ? new Date() : null,
+      },
+    });
+    return res.json({ package: await getReadinessPackDefinitionBySlugForUser(pack.slug, authUser.id) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/:slug/requirements/:requirementId/assignment", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { slug, requirementId } = assignmentParamsSchema.parse(req.params);
+    const pack = await getReadinessPackDefinitionBySlug(slug);
+    if (!pack?.requirements.some((item) => item.id === requirementId)) {
+      return res.status(404).json({ message: "Requirement not found." });
+    }
+    await prisma.requirementAssignment.deleteMany({ where: { userId: authUser.id, requirementId } });
+    return res.json({ package: await getReadinessPackDefinitionBySlugForUser(pack.slug, authUser.id) });
   } catch (error) {
     return next(error);
   }
@@ -165,7 +224,10 @@ router.get("/", async (_req, res, next) => {
     if (_req.baseUrl === "/api/packages") {
       const { authUser } = _req as unknown as AuthenticatedRequest;
       const options = listSchema.parse(_req.query);
-      return res.json(await listPackageSummaries({ ...options, userId: authUser.id }));
+      return res.json(await listPackageSummaries({
+        ...options,
+        userId: authUser.id,
+      }));
     }
     const packs = await getPackageDefinitions();
     return res.json(packs);

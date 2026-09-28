@@ -7,6 +7,8 @@ import { renderLoginAlertEmail } from "./templates/loginAlertEmail";
 import { renderWelcomeEmail } from "./templates/welcomeEmail";
 import { renderTrustInvitationEmail } from "./templates/trustInvitationEmail";
 import { renderWealthHandoffEmail } from "./templates/wealthHandoffEmail";
+import { renderSignupOtpEmail } from "./templates/signupOtpEmail";
+import { renderAccountChangeOtpEmail } from "./templates/accountChangeOtpEmail";
 
 const DEFAULT_EMAIL_TIMEOUT_MS = 30_000;
 const RECIPIENT_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -17,7 +19,7 @@ export type LoginAlertContext = {
   timeZone?: string | null;
 };
 
-type SendType = "welcome" | "login_alert" | "password_reset" | "trust_invitation" | "wealth_handoff";
+type SendType = "welcome" | "login_alert" | "password_reset" | "signup_otp" | "account_change" | "trust_invitation" | "wealth_handoff";
 
 let providerOverride: EmailProvider | null = null;
 let cachedProvider: EmailProvider | null | undefined;
@@ -237,6 +239,50 @@ export async function sendPasswordResetOtpEmail(user: { id: string; email: strin
     return { sent: true, messageId: result?.messageId ?? null };
   } catch (error) {
     logEmailFailure("password_reset", user.id, error);
+    return { sent: false, reason: "delivery_failed" as const, errorCode: errorCode(error) };
+  }
+}
+
+export async function sendSignupOtpEmail(input: { email: string }, otp: string) {
+  const provider = getEmailProvider();
+  if (!provider) {
+    return { sent: false, reason: "email_disabled" as const };
+  }
+  if (!isValidRecipient(input.email)) {
+    return { sent: false, reason: "invalid_recipient" as const };
+  }
+
+  const rendered = renderSignupOtpEmail({ otp });
+
+  try {
+    const result = await withTimeout(provider.sendEmail({ to: input.email, ...rendered }));
+    return { sent: true, messageId: result?.messageId ?? null };
+  } catch (error) {
+    logEmailFailure("signup_otp", "pending", error);
+    return { sent: false, reason: "delivery_failed" as const, errorCode: errorCode(error) };
+  }
+}
+
+export async function sendAccountChangeOtpEmail(input: {
+  userId: string;
+  email: string;
+  purpose: "email" | "password";
+}, otp: string) {
+  const provider = getEmailProvider();
+  if (!provider) {
+    return { sent: false, reason: "email_disabled" as const };
+  }
+  if (!isValidRecipient(input.email)) {
+    return { sent: false, reason: "invalid_recipient" as const };
+  }
+
+  const rendered = renderAccountChangeOtpEmail({ otp, purpose: input.purpose });
+
+  try {
+    const result = await withTimeout(provider.sendEmail({ to: input.email, ...rendered }));
+    return { sent: true, messageId: result?.messageId ?? null };
+  } catch (error) {
+    logEmailFailure("account_change", input.userId, error);
     return { sent: false, reason: "delivery_failed" as const, errorCode: errorCode(error) };
   }
 }

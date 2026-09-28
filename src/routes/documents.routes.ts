@@ -1,5 +1,5 @@
 import { queueStorageCleanup, drainStorageCleanup } from "../services/storageCleanup.service";
-import { withStorageUpload, lockAccount } from "../services/accountUsage.service";
+import { enforceStorage, storedBytes, withStorageUpload, lockAccount } from "../services/accountUsage.service";
 /* eslint-disable max-lines */
 import crypto from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -47,16 +47,20 @@ import {
 } from "../services/documentFileStorage";
 import {
   getPublicDocumentEncryptionKey,
-  validateEncryptedDocumentEnvelope,
-  validateEncryptedDocumentEnvelopes,
   verifyAndDecryptEnvelope,
 } from "../services/documentHybridEncryption";
+import {
+  assertImageUploadBatchWithinLimit,
+  validateEncryptedDocumentEnvelope,
+  validateEncryptedDocumentEnvelopes,
+} from "../services/documentEnvelopeValidation";
 import {
   validateDecryptedDocument,
   withIsolatedPlaintextFile,
 } from "../services/documentSecurityValidation";
 import { createStoredZip, sanitizeArchiveName } from "../services/archiveZip";
 import { normalizeNameForMatch } from "../services/identity/ownershipDetection";
+import { assertAIProcessingEnabled } from "../services/aiProcessing.service";
 
 function toAnalysisFile(temporaryUpload: {
   originalName: string;
@@ -83,11 +87,24 @@ router.use(requireAuth);
 
 type DocumentWithFiles = Prisma.DocumentGetPayload<{ include: { files: true } }>;
 const bulkDocumentSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).strict();
+const pageIdSchema = z.object({
+  id: z.string().min(1),
+  pageId: z.string().min(1),
+});
+const addPagesSchema = z.object({
+  tempFileIds: z.array(z.string().uuid()).min(1).max(50).refine(ids => new Set(ids).size === ids.length, "Duplicate upload references."),
+}).strict();
+const reorderPagesSchema = z.object({
+  pageIds: z.array(z.string().min(1)).min(1).max(100).refine(ids => new Set(ids).size === ids.length, "Duplicate page references."),
+}).strict();
+const replacePageSchema = z.object({
+  tempFileId: z.string().uuid(),
+}).strict();
 
 async function createDocumentPreviewStream(document: DocumentWithFiles) {
   const locations = [
-    document,
     ...document.files.sort((a, b) => a.pageIndex - b.pageIndex),
+    document,
   ];
   let lastError: unknown;
   for (const location of locations) {
@@ -99,6 +116,12 @@ async function createDocumentPreviewStream(document: DocumentWithFiles) {
     }
   }
   throw lastError ?? new Error("Document file is missing.");
+}
+
+async function createDocumentPagePreviewStream(document: DocumentWithFiles, pageId: string) {
+  const page = document.files.find((file) => file.id === pageId);
+  if (!page) throw Object.assign(new Error("Document page not found."), { statusCode: 404 });
+  return createDecryptedDocumentReadStreamFromLocation(page);
 }
 
 async function streamToBuffer(stream: NodeJS.ReadableStream) {
@@ -120,6 +143,45 @@ function uniqueArchiveName(name: string, used: Set<string>) {
   return unique;
 }
 
+function documentPageFiles(document: DocumentWithFiles) {
+  return [...document.files].sort((a, b) => a.pageIndex - b.pageIndex);
+}
+
+function pageDownloadName(document: DocumentWithFiles, page: DocumentWithFiles["files"][number], used?: Set<string>) {
+  const base = decryptString(page.originalName) ?? decryptString(document.originalName) ?? "document";
+  const prefix = document.files.length > 1 ? `page-${page.pageIndex + 1}-` : "";
+  return used ? uniqueArchiveName(`${prefix}${base}`, used) : `${prefix}${base}`;
+}
+
+async function syncDocumentPrimaryFile(tx: Prisma.TransactionClient, documentId: string) {
+  const first = await tx.documentFile.findFirst({ where: { documentId }, orderBy: { pageIndex: "asc" } });
+  if (!first) return;
+  await tx.document.update({
+    where: { id: documentId },
+    data: {
+      originalName: first.originalName,
+      storedName: first.storedName,
+      mimeType: first.mimeType,
+      size: first.size,
+      path: first.storageKey,
+      storageKey: first.storageKey,
+      storageBucket: first.storageBucket,
+      storageMimeType: first.storageMimeType,
+      encryptionVersion: first.encryptionVersion,
+      contentAlgorithm: first.contentAlgorithm,
+      keyAlgorithm: first.keyAlgorithm,
+      keyId: first.keyId,
+      keyVersion: first.keyVersion,
+      encryptionIv: first.encryptionIv,
+      wrappedKey: first.wrappedKey,
+      originalSha256: first.originalSha256,
+      encryptedSha256: first.encryptedSha256,
+      encryptedSize: first.encryptedSize,
+      ciphertextHash: first.ciphertextHash,
+    },
+  });
+}
+
 router.get("/encryption-key", (_req, res) => {
   res.setHeader("Cache-Control", "private, max-age=300");
   return res.json(getPublicDocumentEncryptionKey());
@@ -136,6 +198,7 @@ async function analyzeEncryptedUpload(
     const { authUser } = req as unknown as AuthenticatedRequest;
     const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? (req.file ? [req.file] : undefined);
     const envelopes = req.body.envelopes ? validateEncryptedDocumentEnvelopes(req.body, uploadedFiles) : [validateEncryptedDocumentEnvelope(req.body, req.file)];
+    assertImageUploadBatchWithinLimit(envelopes);
     for (const envelope of envelopes) { const plaintext = verifyAndDecryptEnvelope(envelope); plaintexts.push(plaintext); await validateDecryptedDocument(plaintext, envelope); }
 
     const duplicate = await prisma.document.findFirst({
@@ -156,7 +219,17 @@ async function analyzeEncryptedUpload(
     const analyzePaths = async (index: number, paths: string[]): Promise<{ result: Awaited<ReturnType<typeof analyzeDocument>> | Error }> => index === plaintexts.length
       ? analyzeDocument(paths.map((path, i) => ({ path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize }))).then((result) => ({ result })).catch((error) => ({ result: error as Error }))
       : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), (path) => analyzePaths(index + 1, [...paths, path]));
-    const analysis = envelopes[0]!.aiAnalysisConsent ? await analyzePaths(0, []) : { result: fallbackDocumentAIResult };
+    const wantsAI = envelopes.some((item) => item.aiAnalysisConsent);
+    let analysis: { result: Awaited<ReturnType<typeof analyzeDocument>> | Error } = { result: fallbackDocumentAIResult };
+    if (wantsAI) {
+      try {
+        await assertAIProcessingEnabled(authUser.id);
+        analysis = await analyzePaths(0, []);
+      } catch (error) {
+        if ((error as { code?: unknown })?.code !== "AI_PROCESSING_DISABLED") throw error;
+        analysis = { result: Object.assign(new Error("AI processing is disabled for this account."), { code: "AI_PROCESSING_DISABLED" }) };
+      }
+    }
     const temporaryUploads = await Promise.all(envelopes.map((envelope) => createEncryptedTemporaryUpload(authUser.id, envelope)));
     const aiResult = analysis.result instanceof Error ? fallbackDocumentAIResult : analysis.result;
     const user = await prisma.user.findUnique({ where: { id: authUser.id }, select: { name: true } });
@@ -172,7 +245,7 @@ async function analyzeEncryptedUpload(
 
 function namesReasonablyMatch(left: string, right: string) { const a = normalizeNameForMatch(left).split(" "); const b = normalizeNameForMatch(right).split(" "); return a.every((token) => b.some((candidate) => candidate === token || (token.length === 1 && candidate.startsWith(token)) || (candidate.length === 1 && token.startsWith(candidate)))); }
 
-router.post("/analyze", uploadLimiter, encryptedUpload.array("encryptedFiles", 10), async (req, res, next) => {
+router.post("/analyze", uploadLimiter, encryptedUpload.array("encryptedFiles", 50), async (req, res, next) => {
   return analyzeEncryptedUpload(req, res, next, 200);
 });
 router.post("/", async (req, res, next) => {
@@ -410,8 +483,9 @@ router.post("/", async (req, res, next) => {
       const previousFiles = await tx.documentFile.findMany({ where: { documentId: duplicate.id } });
       await queueStorageCleanup(tx, authUser.id, [duplicate, ...previousFiles]);
       await replaceDocumentFiles(tx, savedDocument.id, temporaryUploads, encryptedFiles);
+      const responseDocument = await tx.document.findUniqueOrThrow({ where: { id: savedDocument.id }, include: { files: true } });
       return { status: 200, body: {
-        document: toDocumentResponseDto(savedDocument),
+        document: toDocumentResponseDto(responseDocument),
         validation,
         replaced: true,
       } };
@@ -432,8 +506,9 @@ router.post("/", async (req, res, next) => {
       });
     }
     await replaceDocumentFiles(tx, savedDocument.id, temporaryUploads, encryptedFiles);
+    const responseDocument = await tx.document.findUniqueOrThrow({ where: { id: savedDocument.id }, include: { files: true } });
     return { status: 201, body: {
-      document: toDocumentResponseDto(savedDocument),
+      document: toDocumentResponseDto(responseDocument),
       validation,
     } };
       });
@@ -453,9 +528,9 @@ router.post("/", async (req, res, next) => {
 
 async function replaceDocumentFiles(tx: Prisma.TransactionClient, documentId: string, uploads: Array<{ originalName: string; detectedMimeType: string; size: number }>, stored: Array<Awaited<ReturnType<typeof saveEncryptedPermanentFile>>>) {
   await tx.documentFile.deleteMany({ where: { documentId } });
-  await tx.documentFile.createMany({ data: stored.map((file, pageIndex) => ({ documentId, pageIndex, originalName: encryptString(uploads[pageIndex]!.originalName)!, mimeType: uploads[pageIndex]!.detectedMimeType, size: uploads[pageIndex]!.size, storageKey: file.storageKey, storedName: file.storedName, encryptionVersion: file.encryptionVersion, contentAlgorithm: file.contentAlgorithm, keyAlgorithm: file.keyAlgorithm, keyId: file.keyId, keyVersion: file.keyVersion, encryptionIv: file.encryptionIv, wrappedKey: file.wrappedKey, encryptedSize: file.encryptedSize, ciphertextHash: file.encryptedSha256 })) });
+  await tx.documentFile.createMany({ data: stored.map((file, pageIndex) => ({ documentId, pageIndex, sourceType: "upload", originalName: encryptString(uploads[pageIndex]!.originalName)!, mimeType: uploads[pageIndex]!.detectedMimeType, size: uploads[pageIndex]!.size, storageKey: file.storageKey, storedName: file.storedName, storageBucket: file.storageBucket, storageMimeType: file.storageMimeType, encryptionVersion: file.encryptionVersion, contentAlgorithm: file.contentAlgorithm, keyAlgorithm: file.keyAlgorithm, keyId: file.keyId, keyVersion: file.keyVersion, encryptionIv: file.encryptionIv, wrappedKey: file.wrappedKey, originalSha256: file.originalSha256, encryptedSha256: file.encryptedSha256, encryptedSize: file.encryptedSize, ciphertextHash: file.encryptedSha256 })) });
 }
-router.post("/upload", uploadLimiter, encryptedUpload.array("encryptedFiles", 10), async (req, res, next) => {
+router.post("/upload", uploadLimiter, encryptedUpload.array("encryptedFiles", 50), async (req, res, next) => {
   return analyzeEncryptedUpload(req, res, next, 202);
 });
 router.get("/", async (_req, res, next) => {
@@ -463,6 +538,7 @@ router.get("/", async (_req, res, next) => {
     const { authUser } = _req as unknown as AuthenticatedRequest;
     const documents = await prisma.document.findMany({
       where: { ownerProfileId: authUser.id, deletedAt: null },
+      include: { files: true },
       orderBy: {
         createdAt: "desc",
       },
@@ -483,11 +559,19 @@ router.post("/bulk-download", async (req, res, next) => {
     if (documents.length !== new Set(ids).size) return res.status(404).json({ message: "One or more documents were not found." });
     const byId = new Map(documents.map(document => [document.id, document]));
     const used = new Set<string>();
-    const files = await Promise.all(ids.map(async id => {
+    const files = (await Promise.all(ids.map(async id => {
       const document = byId.get(id)!;
-      const data = await streamToBuffer(await createDocumentPreviewStream(document));
-      return { name: uniqueArchiveName(decryptString(document.originalName) ?? "document", used), data, modifiedAt: document.updatedAt };
-    }));
+      const pages = documentPageFiles(document);
+      if (pages.length <= 1) {
+        const data = await streamToBuffer(await createDocumentPreviewStream(document));
+        return [{ name: uniqueArchiveName(decryptString(document.originalName) ?? "document", used), data, modifiedAt: document.updatedAt }];
+      }
+      return Promise.all(pages.map(async page => ({
+        name: uniqueArchiveName(`${sanitizeArchiveName(decryptString(document.title) ?? decryptString(document.originalName) ?? document.id)}/${pageDownloadName(document, page)}`, used),
+        data: await streamToBuffer(await createDocumentPagePreviewStream(document, page.id)),
+        modifiedAt: page.updatedAt,
+      })));
+    }))).flat();
     const zip = createStoredZip(files);
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="readiness-documents.zip"');
@@ -515,11 +599,261 @@ router.post("/bulk-delete", async (req, res, next) => {
     return next(error);
   }
 });
+
+router.post("/:id/pages", uploadLimiter, encryptedUpload.array("encryptedFiles", 50), async (req, res, next) => {
+  const newStorageKeys: string[] = [];
+  const uploadedReferences: Array<Awaited<ReturnType<typeof saveEncryptedPermanentFile>>> = [];
+  const plaintexts: Buffer[] = [];
+  let activeUploads: Array<NonNullable<Awaited<ReturnType<typeof findOwnedTemporaryUpload>>>> = [];
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { id } = idSchema.parse(req.params);
+    const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
+    let tempFileIds: string[];
+    if (req.body?.envelopes || uploadedFiles.length) {
+      const envelopes = validateEncryptedDocumentEnvelopes(req.body, uploadedFiles);
+      for (const envelope of envelopes) {
+        const plaintext = verifyAndDecryptEnvelope(envelope);
+        plaintexts.push(plaintext);
+        await validateDecryptedDocument(plaintext, envelope);
+      }
+      const temporaryUploads = await Promise.all(envelopes.map((envelope) => createEncryptedTemporaryUpload(authUser.id, envelope)));
+      activeUploads = temporaryUploads;
+      tempFileIds = temporaryUploads.map((item) => item.id);
+    } else {
+      const payload = addPagesSchema.parse(req.body);
+      tempFileIds = payload.tempFileIds;
+      const pendingTemporaryUploads = await Promise.all(tempFileIds.map((tempId) => findOwnedTemporaryUpload(authUser.id, tempId)));
+      if (pendingTemporaryUploads.some((item) => !item)) {
+        return res.status(404).json({ code: "TEMPORARY_UPLOAD_EXPIRED", message: "This upload review has expired. Please select the file again." });
+      }
+      activeUploads = pendingTemporaryUploads.filter((item): item is NonNullable<typeof item> => Boolean(item));
+      assertImageUploadBatchWithinLimit(activeUploads.map((item) => ({ originalMimeType: item.detectedMimeType, originalSize: item.size })));
+    }
+    if (activeUploads.some((item) => !item.keyAlgorithm || item.encryptedSize === null || item.scanStatus !== "passed")) {
+      return res.status(422).json({ message: "Document security validation has not passed." });
+    }
+    await drainStorageCleanup(authUser.id);
+    let result;
+    try {
+      result = await withStorageUpload(authUser.id,
+        activeUploads.reduce((total, file) => total + (file.encryptedSize ?? file.size), 0),
+        null,
+        async tx => {
+          const document = await tx.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null }, include: { files: true } });
+          if (!document) throw Object.assign(new Error("Document not found."), { statusCode: 404 });
+          const consumedUploads = await Promise.all(tempFileIds.map((tempId) => consumeTemporaryUpload(authUser.id, tempId, tx)));
+          if (consumedUploads.some((item) => !item)) {
+            throw Object.assign(new Error("This upload review has expired. Please select the file again."), { statusCode: 404, code: "TEMPORARY_UPLOAD_EXPIRED" });
+          }
+          const temporaryUploads = consumedUploads.filter((item): item is NonNullable<typeof item> => Boolean(item));
+          const startIndex = document.files.reduce((max, file) => Math.max(max, file.pageIndex), -1) + 1;
+          const encryptedFiles: Array<Awaited<ReturnType<typeof saveEncryptedPermanentFile>>> = [];
+          for (const [offset, item] of temporaryUploads.entries()) {
+            const file = await saveEncryptedPermanentFile(authUser.id, `${document.id}/page-${startIndex + offset + 1}-${crypto.randomUUID()}`, item, { preserveTemporaryFile: true });
+            encryptedFiles.push(file);
+            newStorageKeys.push(file.storageKey);
+            uploadedReferences.push(file);
+          }
+          await tx.documentFile.createMany({
+            data: encryptedFiles.map((file, offset) => ({
+              documentId: document.id,
+              pageIndex: startIndex + offset,
+              sourceType: "upload",
+              originalName: encryptString(temporaryUploads[offset]!.originalName)!,
+              mimeType: temporaryUploads[offset]!.detectedMimeType,
+              size: temporaryUploads[offset]!.size,
+              storageKey: file.storageKey,
+              storedName: file.storedName,
+              storageBucket: file.storageBucket,
+              storageMimeType: file.storageMimeType,
+              encryptionVersion: file.encryptionVersion,
+              contentAlgorithm: file.contentAlgorithm,
+              keyAlgorithm: file.keyAlgorithm,
+              keyId: file.keyId,
+              keyVersion: file.keyVersion,
+              encryptionIv: file.encryptionIv,
+              wrappedKey: file.wrappedKey,
+              originalSha256: file.originalSha256,
+              encryptedSha256: file.encryptedSha256,
+              encryptedSize: file.encryptedSize,
+              ciphertextHash: file.encryptedSha256,
+            })),
+          });
+          if (!document.files.length) await syncDocumentPrimaryFile(tx, document.id);
+          const updated = await tx.document.findUniqueOrThrow({ where: { id: document.id }, include: { files: true } });
+          return { document: toDocumentResponseDto(updated) };
+        });
+    } catch (error) {
+      const cleanup = await Promise.allSettled(newStorageKeys.map(removePermanentFile));
+      const retained = uploadedReferences.filter((_file, index) => cleanup[index]?.status === "rejected");
+      if (retained.length) await prisma.$transaction(tx => queueStorageCleanup(tx, authUser.id, retained.map(file => ({ ...file, size: file.encryptedSize ?? 0 }))));
+      throw error;
+    }
+    await Promise.allSettled(activeUploads.map(deleteTemporaryUploadFile));
+    await drainStorageCleanup(authUser.id);
+    return res.status(200).json(result);
+  } catch (error) {
+    await Promise.allSettled(activeUploads.map(deleteTemporaryUploadFile));
+    return next(error);
+  } finally {
+    plaintexts.forEach((plaintext) => plaintext.fill(0));
+  }
+});
+
+router.patch("/:id/pages/order", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { id } = idSchema.parse(req.params);
+    const payload = reorderPagesSchema.parse(req.body);
+    const updated = await prisma.$transaction(async tx => {
+      await lockAccount(tx, authUser.id);
+      const document = await tx.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null }, include: { files: true } });
+      if (!document) throw Object.assign(new Error("Document not found."), { statusCode: 404 });
+      const existingIds = new Set(document.files.map((file) => file.id));
+      if (payload.pageIds.length !== existingIds.size || payload.pageIds.some((pageId) => !existingIds.has(pageId))) {
+        throw Object.assign(new Error("Page order must include every page exactly once."), { statusCode: 422 });
+      }
+      await Promise.all(payload.pageIds.map((pageId, index) => tx.documentFile.update({ where: { id: pageId }, data: { pageIndex: 10_000 + index } })));
+      await Promise.all(payload.pageIds.map((pageId, index) => tx.documentFile.update({ where: { id: pageId }, data: { pageIndex: index } })));
+      await syncDocumentPrimaryFile(tx, document.id);
+      return tx.document.findUniqueOrThrow({ where: { id: document.id }, include: { files: true } });
+    }, { maxWait: 30_000, timeout: 60_000 });
+    return res.json({ document: toDocumentResponseDto(updated) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/:id/pages/:pageId", async (req, res, next) => {
+  let newStorageKey: string | null = null;
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { id, pageId } = pageIdSchema.parse(req.params);
+    const payload = replacePageSchema.parse(req.body);
+    const pending = await findOwnedTemporaryUpload(authUser.id, payload.tempFileId);
+    if (!pending) return res.status(404).json({ code: "TEMPORARY_UPLOAD_EXPIRED", message: "This upload review has expired. Please select the file again." });
+    if (!pending.keyAlgorithm || pending.encryptedSize === null || pending.scanStatus !== "passed") return res.status(422).json({ message: "Document security validation has not passed." });
+    await drainStorageCleanup(authUser.id);
+    const updated = await prisma.$transaction(async tx => {
+      const tier = await lockAccount(tx, authUser.id);
+      const document = await tx.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null }, include: { files: true } });
+      if (!document) throw Object.assign(new Error("Document not found."), { statusCode: 404 });
+      const page = document.files.find((file) => file.id === pageId);
+      if (!page) throw Object.assign(new Error("Document page not found."), { statusCode: 404 });
+      const currentBytes = page.encryptedSize ?? page.size;
+      const incomingBytes = pending.encryptedSize ?? pending.size;
+      const usedBytes = await storedBytes(authUser.id, tx);
+      enforceStorage(tier, usedBytes, Math.max(0, incomingBytes - currentBytes));
+      const consumed = await consumeTemporaryUpload(authUser.id, payload.tempFileId, tx);
+      if (!consumed) throw Object.assign(new Error("This upload review has expired. Please select the file again."), { statusCode: 404, code: "TEMPORARY_UPLOAD_EXPIRED" });
+      const newFile = await saveEncryptedPermanentFile(authUser.id, `${document.id}/page-${page.pageIndex + 1}-${crypto.randomUUID()}`, consumed, { preserveTemporaryFile: true });
+      newStorageKey = newFile.storageKey;
+      await queueStorageCleanup(tx, authUser.id, [page]);
+      await tx.documentFile.update({
+        where: { id: page.id },
+        data: {
+          sourceType: "upload",
+          originalName: encryptString(consumed.originalName)!,
+          mimeType: consumed.detectedMimeType,
+          size: consumed.size,
+          storageKey: newFile.storageKey,
+          storedName: newFile.storedName,
+          storageBucket: newFile.storageBucket,
+          storageMimeType: newFile.storageMimeType,
+          encryptionVersion: newFile.encryptionVersion,
+          contentAlgorithm: newFile.contentAlgorithm,
+          keyAlgorithm: newFile.keyAlgorithm,
+          keyId: newFile.keyId,
+          keyVersion: newFile.keyVersion,
+          encryptionIv: newFile.encryptionIv,
+          wrappedKey: newFile.wrappedKey,
+          originalSha256: newFile.originalSha256,
+          encryptedSha256: newFile.encryptedSha256,
+          encryptedSize: newFile.encryptedSize,
+          ciphertextHash: newFile.encryptedSha256,
+        },
+      });
+      if (page.pageIndex === 0) await syncDocumentPrimaryFile(tx, document.id);
+      return tx.document.findUniqueOrThrow({ where: { id: document.id }, include: { files: true } });
+    }, { maxWait: 30_000, timeout: 60_000 });
+    await deleteTemporaryUploadFile(pending);
+    await drainStorageCleanup(authUser.id);
+    return res.json({ document: toDocumentResponseDto(updated) });
+  } catch (error) {
+    if (newStorageKey) await removePermanentFile(newStorageKey).catch(() => undefined);
+    return next(error);
+  }
+});
+
+router.delete("/:id/pages/:pageId", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { id, pageId } = pageIdSchema.parse(req.params);
+    const updated = await prisma.$transaction(async tx => {
+      await lockAccount(tx, authUser.id);
+      const document = await tx.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null }, include: { files: true } });
+      if (!document) throw Object.assign(new Error("Document not found."), { statusCode: 404 });
+      if (document.files.length <= 1) throw Object.assign(new Error("A document must keep at least one page. Delete the document instead."), { statusCode: 422 });
+      const page = document.files.find((file) => file.id === pageId);
+      if (!page) throw Object.assign(new Error("Document page not found."), { statusCode: 404 });
+      await queueStorageCleanup(tx, authUser.id, [page]);
+      await tx.documentFile.delete({ where: { id: page.id } });
+      const remaining = document.files.filter((file) => file.id !== page.id).sort((a, b) => a.pageIndex - b.pageIndex);
+      await Promise.all(remaining.map((file, index) => tx.documentFile.update({ where: { id: file.id }, data: { pageIndex: index } })));
+      await syncDocumentPrimaryFile(tx, document.id);
+      return tx.document.findUniqueOrThrow({ where: { id: document.id }, include: { files: true } });
+    }, { maxWait: 30_000, timeout: 60_000 });
+    await drainStorageCleanup(authUser.id);
+    return res.json({ document: toDocumentResponseDto(updated) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/:id/pages/:pageId/download", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { id, pageId } = pageIdSchema.parse(req.params);
+    const document = await prisma.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null }, include: { files: true } });
+    if (!document) return res.status(404).json({ message: "Document not found." });
+    const page = document.files.find((file) => file.id === pageId);
+    if (!page) return res.status(404).json({ message: "Document page not found." });
+    const decrypted = await createDocumentPagePreviewStream(document, pageId);
+    res.setHeader("Content-Type", page.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(pageDownloadName(document, page))}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    return decrypted.pipe(res);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/:id/pages/:pageId/preview", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { id, pageId } = pageIdSchema.parse(req.params);
+    const document = await prisma.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null }, include: { files: true } });
+    if (!document) return res.status(404).json({ message: "Document not found." });
+    const page = document.files.find((file) => file.id === pageId);
+    if (!page) return res.status(404).json({ message: "Document page not found." });
+    const decrypted = await createDocumentPagePreviewStream(document, pageId);
+    res.setHeader("Content-Type", page.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(pageDownloadName(document, page))}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    return decrypted.pipe(res);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get("/:id", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { id } = idSchema.parse(req.params);
-    const document = await prisma.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null } });
+    const document = await prisma.document.findFirst({ where: { id, ownerProfileId: authUser.id, deletedAt: null }, include: { files: true } });
     if (!document) {
       return res.status(404).json({ message: "Document not found." });
     }
@@ -559,6 +893,21 @@ router.get("/:id/download", async (req, res, next) => {
     });
     if (!document) {
       return res.status(404).json({ message: "Document not found." });
+    }
+    const pages = documentPageFiles(document);
+    if (pages.length > 1) {
+      const used = new Set<string>();
+      const files = await Promise.all(pages.map(async page => ({
+        name: pageDownloadName(document, page, used),
+        data: await streamToBuffer(await createDocumentPagePreviewStream(document, page.id)),
+        modifiedAt: page.updatedAt,
+      })));
+      const zip = createStoredZip(files);
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(`${decryptString(document.title) ?? decryptString(document.originalName) ?? "document"}-pages.zip`)}"`);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(zip);
     }
     const decrypted = await createDocumentPreviewStream(document);
     res.setHeader("Content-Type", document.mimeType || "application/octet-stream");

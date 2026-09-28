@@ -23,6 +23,15 @@ router.post("/signup", authLimiter, async (req, res, next) => {
   }
 });
 
+router.post("/signup/request-otp", authLimiter, async (req, res, next) => {
+  try {
+    const result = await authService.requestSignupOtp(req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/login", authLimiter, async (req, res, next) => {
   try {
     const result = await authService.login(req.body, {
@@ -78,6 +87,46 @@ router.post("/logout-all", requireAuth, async (req, res, next) => {
     return res.json(result);
   } catch (error) {
     return next(error);
+  }
+});
+
+router.post("/account/change-email/request", requireAuth, authLimiter, async (req, res, next) => {
+  try {
+    const { authUser } = req as AuthenticatedRequest;
+    const result = await authService.requestEmailChange(authUser.id, req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/account/change-email/verify", requireAuth, authLimiter, async (req, res, next) => {
+  try {
+    const { authUser } = req as AuthenticatedRequest;
+    const result = await authService.verifyEmailChange(authUser.id, req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/account/change-password/request", requireAuth, authLimiter, async (req, res, next) => {
+  try {
+    const { authUser } = req as AuthenticatedRequest;
+    const result = await authService.requestPasswordChange(authUser.id, req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/account/change-password/verify", requireAuth, authLimiter, async (req, res, next) => {
+  try {
+    const { authUser } = req as AuthenticatedRequest;
+    const result = await authService.verifyPasswordChange(authUser.id, req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
   }
 });
 

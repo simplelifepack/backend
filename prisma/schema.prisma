@@ -33,11 +33,19 @@ model User {
   email                      String                      @unique
   authVersion                Int                         @default(0)
   passwordHash               String?
+  country                    String?
+  passportCountry            String?
+  homeCurrency               String?
+  appearance                 String                     @default("dark")
+  aiProcessingEnabled        Boolean                    @default(true)
+  deletionRequestedAt        DateTime?
+  scheduledDeletionAt        DateTime?
   welcomeEmailSentAt         DateTime?
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
   refreshTokens              RefreshToken[]
   passwordResetTokens        PasswordResetToken[]
+  accountChangeOtps          AccountChangeOtp[]
   identityProfile            UserIdentityProfile?
   externalIdentities         ExternalIdentity[]
   externalConnections        ExternalConnection[]
@@ -53,6 +61,28 @@ model User {
   healthMedications          HealthMedication[]
   healthFollowUps            HealthFollowUp[]
   healthReminders            HealthReminder[]
+  pushSubscriptions          PushSubscription[]
+  exportJobs                 AccountExportJob[]
+  requirementAssignments     RequirementAssignment[]
+
+  @@index([scheduledDeletionAt])
+}
+
+model PushSubscription {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String    @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  active    Boolean   @default(true)
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, active])
+  @@map("push_subscriptions")
 }
 
 model TrustMember {
@@ -190,6 +220,39 @@ model PasswordResetToken {
   @@index([expiresAt])
 }
 
+model SignupVerification {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  otpHash      String
+  expiresAt    DateTime
+  attemptCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@map("signup_verifications")
+}
+
+model AccountChangeOtp {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose         String
+  newEmail        String?
+  newPasswordHash String?
+  otpHash         String
+  expiresAt       DateTime
+  attemptCount    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, purpose])
+  @@index([expiresAt])
+  @@map("account_change_otps")
+}
+
 model Document {
   id                        String                   @id @default(cuid())
   title                     String?
@@ -253,6 +316,7 @@ model Document {
   wealthAttachments         WealthRecordAttachment[]
   files                     DocumentFile[]
   healthDocuments           HealthDocument[]
+  requirementAssignments    RequirementAssignment[]
 
   @@unique([ownerProfileId, contentHash])
   @@unique([ownerProfileId, driveFileId])
@@ -336,8 +400,8 @@ model HealthMeasurement {
   user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   memberId         String
   member           HealthMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  sourceDocumentId String
-  sourceDocument   HealthDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceDocumentId String?
+  sourceDocument   HealthDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
   metricKey        String
   displayName      String
   originalName     String
@@ -389,11 +453,15 @@ model HealthMedication {
   frequency        String?
   duration         String?
   quantity         String?
+  status           String         @default("continuing")
   repeats          Boolean        @default(false)
   runsOutAt        DateTime?
+  stoppedAt        DateTime?
   createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([userId, memberId])
+  @@index([userId, memberId, status])
   @@index([sourceDocumentId])
   @@map("health_medications")
 }
@@ -448,11 +516,15 @@ model DocumentFile {
   documentId        String
   document          Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   pageIndex         Int
+  sourceType        String   @default("upload")
+  pageCount         Int?
   originalName      String
   mimeType          String
   size              Int
   storageKey        String
   storedName        String
+  storageBucket     String?
+  storageMimeType   String?
   encryptionVersion Int?
   contentAlgorithm  String?
   keyAlgorithm      String?
@@ -460,12 +532,16 @@ model DocumentFile {
   keyVersion        Int?
   encryptionIv      String?
   wrappedKey        String?
+  originalSha256    String?
+  encryptedSha256   String?
   encryptedSize     Int?
   ciphertextHash    String?
   createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@unique([documentId, pageIndex])
   @@index([documentId])
+  @@index([documentId, pageIndex])
 }
 
 model TemporaryUpload {
@@ -617,9 +693,29 @@ model Requirement {
   acceptedDocumentTypes String[]
   alternativeLabels     String[]
   sortOrder             Int           @default(0)
+  assignments           RequirementAssignment[]
 
   @@index([packId])
   @@index([documentType, owner])
+}
+
+model RequirementAssignment {
+  id               String      @id @default(cuid())
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requirementId    String
+  requirement      Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  documentId       String
+  document         Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  assignmentSource String
+  overriddenAt     DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@unique([userId, requirementId])
+  @@index([documentId])
+  @@index([requirementId])
+  @@map("requirement_assignments")
 }
 
 model WealthRecord {
@@ -730,4 +826,25 @@ model StorageCleanup {
   createdAt DateTime @default(now())
   @@index([ownerUserId])
   @@map("storage_cleanup")
+}
+
+model AccountExportJob {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status       String    @default("REQUESTED")
+  storageKey   String?
+  fileName     String?
+  sizeBytes    Int?
+  errorMessage String?
+  requestedAt  DateTime  @default(now())
+  preparedAt   DateTime?
+  expiresAt    DateTime?
+  downloadedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([expiresAt])
+  @@map("account_export_jobs")
 }

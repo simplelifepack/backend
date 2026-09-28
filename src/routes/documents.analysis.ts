@@ -46,5 +46,5 @@ export function buildManualValidation(payload: z.infer<typeof saveSchema>, field
     warnings: [],
   };
 }
-export function warningCodeForAnalysisError(error: unknown) { const message = error instanceof Error ? error.message : ""; if (/OPENAI_API_KEY/.test(message)) return "OPENAI_API_KEY_MISSING"; if (/401|Incorrect API key/.test(message)) return "OPENAI_API_AUTH_FAILED"; if (/429|quota/i.test(message)) return "OPENAI_QUOTA_EXCEEDED"; return "AI_ANALYSIS_UNAVAILABLE"; }
+export function warningCodeForAnalysisError(error: unknown) { const code = (error as { code?: unknown })?.code; if (code === "AI_PROCESSING_DISABLED") return "AI_PROCESSING_DISABLED"; const message = error instanceof Error ? error.message : ""; if (/OPENAI_API_KEY/.test(message)) return "OPENAI_API_KEY_MISSING"; if (/401|Incorrect API key/.test(message)) return "OPENAI_API_AUTH_FAILED"; if (/429|quota/i.test(message)) return "OPENAI_QUOTA_EXCEEDED"; return "AI_ANALYSIS_UNAVAILABLE"; }
 export { fallbackDocumentAIResult };

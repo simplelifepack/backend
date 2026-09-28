@@ -25,11 +25,31 @@ function parseDate(value: string | null | undefined) {
   return date;
 }
 
+function parseRequiredDate(value: unknown, label: string) {
+  if (typeof value !== "string" || !value.trim()) throw Object.assign(new Error(`${label} is required.`), { statusCode: 400 });
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw Object.assign(new Error(`${label} is invalid.`), { statusCode: 400 });
+}
+
 function money(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string") return 0;
   const normalized = value.replace(/[^0-9.-]/g, "");
   return normalized ? Number(normalized) || 0 : 0;
+}
+
+function validateMoneyLentBorrowedRecord(data: z.infer<typeof recordSchema>) {
+  if (data.details.recordKind !== "money_lent_borrowed") return;
+  const whatFor = typeof data.details.whatFor === "string" ? data.details.whatFor.trim() : data.title.trim();
+  const currency = typeof data.details.currency === "string" ? data.details.currency.trim() : "";
+  const direction = data.details.direction;
+  if (!whatFor) throw Object.assign(new Error("What for is required."), { statusCode: 400 });
+  if (money(data.details.amount) <= 0) throw Object.assign(new Error("Amount must be greater than 0."), { statusCode: 400 });
+  if (!currency) throw Object.assign(new Error("Currency is required."), { statusCode: 400 });
+  if (direction !== "LENT" && direction !== "BORROWED") throw Object.assign(new Error("Which way is required."), { statusCode: 400 });
+  if (direction === "LENT" && data.type !== "LOAN_GIVEN") throw Object.assign(new Error("Lent records must be saved as money lent."), { statusCode: 400 });
+  if (direction === "BORROWED" && data.type !== "LOAN_TAKEN") throw Object.assign(new Error("Borrowed records must be saved as money borrowed."), { statusCode: 400 });
+  parseRequiredDate(data.details.transactionDate, "Date");
 }
 
 function monthsBetween(start: unknown, duration: unknown) {
@@ -75,6 +95,7 @@ function attachmentDto(attachment: Prisma.WealthRecordAttachmentGetPayload<{ inc
     documentId: attachment.documentId,
     originalName: decryptString(attachment.document.originalName) ?? attachment.document.originalName,
     title: decryptString(attachment.document.title) ?? attachment.document.title,
+    category: attachment.document.category,
     mimeType: attachment.document.mimeType,
     size: attachment.document.size,
   };
@@ -120,6 +141,7 @@ export async function createWealthRecord(userId: string, input: unknown) {
   }
   if (!wealthRecordsTableAvailable) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
   const data = recordSchema.parse(input);
+  validateMoneyLentBorrowedRecord(data);
   const documentIds = [...new Set(data.attachmentDocumentIds)];
   if (documentIds.length) {
     const count = await prisma.document.count({ where: { id: { in: documentIds }, ownerProfileId: userId, deletedAt: null } });
@@ -147,6 +169,7 @@ export async function updateWealthRecord(userId: string, recordId: string, input
   const existing = await prisma.wealthRecord.findFirst({ where: { id: recordId, ownerUserId: userId } });
   if (!existing) throw Object.assign(new Error("Wealth record not found."), { statusCode: 404 });
   const data = recordSchema.parse(input);
+  validateMoneyLentBorrowedRecord(data);
   const documentIds = [...new Set(data.attachmentDocumentIds)];
   if (documentIds.length) {
     const count = await prisma.document.count({ where: { id: { in: documentIds }, ownerProfileId: userId, deletedAt: null } });

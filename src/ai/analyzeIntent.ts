@@ -3,6 +3,7 @@ import { consumeAIAction, releaseUninvokedAIAction, UsageLimitError } from "../s
 import type { ProviderRequestOptions } from "./providers/types";
 import type { AIReadinessPackage } from "./intentTypes";
 import { createAIProvider } from "./providers";
+import { assertAIProcessingEnabled } from "../services/aiProcessing.service";
 
 export class AIUnavailableError extends Error {
   readonly statusCode = 503;
@@ -24,6 +25,7 @@ export class PackageGenerationRejectedError extends Error {
 
 export async function analyzeIntent(userId: string, input: unknown, options: Pick<ProviderRequestOptions, "signal" | "onDelta"> = {}): Promise<AIReadinessPackage> {
   const query = JSON.stringify(buildPackageInput(input));
+  await assertAIProcessingEnabled(userId);
   const selection = createAIProvider();
   console.info(`[Readiness AI]\nProvider: ${selection.providerName}\nModel: ${selection.model ?? "none"}\nReason: ${selection.reason}`);
   if (!selection.provider) throw new AIUnavailableError();

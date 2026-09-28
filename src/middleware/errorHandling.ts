@@ -56,6 +56,7 @@ export function buildErrorResponse(input: {
     "PDF_PAGE_LIMIT_EXCEEDED",
     "UNSUPPORTED_FILE_TYPE",
     "FILE_TOO_LARGE",
+    "IMAGE_BATCH_TOO_LARGE",
     "FILE_SIGNATURE_MISMATCH",
     "FILE_CORRUPTED",
     "PASSWORD_PROTECTED_FILE",
@@ -66,6 +67,7 @@ export function buildErrorResponse(input: {
     "UPLOAD_FAILED",
     "TRUST_ACCESS_DENIED",
     "TRUST_MEMBER_REVOKED",
+    "AI_PROCESSING_DISABLED",
   ]);
   const code =
     typeof candidateCode === "string" && safeCodes.has(candidateCode)
@@ -75,7 +77,9 @@ export function buildErrorResponse(input: {
         : undefined;
   const validationMessage = code === "FILE_TOO_LARGE"
     ? fileTooLargeMessage(MAX_DOCUMENT_UPLOAD_BYTES)
-    : code ? documentValidationMessages[code] : undefined;
+    : code === "AI_PROCESSING_DISABLED"
+      ? "AI processing is disabled for this account."
+      : code ? documentValidationMessages[code] : undefined;
   if (validationMessage || (input.error instanceof DocumentEnvelopeError && ["IMAGE_DIMENSIONS_EXCEEDED", "PDF_PAGE_LIMIT_EXCEEDED"].includes(code ?? ""))) {
     return { status, body: { code, message: validationMessage ?? (input.error as Error).message, errorId } };
   }

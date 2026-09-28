@@ -220,7 +220,7 @@ vercel --prod
 
 For Vercel production, set `APP_ENV=production`, `STORAGE_DRIVER=s3`, and use an external database plus S3-compatible object storage. Do not rely on `LOCAL_STORAGE_PATH` or `.secrets/` in Vercel; local uploads use `/tmp` during a function invocation, while permanent encrypted documents must go to S3. Document uploads always validate encrypted envelopes, file size, MIME type, extension, magic bytes, PDF/image structure, and malformed content before storage. `DOCUMENT_MALWARE_SCANNER_COMMAND` is optional and plugs into the same validation flow when ClamAV or a cloud scanner is added later.
 
-Add optional integration env vars only for features you enable: `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, Gmail/Drive redirect URIs, `GOOGLE_TOKEN_ENCRYPTION_KEY`, SMTP settings, and `ADMIN_SEED_TOKEN`.
+Add optional integration env vars only for features you enable: `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, Gmail/Drive redirect URIs, `GOOGLE_TOKEN_ENCRYPTION_KEY`, SMTP settings, Web Push VAPID keys, and `ADMIN_SEED_TOKEN`.
 
 ### Production document keys and malware scanning
 
@@ -236,11 +236,14 @@ DOCUMENT_RSA_PRIVATE_KEY=base64:<base64-encoded-private-pem>
 DOCUMENT_MALWARE_SCANNER_COMMAND=clamscan
 DOCUMENT_MALWARE_SCANNER_ARGS=["--no-summary","{file}"]
 ADMIN_SEED_TOKEN=
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:support@readiness.com
 TRUST_PROXY=1
 ```
 
 Generate the RSA files using the commands in the encryption section below.
-Store private keys and `ADMIN_SEED_TOKEN` in the deployment secret manager.
+Generate VAPID keys with `npx web-push generate-vapid-keys`, expose only `VAPID_PUBLIC_KEY` to browsers through the backend, and store `VAPID_PRIVATE_KEY` plus `ADMIN_SEED_TOKEN` in the deployment secret manager. `ADMIN_SEED_TOKEN` protects operational endpoints such as package seeding and admin notification sends.
 
 ## Sign in with Google
 

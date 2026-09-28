@@ -49,6 +49,7 @@
     "@tesseract.js-data/eng": "^1.0.0",
     "@types/bcrypt": "^6.0.0",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/web-push": "^3.6.4",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
@@ -67,6 +68,7 @@
     "sharp": "^0.35.2",
     "swagger-ui-express": "^5.0.1",
     "tesseract.js": "^7.0.0",
+    "web-push": "^3.6.7",
     "word-extractor": "^1.0.4",
     "zod": "^3.25.76"
   },

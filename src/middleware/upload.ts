@@ -75,9 +75,9 @@ export const encryptedUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_DOCUMENT_UPLOAD_BYTES + AES_GCM_TAG_BYTES,
-    files: 10,
+    files: 50,
     fields: 2,
-    parts: 12,
+    parts: 52,
   },
   fileFilter: (_req, file, cb) => {
     if (!["encryptedFile", "encryptedFiles"].includes(file.fieldname) || file.mimetype !== "application/octet-stream") {

@@ -142,11 +142,16 @@ app.use("/packs", lazyRouter(() => import("./routes/packs.routes")));
 app.use("/packages", lazyRouter(() => import("./routes/packs.routes")));
 app.use("/api/packages", lazyRouter(() => import("./routes/packs.routes")));
 app.use("/admin/readiness", lazyRouter(() => import("./routes/readiness.admin.routes"), "adminReadinessRouter"));
+app.use("/admin/notifications", lazyRouter(() => import("./routes/notifications.routes"), "adminNotificationsRouter"));
+app.use("/admin/account", lazyRouter(() => import("./routes/account.routes"), "adminAccountRouter"));
 app.use("/api/integrations/gmail", lazyRouter(() => import("./routes/gmail.routes")));
 app.use("/api/integrations/drive", lazyRouter(() => import("./routes/drive.routes")));
 app.use("/api/trust", lazyRouter(() => import("./routes/trust.routes")));
 app.use("/api/wealth", lazyRouter(() => import("./routes/wealth.routes")));
 app.use("/api/health", lazyRouter(() => import("./routes/health.routes")));
+app.use("/api/notifications", lazyRouter(() => import("./routes/notifications.routes")));
+app.use("/api/preferences", lazyRouter(() => import("./routes/preferences.routes")));
+app.use("/api/account", lazyRouter(() => import("./routes/account.routes")));
 
 app.use(errorHandler);
 

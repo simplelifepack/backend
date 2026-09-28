@@ -154,6 +154,14 @@ async function run() {
       originalMimeType: `image/${format}` as "image/jpeg" | "image/png" | "image/webp",
       originalSize: bytes.length,
     });
+    if (format === "jpeg") {
+      const withTrailingPadding = Buffer.concat([bytes, Buffer.from([0, 0])]);
+      await validateDecryptedDocument(withTrailingPadding, {
+        originalFilename: "valid-trailing.jpg",
+        originalMimeType: "image/jpeg",
+        originalSize: withTrailingPadding.length,
+      });
+    }
     if (format === "png") {
       await assert.rejects(
         () => validateDecryptedDocument(bytes.subarray(0, -1), {

@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "tracked_health_metrics_userId_memberId_metricKey_context_bodySi" RENAME TO "tracked_health_metrics_userId_memberId_metricKey_context_bo_key";

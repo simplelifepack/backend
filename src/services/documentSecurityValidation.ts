@@ -97,6 +97,36 @@ function assertStaticPdfSafety(plaintext: Buffer) {
   }
 }
 
+function isIgnorableTrailingByte(value: number) {
+  return value === 0x00 || value === 0x09 || value === 0x0a || value === 0x0c || value === 0x0d || value === 0x20;
+}
+
+function assertNoUnexpectedImageTrailingData(plaintext: Buffer, endOffset: number) {
+  for (const value of plaintext.subarray(endOffset)) {
+    if (!isIgnorableTrailingByte(value)) {
+      throw new DocumentEnvelopeError("FILE_CORRUPTED", "The image contains unexpected trailing data.", 422);
+    }
+  }
+}
+
+function assertImageTerminalMarker(plaintext: Buffer, mimeType: ValidatedEncryptedEnvelope["originalMimeType"]) {
+  if (mimeType === "image/jpeg") {
+    const end = plaintext.lastIndexOf(Buffer.from([0xff, 0xd9]));
+    if (end < 0) throw new DocumentEnvelopeError("FILE_CORRUPTED", "The JPEG is truncated.", 422);
+  }
+  if (mimeType === "image/png") {
+    const marker = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+    const end = plaintext.subarray(Math.max(0, plaintext.length - 256)).lastIndexOf(marker);
+    if (end < 0) throw new DocumentEnvelopeError("FILE_CORRUPTED", "The PNG is truncated.", 422);
+    assertNoUnexpectedImageTrailingData(plaintext, Math.max(0, plaintext.length - 256) + end + marker.length);
+  }
+  if (mimeType === "image/webp") {
+    const end = plaintext.length >= 12 ? plaintext.readUInt32LE(4) + 8 : -1;
+    if (end < 12 || end > plaintext.length) throw new DocumentEnvelopeError("FILE_CORRUPTED", "The WebP container length is invalid.", 422);
+    assertNoUnexpectedImageTrailingData(plaintext, end);
+  }
+}
+
 async function validatePdf(plaintext: Buffer) {
   assertStaticPdfSafety(plaintext);
   const { PDFParse } = await import("pdf-parse");
@@ -126,26 +156,6 @@ async function validatePdf(plaintext: Buffer) {
   }
 }
 
-function assertImageEnding(plaintext: Buffer, mimeType: ValidatedEncryptedEnvelope["originalMimeType"]) {
-  if (mimeType === "image/jpeg" && !plaintext.subarray(-2).equals(Buffer.from([0xff, 0xd9]))) {
-    throw new DocumentEnvelopeError("FILE_CORRUPTED", "The JPEG is truncated.", 422);
-  }
-  if (
-    mimeType === "image/png" &&
-    !plaintext.subarray(-12).equals(
-      Buffer.from([0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]),
-    )
-  ) {
-    throw new DocumentEnvelopeError("FILE_CORRUPTED", "The PNG is truncated.", 422);
-  }
-  if (
-    mimeType === "image/webp" &&
-    (plaintext.length < 12 || plaintext.readUInt32LE(4) + 8 !== plaintext.length)
-  ) {
-    throw new DocumentEnvelopeError("FILE_CORRUPTED", "The WebP container length is invalid.", 422);
-  }
-}
-
 async function validateImage(
   plaintext: Buffer,
   mimeType: ValidatedEncryptedEnvelope["originalMimeType"],
@@ -169,7 +179,7 @@ async function validateImage(
       422,
     );
   }
-  assertImageEnding(plaintext, mimeType);
+  assertImageTerminalMarker(plaintext, mimeType);
   try {
     const image = sharp(plaintext, {
       failOn: "error",

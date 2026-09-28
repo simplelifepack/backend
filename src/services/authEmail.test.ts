@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../lib/prisma";
 import type { TokenPayload } from "google-auth-library";
 
-import { forgotPassword, googleLogin, login, resetPassword, signup } from "./auth.service";
+import { forgotPassword, googleLogin, login, requestSignupOtp, resetPassword, signup } from "./auth.service";
 import type { SendEmailInput } from "./email/EmailProvider";
 import { setEmailProviderForTests } from "./email/emailService";
 import { renderLoginAlertEmail } from "./email/templates/loginAlertEmail";
@@ -55,23 +55,35 @@ async function run() {
   const provider = new MockEmailProvider();
   setEmailProviderForTests(provider);
 
-  const created = await signup({
+  await requestSignupOtp({
     name: "Deepika",
     email: email("new"),
     password: "password123",
     from: "attacker@example.com",
   });
-  assert.equal(provider.sent.length, 1, "new signup sends one welcome email");
-  assert.equal(provider.sent[0].to, created.user.email, "welcome email goes to the registered email");
-  assert.equal(provider.sent[0].subject, "Welcome to Readiness");
-  assert.match(provider.sent[0].html, /Welcome, Deepika/);
+  assert.equal(provider.sent.length, 1, "new signup sends one signup OTP email");
+  assert.equal(provider.sent[0].to, email("new"), "signup OTP email goes to the registered email");
+  assert.equal(provider.sent[0].subject, "Your Readiness signup code");
+  const signupOtp = provider.sent[0].text.match(/\b\d{6}\b/)?.[0];
+  assert.ok(signupOtp, "signup email includes OTP");
+
+  const created = await signup({
+    name: "Deepika",
+    email: email("new"),
+    password: "password123",
+    otp: signupOtp,
+  });
+  assert.equal(provider.sent.length, 2, "verified signup sends one welcome email");
+  assert.equal(provider.sent[1].to, created.user.email, "welcome email goes to the registered email");
+  assert.equal(provider.sent[1].subject, "Welcome to Readiness");
+  assert.match(provider.sent[1].html, /Welcome, Deepika/);
   assert.doesNotMatch(provider.sent[0].html, /attacker@example.com/, "request input cannot override sender or template content");
 
   await expectFailure(
-    () => signup({ name: "Deepika Again", email: email("new"), password: "password123" }),
+    () => requestSignupOtp({ name: "Deepika Again", email: email("new"), password: "password123" }),
     /already exists/,
   );
-  assert.equal(provider.sent.length, 1, "duplicate signup does not send another welcome email");
+  assert.equal(provider.sent.length, 2, "duplicate signup does not send another email");
   assert.equal(
     provider.sent.filter((message) => message.subject === "New login to your Readiness account").length,
     0,
@@ -82,26 +94,26 @@ async function run() {
     () => login({ email: email("new"), password: "wrong-password" }),
     /Invalid email or password/,
   );
-  assert.equal(provider.sent.length, 1, "failed login sends no email");
+  assert.equal(provider.sent.length, 2, "failed login sends no email");
 
   await login(
     { email: email("new"), password: "password123" },
     { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0", ip: "203.0.113.42" },
   );
-  assert.equal(provider.sent.length, 2, "successful existing-user login sends one alert");
-  assert.equal(provider.sent[1].subject, "New login to your Readiness account");
-  assert.match(provider.sent[1].text, /203\.0\.113\.x/);
+  assert.equal(provider.sent.length, 3, "successful existing-user login sends one alert");
+  assert.equal(provider.sent[2].subject, "New login to your Readiness account");
+  assert.match(provider.sent[2].text, /203\.0\.113\.x/);
 
   const missingReset = await forgotPassword({ email: email("missing") });
   assert.match(missingReset.message, /If an account exists/);
-  assert.equal(provider.sent.length, 2, "forgot password for unknown account sends no email");
+  assert.equal(provider.sent.length, 3, "forgot password for unknown account sends no email");
 
   const resetResponse = await forgotPassword({ email: email("new") });
   assert.match(resetResponse.message, /If an account exists/);
-  assert.equal(provider.sent.length, 3, "forgot password sends one reset email for password account");
-  assert.equal(provider.sent[2].subject, "Reset your Readiness password");
-  assert.equal(provider.sent[2].to, email("new"));
-  const resetUrl = provider.sent[2].text.match(/http[^\s]+/)?.[0];
+  assert.equal(provider.sent.length, 4, "forgot password sends one reset email for password account");
+  assert.equal(provider.sent[3].subject, "Reset your Readiness password");
+  assert.equal(provider.sent[3].to, email("new"));
+  const resetUrl = provider.sent[3].text.match(/http[^\s]+/)?.[0];
   assert.ok(resetUrl, "reset email includes reset URL");
   const resetToken = new URL(resetUrl).searchParams.get("token");
   assert.ok(resetToken, "reset URL includes token");
@@ -117,11 +129,14 @@ async function run() {
     /Invalid or expired/,
   );
 
-  const failingWelcomeProvider = new MockEmailProvider();
-  failingWelcomeProvider.shouldFail = true;
-  setEmailProviderForTests(failingWelcomeProvider);
-  await signup({ name: "SMTP Fail", email: email("smtp-signup"), password: "password123" });
-  assert.equal(failingWelcomeProvider.sent.length, 0, "SMTP failure does not fail successful signup");
+  const failingSignupProvider = new MockEmailProvider();
+  failingSignupProvider.shouldFail = true;
+  setEmailProviderForTests(failingSignupProvider);
+  await expectFailure(
+    () => requestSignupOtp({ name: "SMTP Fail", email: email("smtp-signup"), password: "password123" }),
+    /Unable to send signup code/,
+  );
+  assert.equal(failingSignupProvider.sent.length, 0, "SMTP failure does not create signup email state");
 
   const failingLoginProvider = new MockEmailProvider();
   failingLoginProvider.shouldFail = true;

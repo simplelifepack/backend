@@ -43,6 +43,19 @@ export class DocumentEnvelopeError extends Error {
   }
 }
 
+export function assertImageUploadBatchWithinLimit(envelopes: Array<{ originalMimeType: string; originalSize: number }>) {
+  const imageBytes = envelopes
+    .filter((item) => item.originalMimeType.startsWith("image/"))
+    .reduce((total, item) => total + item.originalSize, 0);
+  if (imageBytes > MAX_DOCUMENT_UPLOAD_BYTES) {
+    throw new DocumentEnvelopeError(
+      "IMAGE_BATCH_TOO_LARGE",
+      documentValidationMessages.IMAGE_BATCH_TOO_LARGE!,
+      413,
+    );
+  }
+}
+
 export function decodeBase64Url(value: string, expectedBytes: number, label: string) {
   const bytes = Buffer.from(value, "base64url");
   if (bytes.length !== expectedBytes || bytes.toString("base64url") !== value) {
@@ -135,8 +148,10 @@ export function validateEncryptedDocumentEnvelopes(fields: unknown, files: Expre
   const input = fields && typeof fields === "object" ? fields as Record<string, unknown> : {};
   let metadata: unknown;
   try { metadata = JSON.parse(typeof input.envelopes === "string" ? input.envelopes : ""); } catch { metadata = null; }
-  if (!Array.isArray(metadata) || !files?.length || metadata.length !== files.length || files.length > 10) {
-    throw new DocumentEnvelopeError("INVALID_ENCRYPTION_ENVELOPE", "One to ten encrypted document pages are required.");
+  if (!Array.isArray(metadata) || !files?.length || metadata.length !== files.length || files.length > 50) {
+    throw new DocumentEnvelopeError("INVALID_ENCRYPTION_ENVELOPE", "One to fifty encrypted document pages are required.");
   }
-  return metadata.map((item, index) => validateEncryptedDocumentEnvelope({ ...(item as object), aiAnalysisConsent: input.aiAnalysisConsent }, { ...files[index]!, fieldname: "encryptedFile" }));
+  const envelopes = metadata.map((item, index) => validateEncryptedDocumentEnvelope({ ...(item as object), aiAnalysisConsent: input.aiAnalysisConsent }, { ...files[index]!, fieldname: "encryptedFile" }));
+  assertImageUploadBatchWithinLimit(envelopes);
+  return envelopes;
 }

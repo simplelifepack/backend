@@ -3,6 +3,7 @@ export const documentValidationMessages: Record<string, string> = {
   FILE_CORRUPTED: "This file appears to be corrupted. Please try uploading another copy.",
   UNSUPPORTED_FILE_TYPE: "This file type isn’t supported. Please upload a JPEG, PNG, WebP, or PDF.",
   FILE_SIGNATURE_MISMATCH: "This file’s format doesn’t match its filename. Please export it as a JPEG, PNG, WebP, or PDF and try again.",
+  IMAGE_BATCH_TOO_LARGE: "The selected pages exceed the 10 MB upload limit. Remove or compress some pages and try again.",
   PASSWORD_PROTECTED_FILE: "This PDF is password-protected. Please upload a copy without password protection.",
   INVALID_ENCRYPTION_ENVELOPE: "We couldn’t verify this upload. Please select the file and try uploading it again.",
   UNSAFE_FILE: "This file contains content that isn’t supported. Please upload a plain PDF or image copy.",

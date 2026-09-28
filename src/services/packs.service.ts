@@ -17,6 +17,39 @@ export type PackageListOptions = {
   userId?: string;
 };
 
+type RequirementAssignmentDto = {
+  assignmentSource: string;
+  documentId: string;
+  overriddenAt: string | null;
+};
+
+async function getRequirementAssignmentMap(userId: string | undefined, requirementIds: string[]) {
+  if (!userId || !requirementIds.length) return new Map<string, RequirementAssignmentDto>();
+  const assignments = await prisma.requirementAssignment.findMany({
+    where: {
+      userId,
+      requirementId: { in: requirementIds },
+      document: { ownerProfileId: userId, deletedAt: null },
+    },
+    select: {
+      requirementId: true,
+      documentId: true,
+      assignmentSource: true,
+      overriddenAt: true,
+    },
+  });
+  return new Map(assignments.map((assignment) => [assignment.requirementId, {
+    assignmentSource: assignment.assignmentSource,
+    documentId: assignment.documentId,
+    overriddenAt: assignment.overriddenAt?.toISOString() ?? null,
+  }]));
+}
+
+function assignmentPayload(assignments: Map<string, RequirementAssignmentDto>, requirementId: string) {
+  const assignment = assignments.get(requirementId);
+  return assignment ? { assignment } : {};
+}
+
 export async function ensureReadinessPacks() {
   const [count, sourcedCount, passportApplicationPack] = await Promise.all([
     prisma.readinessPack.count({ where: { createdBy: "seed" } }),
@@ -136,7 +169,8 @@ export async function listPackageSummaries(options: PackageListOptions) {
         take: limit,
       }),
     ]);
-    return toPaginatedPackageResponse(packs, total, page, limit, options.search);
+    const assignments = await getRequirementAssignmentMap(options.userId, packs.flatMap((pack) => pack.requirements.map((requirement) => requirement.id)));
+    return toPaginatedPackageResponse(packs, total, page, limit, options.search, undefined, assignments);
   }
 
   const packs = await prisma.readinessPack.findMany({ where, select, orderBy });
@@ -154,13 +188,16 @@ export async function listPackageSummaries(options: PackageListOptions) {
       if (options.sort === "newest") return right.pack.createdAt.getTime() - left.pack.createdAt.getTime();
       return right.score - left.score || left.pack.title.localeCompare(right.pack.title);
     });
+  const pagePacks = filtered.slice((page - 1) * limit, page * limit).map(({ pack }) => pack);
+  const assignments = await getRequirementAssignmentMap(options.userId, pagePacks.flatMap((pack) => pack.requirements.map((requirement) => requirement.id)));
   return toPaginatedPackageResponse(
-    filtered.slice((page - 1) * limit, page * limit).map(({ pack }) => pack),
+    pagePacks,
     filtered.length,
     page,
     limit,
     options.search,
     new Map(filtered.map(({ pack, scoreDetail }) => [pack.slug, scoreDetail]).filter((entry): entry is [string, PackScore] => Boolean(entry[1]))),
+    assignments,
   );
 }
 
@@ -237,6 +274,19 @@ export async function getReadinessPackDefinitionBySlug(slug: string) {
   return best?.pack ?? null;
 }
 
+export async function getReadinessPackDefinitionBySlugForUser(slug: string, userId: string) {
+  const pack = await getReadinessPackDefinitionBySlug(slug);
+  if (!pack) return null;
+  const assignments = await getRequirementAssignmentMap(userId, pack.requirements.map((requirement) => requirement.id));
+  return {
+    ...pack,
+    requirements: pack.requirements.map((requirement) => ({
+      ...requirement,
+      ...assignmentPayload(assignments, requirement.id),
+    })),
+  };
+}
+
 export async function getReadinessPackDefinitionByCanonicalSlug(slug: string) {
   await ensureReadinessPacks();
   return prisma.readinessPack.findUnique({
@@ -269,7 +319,7 @@ function toPaginatedPackageResponse<T extends {
     metadata: unknown;
     acceptedDocumentTypes: string[];
   }>;
-}>(packs: T[], total: number, page: number, limit: number, query?: string, matchInfo = new Map<string, PackScore>()) {
+}>(packs: T[], total: number, page: number, limit: number, query?: string, matchInfo = new Map<string, PackScore>(), assignments = new Map<string, RequirementAssignmentDto>()) {
   const matches = packs.flatMap((pack) => {
     const match = matchInfo.get(pack.slug);
     return match ? [{
@@ -305,6 +355,7 @@ function toPaginatedPackageResponse<T extends {
         ...(requirement.owner !== "self" ? { owner: requirement.owner } : {}),
         acceptedDocumentTypes: [...new Set(requirement.acceptedDocumentTypes.map((type) => normalizeDocumentType(type)))],
         ...(requirement.metadata && typeof requirement.metadata === "object" && Object.keys(requirement.metadata as object).length ? { metadata: requirement.metadata } : {}),
+        ...assignmentPayload(assignments, requirement.id),
       })),
     })),
     matches,
