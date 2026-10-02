@@ -453,6 +453,9 @@ model HealthMedication {
   frequency        String?
   duration         String?
   quantity         String?
+  whenToTake       String[]       @default([])
+  mealTiming       String?
+  repeatRunsOut    DateTime?
   status           String         @default("continuing")
   repeats          Boolean        @default(false)
   runsOutAt        DateTime?
@@ -499,7 +502,9 @@ model HealthReminder {
   sourceDocumentId String?
   sourceDocument   HealthDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
   title            String
+  type             String?
   dueDate          DateTime
+  frequency        String?
   origin           String
   recurrence       String?
   status           String          @default("active")

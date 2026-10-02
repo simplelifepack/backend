@@ -12,6 +12,11 @@ import { metricSearchTerms, normalizeMetricName } from "./healthMetricRegistry";
 import { assertAIProcessingEnabled } from "./aiProcessing.service";
 
 const documentTypes = ["lab_report", "medical_report", "prescription"] as const;
+const medicationTimes = ["morning", "afternoon", "night"] as const;
+const mealTimings = ["before_food", "after_food", "with_food", "any_time"] as const;
+const reminderTypes = ["appointment", "medicine", "refill", "other"] as const;
+const reminderFrequencies = ["once", "daily", "weekly", "monthly"] as const;
+type MedicationTime = (typeof medicationTimes)[number];
 
 export const memberSchema = z
   .object({
@@ -113,7 +118,9 @@ export const reminderSchema = z
   .object({
     memberId: z.string().trim().min(1),
     title: z.string().trim().min(1).max(180),
+    type: z.enum(reminderTypes),
     dueDate: z.string().trim().min(1),
+    frequency: z.enum(reminderFrequencies),
     recurrence: z.string().trim().max(80).optional().nullable(),
   })
   .strict();
@@ -122,9 +129,9 @@ export const manualMedicationSchema = z
   .object({
     name: z.string().trim().min(1).max(180),
     dose: z.string().trim().min(1).max(120),
-    frequency: z.string().trim().max(160).optional().nullable(),
-    repeats: z.boolean().default(false),
-    runsOutAt: z.string().trim().optional().nullable(),
+    whenToTake: z.array(z.enum(medicationTimes)).min(1),
+    mealTiming: z.enum(mealTimings),
+    repeatRunsOut: z.string().trim().optional().nullable(),
   })
   .strict();
 
@@ -132,6 +139,9 @@ export const medicationUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(180).optional(),
     dose: z.string().trim().max(120).optional().nullable(),
+    whenToTake: z.array(z.enum(medicationTimes)).min(1).optional(),
+    mealTiming: z.enum(mealTimings).optional().nullable(),
+    repeatRunsOut: z.string().trim().optional().nullable(),
     frequency: z.string().trim().max(160).optional().nullable(),
     duration: z.string().trim().max(160).optional().nullable(),
     quantity: z.string().trim().max(120).optional().nullable(),
@@ -170,6 +180,65 @@ function parseDate(value: string | null | undefined) {
   if (!value) return null;
   const date = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseOptionalDate(value: string | null | undefined, fieldName: string) {
+  if (!value) return null;
+  const dateOnly = value.slice(0, 10);
+  const date = parseDate(dateOnly);
+  if (!date || date.toISOString().slice(0, 10) !== dateOnly) {
+    throw Object.assign(new Error(`${fieldName} must be a valid date.`), { statusCode: 400 });
+  }
+  return date;
+}
+
+function inferWhenToTake(frequency: string | null | undefined): MedicationTime[] {
+  if (!frequency) return [];
+  const text = frequency.toLowerCase();
+  return medicationTimes.filter((time) => new RegExp(`\\b${time}\\b`, "i").test(text));
+}
+
+function inferMealTiming(frequency: string | null | undefined) {
+  if (!frequency) return null;
+  const text = frequency.toLowerCase();
+  if (/\bbefore\s+(food|meal|meals)\b/.test(text)) return "before_food";
+  if (/\bafter\s+(food|meal|meals)\b/.test(text)) return "after_food";
+  if (/\bwith\s+(food|meal|meals)\b/.test(text)) return "with_food";
+  if (/\bany\s*time\b/.test(text)) return "any_time";
+  return null;
+}
+
+function nextReminderDueDate(dueDate: Date, frequency: string | null | undefined) {
+  if (!frequency || frequency === "once") return dueDate;
+  const now = new Date();
+  const next = new Date(dueDate);
+  const advance = () => {
+    if (frequency === "daily") next.setUTCDate(next.getUTCDate() + 1);
+    else if (frequency === "weekly") next.setUTCDate(next.getUTCDate() + 7);
+    else if (frequency === "monthly") next.setUTCMonth(next.getUTCMonth() + 1);
+    else return false;
+    return true;
+  };
+  while (next.getTime() < now.getTime()) {
+    if (!advance()) break;
+  }
+  return next;
+}
+
+function reminderDto(item: { id: string; title: string; type: string | null; dueDate: Date; frequency: string | null; recurrence: string | null; origin: string; status: string; memberId: string; member?: { name: string } }) {
+  const frequency = item.frequency ?? (item.recurrence ? item.recurrence : "once");
+  const dueDate = nextReminderDueDate(item.dueDate, frequency);
+  return {
+    id: item.id,
+    title: item.title,
+    type: item.type ?? "other",
+    dueDate: iso(dueDate),
+    frequency,
+    memberId: item.memberId,
+    memberName: item.member?.name,
+    origin: item.origin,
+    status: item.status,
+  };
 }
 
 function prescriptionProcessingStatus(type: HealthDocumentType, extraction: HealthExtraction) {
@@ -252,7 +321,7 @@ async function healthSource(document: HealthSourceDocument) {
   return { text: texts.filter(Boolean).join("\n\n"), bytes };
 }
 
-function parseOptionalDate(value: string | null | undefined, field = "Date") {
+function parseBirthDate(value: string | null | undefined) {
   if (!value) return null;
   const input = value.trim();
   const match = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -428,7 +497,7 @@ export async function createHealthMember(userId: string, input: unknown) {
         name: data.name,
         relation: data.relation,
         bloodGroup: data.bloodGroup || null,
-        dateOfBirth: parseOptionalDate(data.dateOfBirth, "Date of birth"),
+        dateOfBirth: parseBirthDate(data.dateOfBirth),
       },
     }),
   );
@@ -446,7 +515,7 @@ export async function updateHealthMember(userId: string, memberId: string, input
         ...(data.bloodGroup !== undefined ? { bloodGroup: data.bloodGroup || null } : {}),
         ...(data.dateOfBirth !== undefined
           ? {
-              dateOfBirth: parseOptionalDate(data.dateOfBirth, "Date of birth"),
+              dateOfBirth: parseBirthDate(data.dateOfBirth),
             }
           : {}),
         ...(data.conditions !== undefined ? { conditions: data.conditions || null } : {}),
@@ -513,10 +582,7 @@ export async function getHealthRecord(userId: string, recordId: string) {
       explicitDate: iso(item.explicitDate),
       dueDate: iso(item.dueDate),
     })),
-    reminders: record.reminders.map((item) => ({
-      ...item,
-      dueDate: iso(item.dueDate),
-    })),
+    reminders: record.reminders.map((item) => reminderDto(item)),
   };
 }
 
@@ -726,6 +792,8 @@ export async function createHealthRecord(userId: string, input: unknown) {
           name: item.name.trim(),
           dose: item.dose ?? null,
           frequency: item.frequency ?? null,
+          whenToTake: inferWhenToTake(item.frequency),
+          mealTiming: inferMealTiming(item.frequency),
           duration: item.duration ?? null,
           quantity: item.quantity ?? null,
         })),
@@ -879,6 +947,8 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
           name: item.name.trim(),
           dose: item.dose ?? null,
           frequency: item.frequency ?? null,
+          whenToTake: inferWhenToTake(item.frequency),
+          mealTiming: inferMealTiming(item.frequency),
           duration: item.duration ?? null,
           quantity: item.quantity ?? null,
         })),
@@ -1052,10 +1122,9 @@ export async function getOverview(userId: string, memberId: string) {
         userId,
         memberId,
         status: "active",
-        dueDate: { gte: new Date() },
       },
       orderBy: { dueDate: "asc" },
-      take: 5,
+      take: 50,
     }),
   ]);
   const trackedMetrics = await Promise.all(
@@ -1074,10 +1143,10 @@ export async function getOverview(userId: string, memberId: string) {
   );
   return {
     member: memberDto(member),
-    upcoming: reminders.map((item) => ({
-      ...item,
-      dueDate: iso(item.dueDate),
-    })),
+    upcoming: reminders
+      .map((item) => reminderDto(item))
+      .sort((a, b) => new Date(a.dueDate ?? "").getTime() - new Date(b.dueDate ?? "").getTime())
+      .slice(0, 5),
     trackedMetrics,
     recentRecords: records.slice(0, 5),
   };
@@ -1090,14 +1159,10 @@ export async function listActiveHealthReminders(userId: string) {
     orderBy: { dueDate: "asc" },
     take: 20,
   });
-  return reminders.map((item) => ({
-    id: item.id,
-    title: item.title,
-    dueDate: iso(item.dueDate),
-    memberId: item.memberId,
-    memberName: item.member.name,
-    origin: item.origin,
-  }));
+  return reminders
+    .map((item) => reminderDto(item))
+    .sort((a, b) => new Date(a.dueDate ?? "").getTime() - new Date(b.dueDate ?? "").getTime())
+    .slice(0, 20);
 }
 
 export async function getTimeline(userId: string, memberId: string) {
@@ -1142,9 +1207,12 @@ export async function getTimeline(userId: string, memberId: string) {
         name: item.name,
         dose: item.dose,
         frequency: item.frequency,
+        whenToTake: item.whenToTake,
+        mealTiming: item.mealTiming,
         duration: item.duration,
         quantity: item.quantity,
         repeats: item.repeats,
+        repeatRunsOut: iso(item.repeatRunsOut),
         runsOutAt: iso(item.runsOutAt),
         status: item.status,
         stoppedAt: iso(item.stoppedAt),
@@ -1194,9 +1262,12 @@ export async function createManualMedication(userId: string, memberId: string, i
       memberId,
       name: data.name,
       dose: data.dose,
-      frequency: data.frequency || null,
-      repeats: data.repeats,
-      runsOutAt: parseDate(data.runsOutAt),
+      frequency: data.whenToTake.join(", "),
+      whenToTake: data.whenToTake,
+      mealTiming: data.mealTiming,
+      repeats: Boolean(data.repeatRunsOut),
+      repeatRunsOut: parseOptionalDate(data.repeatRunsOut, "repeatRunsOut"),
+      runsOutAt: parseOptionalDate(data.repeatRunsOut, "repeatRunsOut"),
       status: "continuing",
       stoppedAt: null,
     },
@@ -1227,6 +1298,9 @@ export async function updateMedication(userId: string, medicationId: string, inp
     data: {
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.dose !== undefined ? { dose: data.dose || null } : {}),
+      ...(data.whenToTake !== undefined ? { whenToTake: data.whenToTake, frequency: data.whenToTake.join(", ") } : {}),
+      ...(data.mealTiming !== undefined ? { mealTiming: data.mealTiming } : {}),
+      ...(data.repeatRunsOut !== undefined ? { repeatRunsOut: parseOptionalDate(data.repeatRunsOut, "repeatRunsOut"), runsOutAt: parseOptionalDate(data.repeatRunsOut, "repeatRunsOut"), repeats: Boolean(data.repeatRunsOut) } : {}),
       ...(data.frequency !== undefined ? { frequency: data.frequency || null } : {}),
       ...(data.duration !== undefined ? { duration: data.duration || null } : {}),
       ...(data.quantity !== undefined ? { quantity: data.quantity || null } : {}),
@@ -1263,8 +1337,10 @@ export async function createManualReminder(userId: string, input: unknown) {
       userId,
       memberId: data.memberId,
       title: data.title,
+      type: data.type,
       dueDate,
-      recurrence: data.recurrence ?? null,
+      frequency: data.frequency,
+      recurrence: data.frequency === "once" ? null : data.frequency,
       origin: "manual",
     },
   });
