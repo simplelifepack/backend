@@ -6,8 +6,10 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AIUnavailableError, PackageGenerationRejectedError, analyzeIntent } from "../ai/analyzeIntent";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
-import { getPackageDefinitions, getReadinessPackDefinitionBySlug, getReadinessPackDefinitionBySlugForUser, getReadinessPacksBySlugs, listPackageSummaries } from "../services/packs.service";
+import { createCustomPack, deleteCustomPack, getPackageDefinitions, getReadinessPackDefinitionBySlug, getReadinessPackDefinitionBySlugForUser, getReadinessPacksBySlugs, listPackageSummaries, updateCustomPack } from "../services/packs.service";
 import { findDefaultPackMatch, saveGeneratedDefaultPack } from "../services/readiness/defaultPacksRepository";
+import { refreshPackageForUser } from "../services/readiness/packageRefresh.service";
+import { PackageRefreshError } from "../ai/researchPackageRefresh";
 
 const router = Router();
 router.use(requireAuth);
@@ -36,6 +38,20 @@ const listSchema = z.object({
   sort: z.enum(["category", "newest", "relevance", "title"]).catch("category"),
 });
 const searchOrGenerateSchema = packageInputSchema;
+const customPackSchema = z.object({
+  description: z.string().trim().max(1000).optional(),
+  requirements: z.array(z.string().trim().min(1).max(120)).min(1).max(40),
+  searchMetadata: z.record(z.string(), z.unknown()).optional(),
+  source: z.object({
+    name: z.string().trim().max(160).optional(),
+    title: z.string().trim().max(200).optional(),
+    url: z.string().trim().url().max(500).optional(),
+    lastCheckedAt: z.string().trim().max(40).optional(),
+  }).optional(),
+  title: z.string().trim().min(1).max(120),
+  verificationSources: z.array(z.unknown()).max(10).optional(),
+  verificationStatus: z.string().trim().max(80).optional(),
+}).strict();
 
 type Generation = {
   promise: Promise<string>;
@@ -152,6 +168,74 @@ router.post("/search-or-generate", async (req, res, next) => {
   } finally { res.off("close", disconnect); }
 });
 
+router.post("/custom/draft", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { packageType, documentLabels } = searchOrGenerateSchema.parse(req.body);
+    const generated = await analyzeIntent(authUser.id, { packageType, documentLabels });
+    return res.json({ draft: generated });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Package description must be 160 characters or fewer." });
+    }
+    if (error instanceof AIUnavailableError || error instanceof PackageGenerationRejectedError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    return next(error);
+  }
+});
+
+router.post("/custom", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const input = customPackSchema.parse(req.body);
+    const pack = await createCustomPack(authUser.id, input);
+    return res.status(201).json({ package: pack });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ message: "Custom pack name and document list are required." });
+    return next(error);
+  }
+});
+
+router.patch("/:slug/custom", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { slug } = slugSchema.parse(req.params);
+    const input = customPackSchema.parse(req.body);
+    const pack = await updateCustomPack(authUser.id, slug, input);
+    if (!pack) return res.status(404).json({ message: "Custom pack not found." });
+    return res.json({ package: pack });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ message: "Custom pack name and document list are required." });
+    return next(error);
+  }
+});
+
+router.delete("/:slug/custom", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { slug } = slugSchema.parse(req.params);
+    const deleted = await deleteCustomPack(authUser.id, slug);
+    if (!deleted) return res.status(404).json({ message: "Custom pack not found." });
+    return res.status(204).end();
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:slug/refresh", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { slug } = slugSchema.parse(req.params);
+    const result = await refreshPackageForUser(authUser.id, slug);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof PackageRefreshError) return res.status(error.statusCode).json({ message: error.message });
+    return next(error);
+  }
+});
+
 router.get("/:slug", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
@@ -171,7 +255,7 @@ router.post("/:slug/requirements/:requirementId/assignment", async (req, res, ne
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { slug, requirementId } = assignmentParamsSchema.parse(req.params);
     const { assignmentSource, documentId } = assignmentSchema.parse(req.body);
-    const pack = await getReadinessPackDefinitionBySlug(slug);
+    const pack = await getReadinessPackDefinitionBySlugForUser(slug, authUser.id);
     const requirement = pack?.requirements.find((item) => item.id === requirementId);
     if (!pack || !requirement) return res.status(404).json({ message: "Requirement not found." });
     const document = await prisma.document.findFirst({
@@ -204,7 +288,7 @@ router.delete("/:slug/requirements/:requirementId/assignment", async (req, res, 
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { slug, requirementId } = assignmentParamsSchema.parse(req.params);
-    const pack = await getReadinessPackDefinitionBySlug(slug);
+    const pack = await getReadinessPackDefinitionBySlugForUser(slug, authUser.id);
     if (!pack?.requirements.some((item) => item.id === requirementId)) {
       return res.status(404).json({ message: "Requirement not found." });
     }

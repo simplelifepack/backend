@@ -4,7 +4,6 @@ import { validateDocumentMetadata } from "../ingestion/documentDefinitions";
 import { matchRequirementMetadata } from "./metadataMatcher";
 import { buildDocumentMetadata } from "./documentMetadata";
 import { normalizeDocumentType, normalizeRequirementDocumentTypes } from "./normalization";
-import { readinessPackSeeds } from "./readinessPackData";
 import { resolveRequirementCapabilities } from "./capabilityResolver";
 
 const selfPan = document("self-pan", "PAN Card", "self");
@@ -70,11 +69,6 @@ const missingPages = { ...document("deed", "Sale Deed", "self"), attributes: { p
 const incomplete = matchRequirementMetadata(requirement("deed", "sale_deed", "self", "Sale Deed"), [missingPages]);
 assert.equal(incomplete.state, "partial");
 assert.match(incomplete.reason ?? "", /missing pages/);
-
-const propertyPurchase = readinessPackSeeds.find((pack) => pack.slug === "property-purchase");
-const sellerPanRequirement = propertyPurchase?.requirements.find((requirement) => requirement.title === "Seller PAN Card");
-assert.equal(sellerPanRequirement?.documentType, "pan");
-assert.equal(sellerPanRequirement?.owner, "seller");
 
 console.log("Metadata readiness matcher tests passed.");
 

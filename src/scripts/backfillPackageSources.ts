@@ -4,7 +4,6 @@ import { buildPackageInput } from "../ai/packageInput";
 import type { AIReadinessPackage } from "../ai/intentTypes";
 import { prisma } from "../lib/prisma";
 import { normalizeSearchText, slugify } from "../services/readiness/normalization";
-import { sourceMetadataForExactPackage, sourceMetadataForSeed } from "../services/readiness/readinessPackSources";
 
 const DEFAULT_BATCH_SIZE = 10;
 
@@ -153,33 +152,12 @@ async function findMissingSourcePackages(limit: number, cursor?: string) {
 }
 
 async function resolveSourceMetadata(pack: PackageForBackfill, useAi: boolean): Promise<SourceMetadata | null> {
-  const exact = sourceMetadataForExactPackage(pack.title);
-  if (exact) return metadataFromSeedSource(exact);
-
-  if (pack.createdBy === "seed") {
-    const seed = sourceMetadataForSeed(pack.title, pack.category);
-    return metadataFromSeedSource(seed);
-  }
-
   if (!useAi) return null;
   // Operator-only catalogue maintenance, not an end-user operation.
   const provider = createAIProvider().provider;
   if (!provider) throw new Error("Package provider unavailable.");
   const generated = await provider.analyzeIntent(JSON.stringify(buildPackageInput({ packageType: pack.title, documentLabels: [] })));
   return metadataFromGenerated(generated);
-}
-
-function metadataFromSeedSource(seed: ReturnType<typeof sourceMetadataForSeed>): SourceMetadata | null {
-  if (!seed.sourceName || !seed.sourceTitle || !seed.sourceUrl || !seed.lastCheckedAt) return null;
-  return {
-    sourceName: seed.sourceName,
-    sourceTitle: seed.sourceTitle,
-    sourceUrl: seed.sourceUrl,
-    lastCheckedAt: seed.lastCheckedAt,
-    verificationSources: normalizeVerificationSources(seed.verificationSources, seed.sourceTitle, seed.sourceName, seed.sourceUrl, seed.lastCheckedAt),
-    lastVerifiedAt: seed.lastVerifiedAt ?? seed.lastCheckedAt,
-    verificationStatus: "verified",
-  };
 }
 
 function metadataFromGenerated(generated: AIReadinessPackage): SourceMetadata {

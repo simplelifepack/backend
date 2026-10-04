@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { prisma } from "../../lib/prisma";
 import { findDefaultPackSlug, saveGeneratedDefaultPack } from "../readiness/defaultPacksRepository";
-import { seedReadinessPacks } from "../readiness/readiness.service";
 import { searchReadinessPacks } from "../readiness/readiness.service";
 import { createIdentityProfile, detectIdentityOwnership, normalizeName } from "./ownershipDetection";
 
@@ -11,6 +10,7 @@ const generatedTitle = `Telangana Farm Purchase ${crypto.randomUUID().slice(0, 8
 const checkedAt = new Date("2026-08-06T00:00:00.000Z").toISOString();
 let userId: string | null = null;
 let generatedSlug: string | null = null;
+let ugandaSlug: string | null = null;
 
 async function main() {
 try {
@@ -79,10 +79,33 @@ try {
   assert.ok((stored?.keywords.length ?? 0) > 0);
   assert.equal(stored?.requirements[0]?.documentType, "pan");
   assert.ok((await searchReadinessPacks("buy uncommon farm parcel")).some((pack) => pack.slug === generatedSlug));
-  await seedReadinessPacks();
   assert.equal(await prisma.readinessPack.count({ where: { slug: generatedSlug, createdBy: "ai" } }), 1);
+  ugandaSlug = await saveGeneratedDefaultPack("uganda", {
+    packageName: "Tourist Visa",
+    category: "Travel & Visa",
+    description: "Uganda tourist visa readiness pack",
+    searchMetadata: { intent: "tourist travel", subject: "visitor visa", destination: "Uganda", purpose: "tourism", searchPhrases: ["uganda tourist visa"] },
+    sourceTitle: "Uganda electronic visa information",
+    sourceUrl: "https://visas.immigration.go.ug/",
+    sourceOrganization: "Directorate of Citizenship and Immigration Control, Uganda",
+    lastChecked: checkedAt,
+    verificationSources: [{
+      title: "Uganda electronic visa information",
+      organization: "Directorate of Citizenship and Immigration Control, Uganda",
+      url: "https://visas.immigration.go.ug/",
+      type: "government",
+      retrievedAt: checkedAt,
+    }],
+    lastVerifiedAt: checkedAt,
+    verificationStatus: "verified",
+    requiredDocuments: [{ id: "passport", title: "Passport", name: "Passport", documentType: "passport", owner: "self", category: "Identity", required: true, whyNeeded: "Required for visa application.", sourceName: "Directorate of Citizenship and Immigration Control, Uganda", sourceUrl: "https://visas.immigration.go.ug/", sourceAuthorityTier: "government", lastVerifiedAt: checkedAt }],
+  });
+  assert.equal(ugandaSlug, "uganda-tourist-visa");
+  const genericTouristVisa = await prisma.readinessPack.findUnique({ where: { slug: "tourist-visa" }, select: { aliases: true, searchMetadata: true } });
+  assert.ok(!genericTouristVisa?.aliases.includes("uganda"));
   console.log("Ownership detection and default packs tests passed.");
 } finally {
+  if (ugandaSlug) await prisma.readinessPack.deleteMany({ where: { slug: ugandaSlug } });
   if (generatedSlug) await prisma.readinessPack.deleteMany({ where: { slug: generatedSlug } });
   if (userId) await prisma.user.deleteMany({ where: { id: userId } });
   await prisma.$disconnect();

@@ -1,7 +1,20 @@
 import { normalizeSearchText } from "./normalization";
 import { packageSearchMetadata } from "./searchMetadata";
 
-export type ScoredPackFields = { slug: string; title: string; aliases: string[]; category: string; description: string; keywords: string[]; searchMetadata?: unknown };
+export type ScoredPackFields = {
+  slug: string;
+  title: string;
+  aliases: string[];
+  category: string;
+  description: string;
+  keywords: string[];
+  searchMetadata?: unknown;
+  requirements?: Array<{
+    title: string;
+    description?: string | null;
+    acceptedDocumentTypes?: string[];
+  }>;
+};
 export type PackMatchReason = "exact_name" | "alias" | "keyword_similarity";
 export type PackScore = { matchedTokens: string[]; missingTokens: string[]; packageCoverage: number; score: number; reason: PackMatchReason | null };
 const filler = new Set(["a", "again", "am", "an", "are", "do", "for", "from", "get", "getting", "how", "i", "in", "is", "me", "my", "need", "new", "of", "on", "please", "the", "to", "want", "what", "with"]);
@@ -23,6 +36,11 @@ export function scorePackDetailed(pack: ScoredPackFields, query: string): PackSc
     ...aliases.map((text) => ({ text, weight: 104, reason: "alias" as const })),
     ...metadata.searchPhrases.map((text) => ({ text, weight: 108, reason: "alias" as const })),
     { text: pack.description, weight: 78, reason: "keyword_similarity" as const, supporting: true },
+    ...(pack.requirements ?? []).flatMap((requirement) => [
+      { text: requirement.title, weight: 86, reason: "keyword_similarity" as const },
+      ...(requirement.description ? [{ text: requirement.description, weight: 72, reason: "keyword_similarity" as const, supporting: true }] : []),
+      ...((requirement.acceptedDocumentTypes ?? []).map((text) => ({ text, weight: 82, reason: "keyword_similarity" as const }))),
+    ]),
     ...[metadata.intent, metadata.subject, metadata.purpose, metadata.destination, metadata.jurisdiction].flatMap((text) => text ? [{ text, weight: 82, reason: "keyword_similarity" as const }] : []),
   ];
   let best = empty();

@@ -49,13 +49,14 @@ export async function findDefaultPackMatch(query: string): Promise<DefaultPackSe
 }
 
 export async function saveGeneratedDefaultPack(query: string, generated: AIReadinessPackage) {
-  const duplicate = await findDefaultPackMatch(`${query} ${generated.packageName}`);
+  const queryScoped = isQueryScopedPackage(query, generated.packageName);
+  const duplicate = queryScoped ? null : await findDefaultPackMatch(`${query} ${generated.packageName}`);
   if (duplicate) {
     await addSearchMetadata(duplicate.slug, query, generated);
     return duplicate.slug;
   }
 
-  const slug = slugify(generated.packageName);
+  const slug = queryScoped ? slugify(`${query} ${generated.packageName}`) : slugify(generated.packageName);
   const alias = normalizeSearchText(query);
   const keywords = searchKeywords(query, generated);
   const verification = verificationMetadata(generated);
@@ -116,6 +117,13 @@ export async function saveGeneratedDefaultPack(query: string, generated: AIReadi
     });
     return slug;
   });
+}
+
+function isQueryScopedPackage(query: string, packageName: string) {
+  const queryTokens = tokens(query);
+  if (queryTokens.length !== 1) return false;
+  const titleTokens = new Set(tokens(packageName));
+  return !titleTokens.has(queryTokens[0]!);
 }
 
 async function addSearchMetadata(slug: string, query: string, generated: AIReadinessPackage) {

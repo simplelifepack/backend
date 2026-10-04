@@ -5,6 +5,10 @@ export type PackageSearchMetadata = {
   destination?: string;
   purpose?: string;
   subject?: string;
+  referenceId?: string;
+  referenceSource?: string;
+  uiAccent?: string;
+  uiIcon?: string;
 };
 
 export function packageSearchMetadata(value: unknown, fallback: { aliases: string[]; category: string; title: string }): PackageSearchMetadata {
