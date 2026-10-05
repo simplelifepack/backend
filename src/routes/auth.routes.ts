@@ -1,7 +1,7 @@
 import { statusCodeForError } from "../middleware/errorHandling";
 import { Router } from "express";
 
-import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
+import { requireAuth, requireFreshAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { authLimiter, tokenRefreshLimiter } from "../middleware/security";
 import * as authService from "../services/auth.service";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../auth/refreshCookie";
@@ -79,7 +79,7 @@ router.post("/logout", async (req, res, next) => {
   }
 });
 
-router.post("/logout-all", requireAuth, async (req, res, next) => {
+router.post("/logout-all", requireFreshAuth, async (req, res, next) => {
   try {
     const { authUser } = req as AuthenticatedRequest;
     const result = await authService.logoutAll(authUser.id);
@@ -90,7 +90,7 @@ router.post("/logout-all", requireAuth, async (req, res, next) => {
   }
 });
 
-router.post("/account/change-email/request", requireAuth, authLimiter, async (req, res, next) => {
+router.post("/account/change-email/request", requireFreshAuth, authLimiter, async (req, res, next) => {
   try {
     const { authUser } = req as AuthenticatedRequest;
     const result = await authService.requestEmailChange(authUser.id, req.body);
@@ -100,7 +100,7 @@ router.post("/account/change-email/request", requireAuth, authLimiter, async (re
   }
 });
 
-router.post("/account/change-email/verify", requireAuth, authLimiter, async (req, res, next) => {
+router.post("/account/change-email/verify", requireFreshAuth, authLimiter, async (req, res, next) => {
   try {
     const { authUser } = req as AuthenticatedRequest;
     const result = await authService.verifyEmailChange(authUser.id, req.body);
@@ -110,7 +110,7 @@ router.post("/account/change-email/verify", requireAuth, authLimiter, async (req
   }
 });
 
-router.post("/account/change-password/request", requireAuth, authLimiter, async (req, res, next) => {
+router.post("/account/change-password/request", requireFreshAuth, authLimiter, async (req, res, next) => {
   try {
     const { authUser } = req as AuthenticatedRequest;
     const result = await authService.requestPasswordChange(authUser.id, req.body);
@@ -120,7 +120,7 @@ router.post("/account/change-password/request", requireAuth, authLimiter, async 
   }
 });
 
-router.post("/account/change-password/verify", requireAuth, authLimiter, async (req, res, next) => {
+router.post("/account/change-password/verify", requireFreshAuth, authLimiter, async (req, res, next) => {
   try {
     const { authUser } = req as AuthenticatedRequest;
     const result = await authService.verifyPasswordChange(authUser.id, req.body);

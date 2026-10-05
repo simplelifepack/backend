@@ -27,6 +27,14 @@ export function sanitizeDiagnosticMessage(message: string) {
     .replace(/\/(?:Users|private|tmp|var)\/[^\s'")]+/g, "[path]");
 }
 
+export function moduleLoadDiagnostic(error: Error) {
+  const code = (error as Error & { code?: unknown }).code;
+  if (code !== "MODULE_NOT_FOUND" && code !== "ERR_MODULE_NOT_FOUND" && code !== "ERR_REQUIRE_ESM") return {};
+  const specifier = error.message.match(/Cannot find (?:module|package) ['"]([^'"]+)['"]/)?.[1];
+  const moduleName = specifier && /^(?:@?[a-zA-Z0-9_-]+)(?:\/[a-zA-Z0-9_.-]+)*$/.test(specifier) ? specifier : undefined;
+  return { code, ...(moduleName ? { moduleName } : {}) };
+}
+
 export function buildErrorResponse(input: {
   error: unknown;
   production: boolean;
@@ -127,6 +135,7 @@ export function errorHandler(error: unknown, req: Request, res: Response, _next:
       route: req.route?.path ?? "unmatched",
       status: response.status,
       name: error.name,
+      ...moduleLoadDiagnostic(error),
     });
   }
 

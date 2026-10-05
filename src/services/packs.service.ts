@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import type { Prisma } from "@prisma/client";
+import { performance } from "node:perf_hooks";
 
 import { prisma } from "../lib/prisma";
 import { activeRequirementsWhere } from "./readiness/activeRequirements";
@@ -18,6 +19,18 @@ export type PackageListOptions = {
   userId?: string;
 };
 
+export type PackageListTiming = {
+  dbAcquireMs?: number;
+  ensureMs?: number;
+  categoriesQueryMs?: number;
+  countQueryMs?: number;
+  packsQueryMs?: number;
+  relationLoadMs?: number;
+  assignmentsQueryMs?: number;
+  filterScoreMs?: number;
+  transformMs?: number;
+};
+
 type RequirementAssignmentDto = {
   assignmentSource: string;
   documentId: string;
@@ -25,10 +38,22 @@ type RequirementAssignmentDto = {
 };
 
 const SYSTEM_PACK_CREATORS = ["seed", "ai"];
+const STATIC_CATALOGUE_CACHE_MS = 60_000;
+let ensureCache: { expiresAt: number; value: number } | null = null;
+let categoriesCache: { expiresAt: number; value: string[] } | null = null;
 
-async function getRequirementAssignmentMap(userId: string | undefined, requirementIds: string[]) {
+async function timed<T>(timing: PackageListTiming | undefined, key: keyof PackageListTiming, work: () => Promise<T>) {
+  const start = performance.now();
+  try {
+    return await work();
+  } finally {
+    if (timing) timing[key] = performance.now() - start;
+  }
+}
+
+async function getRequirementAssignmentMap(userId: string | undefined, requirementIds: string[], timing?: PackageListTiming) {
   if (!userId || !requirementIds.length) return new Map<string, RequirementAssignmentDto>();
-  const assignments = await prisma.requirementAssignment.findMany({
+  const assignments = await timed(timing, "assignmentsQueryMs", () => prisma.requirementAssignment.findMany({
     where: {
       userId,
       requirementId: { in: requirementIds },
@@ -40,7 +65,7 @@ async function getRequirementAssignmentMap(userId: string | undefined, requireme
       assignmentSource: true,
       overriddenAt: true,
     },
-  });
+  }));
   return new Map(assignments.map((assignment) => [assignment.requirementId, {
     assignmentSource: assignment.assignmentSource,
     documentId: assignment.documentId,
@@ -54,7 +79,11 @@ function assignmentPayload(assignments: Map<string, RequirementAssignmentDto>, r
 }
 
 export async function ensureReadinessPacks() {
-  return prisma.readinessPack.count({ take: 1 });
+  const now = Date.now();
+  if (ensureCache && ensureCache.expiresAt > now) return ensureCache.value;
+  const value = await prisma.readinessPack.count({ take: 1 });
+  ensureCache = { value, expiresAt: now + STATIC_CATALOGUE_CACHE_MS };
+  return value;
 }
 
 export async function getPackageDefinitions() {
@@ -103,11 +132,12 @@ export async function getPackageDefinitions() {
   });
 }
 
-export async function listPackageSummaries(options: PackageListOptions) {
-  await ensureReadinessPacks();
+export async function listPackageSummaries(options: PackageListOptions, timing?: PackageListTiming) {
+  if (timing) await timed(timing, "dbAcquireMs", () => prisma.$queryRaw`select 1`);
+  if (timing) timing.ensureMs = 0;
   const page = Math.max(1, options.page);
   const limit = Math.min(Math.max(1, options.limit), 200);
-  const categories = await getPackageCategories();
+  const categories = await timed(timing, "categoriesQueryMs", () => getPackageCategories());
   const filters = [options.search, options.provider, options.location]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
@@ -116,8 +146,35 @@ export async function listPackageSummaries(options: PackageListOptions) {
   const visibleWhere = options.userId
     ? { OR: [{ createdBy: { in: SYSTEM_PACK_CREATORS } }, { createdBy: options.userId }] }
     : { createdBy: { in: SYSTEM_PACK_CREATORS } };
-  const where = customOnly && options.userId ? { createdBy: options.userId } : visibleWhere;
-  const select = {
+  const where: Prisma.ReadinessPackWhereInput = customOnly && options.userId ? { createdBy: options.userId } : visibleWhere;
+  const defaultListWhere: Prisma.ReadinessPackWhereInput = hasCategoryFilter
+    ? { AND: [where, { category: options.category }] }
+    : where;
+  const compactListSelect = {
+    id: true,
+    slug: true,
+    title: true,
+    subtitle: true,
+    category: true,
+    description: true,
+    searchMetadata: true,
+    createdBy: true,
+    createdAt: true,
+    requirements: {
+      where: activeRequirementsWhere,
+      select: {
+        id: true,
+        title: true,
+        required: true,
+        owner: true,
+        metadata: true,
+        acceptedDocumentTypes: true,
+        sortOrder: true,
+      },
+      orderBy: { sortOrder: "asc" as const },
+    },
+  };
+  const searchSelect = {
     id: true,
     slug: true,
     title: true,
@@ -155,22 +212,30 @@ export async function listPackageSummaries(options: PackageListOptions) {
     ? [{ createdAt: "desc" as const }]
     : [{ category: "asc" as const }, { title: "asc" as const }];
 
-  if (!filters.length && !hasCategoryFilter && options.sort !== "relevance") {
+  if (!filters.length && options.sort !== "relevance") {
+    const countPromise = timed(timing, "countQueryMs", () => prisma.readinessPack.count({ where: defaultListWhere }));
+    const packsPromise = timed(timing, "packsQueryMs", () => prisma.readinessPack.findMany({
+      where: defaultListWhere,
+      select: compactListSelect,
+      orderBy,
+      skip: (page - 1) * limit,
+      take: limit,
+    }));
     const [total, packs] = await Promise.all([
-      prisma.readinessPack.count({ where }),
-      prisma.readinessPack.findMany({
-        where,
-        select,
-        orderBy,
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
+      countPromise,
+      packsPromise,
     ]);
-    const assignments = await getRequirementAssignmentMap(options.userId, packs.flatMap((pack) => pack.requirements.map((requirement) => requirement.id)));
-    return toPaginatedPackageResponse(packs, total, page, limit, options.search, undefined, assignments, categories);
+    if (timing) timing.relationLoadMs = timing.packsQueryMs;
+    const assignments = await getRequirementAssignmentMap(options.userId, packs.flatMap((pack) => pack.requirements.map((requirement) => requirement.id)), timing);
+    const transformStart = performance.now();
+    const response = toPaginatedPackageResponse(packs, total, page, limit, options.search, undefined, assignments, categories);
+    if (timing) timing.transformMs = performance.now() - transformStart;
+    return response;
   }
 
-  const packs = await prisma.readinessPack.findMany({ where, select, orderBy });
+  const packs = await timed(timing, "packsQueryMs", () => prisma.readinessPack.findMany({ where, select: searchSelect, orderBy }));
+  if (timing) timing.relationLoadMs = timing.packsQueryMs;
+  const filterStart = performance.now();
   const filtered = packs
     .filter((pack) => !hasCategoryFilter || packageCategoryMatches(pack.category, options.category!))
     .map((pack) => {
@@ -185,9 +250,11 @@ export async function listPackageSummaries(options: PackageListOptions) {
       if (options.sort === "newest") return right.pack.createdAt.getTime() - left.pack.createdAt.getTime();
       return right.score - left.score || left.pack.title.localeCompare(right.pack.title);
     });
+  if (timing) timing.filterScoreMs = performance.now() - filterStart;
   const pagePacks = filtered.slice((page - 1) * limit, page * limit).map(({ pack }) => pack);
-  const assignments = await getRequirementAssignmentMap(options.userId, pagePacks.flatMap((pack) => pack.requirements.map((requirement) => requirement.id)));
-  return toPaginatedPackageResponse(
+  const assignments = await getRequirementAssignmentMap(options.userId, pagePacks.flatMap((pack) => pack.requirements.map((requirement) => requirement.id)), timing);
+  const transformStart = performance.now();
+  const response = toPaginatedPackageResponse(
     pagePacks,
     filtered.length,
     page,
@@ -197,9 +264,13 @@ export async function listPackageSummaries(options: PackageListOptions) {
     assignments,
     categories,
   );
+  if (timing) timing.transformMs = performance.now() - transformStart;
+  return response;
 }
 
 async function getPackageCategories() {
+  const now = Date.now();
+  if (categoriesCache && categoriesCache.expiresAt > now) return categoriesCache.value;
   const rows = await prisma.readinessPack.findMany({
     where: { createdBy: "seed" },
     select: { category: true, searchMetadata: true },
@@ -216,9 +287,11 @@ async function getPackageCategories() {
     const existing = byCategory.get(row.category);
     if (!existing || categoryOrder < existing.order) byCategory.set(row.category, { order: categoryOrder, title: row.category });
   });
-  return [...byCategory.values()]
+  const value = [...byCategory.values()]
     .sort((left, right) => left.order - right.order)
     .map((item) => item.title);
+  categoriesCache = { value, expiresAt: now + STATIC_CATALOGUE_CACHE_MS };
+  return value;
 }
 
 export async function getReadinessPacksBySlugs(slugs: string[]) {
@@ -406,23 +479,23 @@ function toPaginatedPackageResponse<T extends {
   title: string;
   subtitle?: string | null;
   category: string;
-  aliases: string[];
-  keywords: string[];
+  aliases?: string[];
+  keywords?: string[];
   searchMetadata: unknown;
   description: string;
-  sourceName: string | null;
-  sourceTitle: string | null;
-  sourceUrl: string | null;
+  sourceName?: string | null;
+  sourceTitle?: string | null;
+  sourceUrl?: string | null;
   verificationSources?: unknown;
   verificationStatus?: string | null;
   lastVerifiedAt?: Date | null;
-  lastCheckedAt: Date | null;
+  lastCheckedAt?: Date | null;
   requirements: Array<{
     id: string;
     title: string;
-    description: string;
+    description?: string;
     required: boolean;
-    group: string;
+    group?: string;
     owner: string;
     metadata: unknown;
     acceptedDocumentTypes: string[];
@@ -447,8 +520,8 @@ function toPaginatedPackageResponse<T extends {
       slug: pack.slug,
       title: pack.title,
       ...(pack.subtitle ? { subtitle: pack.subtitle } : {}),
-      ...(pack.aliases.length ? { aliases: pack.aliases } : {}),
-      ...(pack.searchMetadata && typeof pack.searchMetadata === "object" ? { searchMetadata: pack.searchMetadata } : {}),
+      ...(pack.aliases?.length ? { aliases: pack.aliases } : {}),
+      ...(listSearchMetadata(pack.searchMetadata) ? { searchMetadata: listSearchMetadata(pack.searchMetadata) } : {}),
       category: pack.category,
       description: pack.description,
       ...(pack.createdBy ? { createdBy: pack.createdBy } : {}),
@@ -484,6 +557,14 @@ function toPaginatedPackageResponse<T extends {
       hasNextPage: page * limit < total,
     },
   };
+}
+
+function listSearchMetadata(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const metadata = value as Record<string, unknown>;
+  const uiAccent = typeof metadata.uiAccent === "string" ? metadata.uiAccent : undefined;
+  const uiIcon = typeof metadata.uiIcon === "string" ? metadata.uiIcon : undefined;
+  return uiAccent || uiIcon ? { ...(uiAccent ? { uiAccent } : {}), ...(uiIcon ? { uiIcon } : {}) } : null;
 }
 function isConfidentSearchScore(score: PackScore | undefined) {
   if (!score) return false;

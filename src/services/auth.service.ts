@@ -196,8 +196,8 @@ async function buildAuthResult(user: AuthUser, extra: Pick<AuthResult, "deletion
   const accessToken = signAccessToken({
     sub: user.id,
     email: user.email,
+    name: user.name,
     authVersion: user.authVersion ?? 0,
-
   });
 
   return {

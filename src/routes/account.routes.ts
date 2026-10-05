@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import { requireAdminSeedToken } from "../middleware/security";
-import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
+import { requireAuth, requireFreshAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { downloadAccountExport, getAccountExportJob, requestAccountExport } from "../services/accountExport.service";
 import { processDueAccountDeletions, scheduleAccountDeletion } from "../services/accountDeletion.service";
 
@@ -40,7 +40,7 @@ router.get("/export/:jobId/download", async (req, res, next) => {
   }
 });
 
-router.post("/deletion", async (req, res, next) => {
+router.post("/deletion", requireFreshAuth, async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.json(await scheduleAccountDeletion(authUser.id, req.body));

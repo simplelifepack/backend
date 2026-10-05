@@ -41,6 +41,9 @@ export type AIReadinessPackage = {
   lastChecked: string;
   verificationSources: AIVerificationSource[];
   lastVerifiedAt: string | null;
-  verificationStatus: "verified";
+  verificationStatus: "verified" | "unverified_guidance";
+  hasVerifiedOfficialSource?: boolean;
+  confidence?: "high" | "medium" | "low";
+  disclaimer?: string;
   requiredDocuments: AIRequiredDocument[];
 };

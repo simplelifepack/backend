@@ -8,3 +8,5 @@
 !.env.example
 
 /uploads
+scripts/*
+test-results/*

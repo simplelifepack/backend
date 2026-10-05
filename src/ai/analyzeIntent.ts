@@ -23,7 +23,7 @@ export class PackageGenerationRejectedError extends Error {
   }
 }
 
-export async function analyzeIntent(userId: string, input: unknown, options: Pick<ProviderRequestOptions, "signal" | "onDelta"> = {}): Promise<AIReadinessPackage> {
+export async function analyzeIntent(userId: string, input: unknown, options: Pick<ProviderRequestOptions, "allowUnverifiedGuidance" | "signal" | "onDelta" | "onRetry"> = {}): Promise<AIReadinessPackage> {
   const query = JSON.stringify(buildPackageInput(input));
   await assertAIProcessingEnabled(userId);
   const selection = createAIProvider();

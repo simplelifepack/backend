@@ -64,8 +64,43 @@ model User {
   pushSubscriptions          PushSubscription[]
   exportJobs                 AccountExportJob[]
   requirementAssignments     RequirementAssignment[]
+  customPackageGenerationJobs CustomPackageGenerationJob[]
 
   @@index([scheduledDeletionAt])
+}
+
+model CustomPackageGenerationJob {
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dedupeKey          String
+  packageType        String
+  documentLabels     String[]
+  status             String    @default("queued")
+  statusMessage      String?
+  draft              Json?
+  errorCode          String?
+  errorMessage       String?
+  retryCount         Int       @default(0)
+  provider429Count   Int       @default(0)
+  hasVerifiedOfficialSource Boolean @default(false)
+  confidence         String?
+  disclaimer         String?
+  queuedAt           DateTime  @default(now())
+  startedAt          DateTime?
+  completedAt        DateTime?
+  failedAt           DateTime?
+  leaseExpiresAt     DateTime?
+  lockedBy           String?
+  processingMs       Int?
+  aiMs               Int?
+  saveMs             Int?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([userId, dedupeKey, status])
+  @@index([status, queuedAt])
+  @@index([leaseExpiresAt])
 }
 
 model PushSubscription {

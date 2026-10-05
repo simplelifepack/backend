@@ -54,7 +54,9 @@ export class OpenAIProvider implements AIProvider {
           cause: safeErrorCause((lastError as { cause?: unknown }).cause),
         });
         if (options.signal?.aborted || options.onDelta || attempt === MAX_ATTEMPTS || !isRetryable(lastError)) break;
-        await delay(Math.min(200 * 2 ** (attempt - 1), Math.max(0, deadline - Date.now())));
+        const delayMs = retryDelayMs(lastError, attempt, deadline);
+        await options.onRetry?.({ attempt, delayMs, status: (lastError as { status?: number }).status });
+        await delay(delayMs);
       }
     }
     throw lastError ?? new Error("OpenAI intent analysis failed.");
@@ -81,7 +83,9 @@ export class OpenAIProvider implements AIProvider {
           "List the documents required or commonly requested by the cited official sources for the user's jurisdiction and goal.",
           "Set sourceTitle, sourceUrl, sourceOrganization, and lastChecked from the primary official source used.",
           "Include every official source used in verificationSources with title, organization, URL, type, and retrievedAt ISO date.",
-          "If no official government, university, embassy, licensing authority, bank, insurer, or organization source can be identified, do not create a package.",
+          options.allowUnverifiedGuidance
+            ? "If no official government, university, embassy, licensing authority, bank, insurer, or organization source can be identified, return a best-effort guidance checklist with verificationStatus unverified_guidance, confidence low, hasVerifiedOfficialSource false, empty verificationSources, and no fabricated URLs or authorities."
+            : "If no official government, university, embassy, licensing authority, bank, insurer, or organization source can be identified, do not create a package.",
           "Never label a package as AI generated. Never return needs_review.",
           "Every requirement must include a stable normalized id, normalized documentType, explicit owner, title, category, required boolean, whyNeeded, sourceName, sourceUrl, sourceAuthorityTier, and lastVerifiedAt.",
           "Use owner self for the user or buyer unless the requirement belongs to another party such as seller, spouse, employer, bank, hospital, or government.",
@@ -104,6 +108,9 @@ export class OpenAIProvider implements AIProvider {
             sourceUrl: { type: "string" },
             sourceOrganization: { type: "string" },
             lastChecked: { type: "string" },
+            hasVerifiedOfficialSource: { type: "boolean" },
+            confidence: { type: "string", enum: ["high", "medium", "low"] },
+            disclaimer: { type: ["string", "null"] },
             verificationSources: { type: "array", items: {
               type: "object",
               properties: {
@@ -117,7 +124,7 @@ export class OpenAIProvider implements AIProvider {
               additionalProperties: false,
             } },
             lastVerifiedAt: { type: ["string", "null"] },
-            verificationStatus: { type: "string", enum: ["verified"] },
+            verificationStatus: { type: "string", enum: ["verified", "unverified_guidance"] },
             requiredDocuments: { type: "array", items: {
               type: "object",
               properties: {
@@ -132,13 +139,13 @@ export class OpenAIProvider implements AIProvider {
               additionalProperties: false,
             } },
           },
-          required: ["packageName", "category", "description", "searchMetadata", "sourceTitle", "sourceUrl", "sourceOrganization", "lastChecked", "verificationSources", "lastVerifiedAt", "verificationStatus", "requiredDocuments"],
+          required: ["packageName", "category", "description", "searchMetadata", "sourceTitle", "sourceUrl", "sourceOrganization", "lastChecked", "hasVerifiedOfficialSource", "confidence", "disclaimer", "verificationSources", "lastVerifiedAt", "verificationStatus", "requiredDocuments"],
           additionalProperties: false,
         } } },
       }),
     });
-    if (!response.ok) { await response.body?.cancel(); throw new OpenAIRequestError(response.status); }
-    if (options.onDelta) return validateIntentAnalysis(JSON.parse(await readProviderStream(response, options.onDelta)));
+    if (!response.ok) { await response.body?.cancel(); throw new OpenAIRequestError(response.status, response.headers.get("retry-after")); }
+    if (options.onDelta) return validateIntentAnalysis(JSON.parse(await readProviderStream(response, options.onDelta)), options);
     const payload = (await response.json()) as OpenAIResponse;
     const text = payload.output?.flatMap((item) => item.content ?? []).find((item) => item.type === "output_text")?.text;
     if (!text) {
@@ -150,12 +157,12 @@ export class OpenAIProvider implements AIProvider {
       });
       throw new Error("OpenAI returned no structured intent output.");
     }
-    return validateIntentAnalysis(JSON.parse(text));
+    return validateIntentAnalysis(JSON.parse(text), options);
   }
 }
 
 class OpenAIRequestError extends Error {
-  constructor(readonly status: number) {
+  constructor(readonly status: number, readonly retryAfter: string | null = null) {
     super(`OpenAI intent request failed with status ${status}`);
   }
 }
@@ -194,35 +201,58 @@ function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-export function validateIntentAnalysis(value: unknown): AIReadinessPackage {
+function retryDelayMs(error: Error, attempt: number, deadline: number) {
+  const retryAfter = error instanceof OpenAIRequestError ? parseRetryAfterMs(error.retryAfter) : null;
+  const fallback = 1_000 * 2 ** (attempt - 1);
+  return Math.min(Math.max(retryAfter ?? fallback, 250), Math.max(0, deadline - Date.now()));
+}
+
+function parseRetryAfterMs(value: string | null) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+  const dateMs = Date.parse(value);
+  if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
+}
+
+export function validateIntentAnalysis(value: unknown, options: Pick<ProviderRequestOptions, "allowUnverifiedGuidance"> = {}): AIReadinessPackage {
   if (!value || typeof value !== "object") throw new Error("Invalid readiness package output.");
   const result = value as Record<string, unknown>;
   if (typeof result.packageName !== "string" || !result.packageName.trim() || typeof result.category !== "string" || !result.category.trim() || typeof result.description !== "string" || !Array.isArray(result.requiredDocuments)) throw new Error("Invalid readiness package output.");
-  const documents = result.requiredDocuments.filter(isRequiredDocument);
+  const unverifiedRequested = options.allowUnverifiedGuidance && result.verificationStatus === "unverified_guidance";
+  const documents = result.requiredDocuments.filter(unverifiedRequested ? isGuidanceDocument : isRequiredDocument);
   if (!documents.length) throw new Error("Readiness package contains no required documents.");
   const sources = verificationSources(result.verificationSources);
   const primarySource = authoritativePrimarySource(result, sources);
-  if (!primarySource) throw new MissingAuthoritativeSourceError();
-  const checkedAt = checkedDate(result.lastChecked, result.lastVerifiedAt, primarySource.retrievedAt);
+  if (!primarySource && !unverifiedRequested) throw new MissingAuthoritativeSourceError();
+  const checkedAt = checkedDate(result.lastChecked, result.lastVerifiedAt, primarySource?.retrievedAt);
+  const hasVerifiedOfficialSource = Boolean(primarySource);
+  const disclaimer = typeof result.disclaimer === "string" && result.disclaimer.trim()
+    ? result.disclaimer.trim().slice(0, 500)
+    : hasVerifiedOfficialSource ? undefined : "Official source not found. These documents may still be helpful, but please verify them with the relevant authority.";
   return {
     packageName: result.packageName.trim().slice(0, 120),
     category: result.category.trim().slice(0, 60),
     description: result.description.trim().slice(0, 200),
     searchMetadata: validatedSearchMetadata(result.searchMetadata),
-    sourceTitle: primarySource.title,
-    sourceUrl: primarySource.url,
-    sourceOrganization: primarySource.organization,
+    sourceTitle: primarySource?.title ?? "",
+    sourceUrl: primarySource?.url ?? "",
+    sourceOrganization: primarySource?.organization ?? "",
     lastChecked: checkedAt,
     verificationSources: sources,
-    lastVerifiedAt: checkedAt,
-    verificationStatus: "verified",
+    lastVerifiedAt: primarySource ? checkedAt : null,
+    verificationStatus: primarySource ? "verified" : "unverified_guidance",
+    hasVerifiedOfficialSource,
+    confidence: primarySource ? "high" : "low",
+    ...(disclaimer ? { disclaimer } : {}),
     requiredDocuments: documents.map((item) => ({
       id: normalizeId(item.id), category: item.category.trim().slice(0, 60),
       documentType: normalizeRequirementDocumentTypes(item.documentType, item.title)[0]!, owner: item.owner,
       name: item.name.trim().slice(0, 100), title: item.title.trim().slice(0, 100), required: item.required,
       whyNeeded: item.whyNeeded.trim().slice(0, 300), sourceName: item.sourceName.trim().slice(0, 140),
       sourceUrl: item.sourceUrl.trim(), sourceAuthorityTier: item.sourceAuthorityTier,
-      lastVerifiedAt: new Date(item.lastVerifiedAt).toISOString(),
+      lastVerifiedAt: !Number.isNaN(Date.parse(item.lastVerifiedAt)) ? new Date(item.lastVerifiedAt).toISOString() : checkedAt,
     })).filter((item) => item.id && item.category && item.documentType && item.name && item.title).slice(0, 30),
   };
 }
@@ -348,6 +378,23 @@ function isRequiredDocument(item: unknown): item is AIReadinessPackage["required
   if (!item || typeof item !== "object") return false;
   const value = item as Record<string, unknown>;
   return typeof value.id === "string" && typeof value.category === "string" && typeof value.documentType === "string" && typeof value.owner === "string" && typeof value.name === "string" && typeof value.title === "string" && typeof value.required === "boolean" && typeof value.whyNeeded === "string" && Boolean(value.whyNeeded.trim()) && typeof value.sourceName === "string" && Boolean(value.sourceName.trim()) && typeof value.sourceUrl === "string" && ["government", "authority", "official", "commercial", "aggregator"].includes(String(value.sourceAuthorityTier)) && isAuthoritativeUrl(value.sourceUrl, authoritativeSourceTypeForRequiredDocument(value), value.sourceName) && typeof value.lastVerifiedAt === "string" && !Number.isNaN(Date.parse(value.lastVerifiedAt));
+}
+
+function isGuidanceDocument(item: unknown): item is AIReadinessPackage["requiredDocuments"][number] {
+  if (!item || typeof item !== "object") return false;
+  const value = item as Record<string, unknown>;
+  return typeof value.id === "string"
+    && typeof value.category === "string"
+    && typeof value.documentType === "string"
+    && typeof value.owner === "string"
+    && typeof value.name === "string"
+    && typeof value.title === "string"
+    && typeof value.required === "boolean"
+    && typeof value.whyNeeded === "string"
+    && Boolean(value.whyNeeded.trim())
+    && typeof value.sourceName === "string"
+    && typeof value.sourceUrl === "string"
+    && ["government", "authority", "official", "commercial", "aggregator"].includes(String(value.sourceAuthorityTier));
 }
 
 function normalizeId(value: string) {

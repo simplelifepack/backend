@@ -1,5 +1,4 @@
 import type { ZodTypeAny } from "zod";
-import { createRequire } from "node:module";
 import { assertAIProcessingEnabled } from "../services/aiProcessing.service";
 import { consumeAIAction } from "../services/accountUsage.service";
 import { buildPackageInput } from "./packageInput";
@@ -7,8 +6,9 @@ import { readPackageSourcePage } from "./packageSourcePage";
 import { rankSources } from "./sourceAuthority";
 import { refreshChecklistSchema, refreshSourcesSchema, type RefreshChecklist, type RefreshSource } from "./packageRefreshSchema";
 
-// Keep SDK v3/v4 schema type expansion out of the application typecheck.
-const { zodTextFormat } = createRequire(__filename)("openai/helpers/zod") as { zodTextFormat: (schema: ZodTypeAny, name: string) => object };
+// Literal require keeps this helper visible to Vercel without expanding Zod v3/v4 types.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { zodTextFormat } = require("openai/helpers/zod") as { zodTextFormat: (schema: ZodTypeAny, name: string) => object };
 
 export class PackageRefreshError extends Error {
   constructor(message: string, readonly statusCode = 422, readonly researchFeedback?: string) { super(message); }
