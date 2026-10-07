@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import bcrypt from "bcrypt";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { Prisma, type User } from "@prisma/client";

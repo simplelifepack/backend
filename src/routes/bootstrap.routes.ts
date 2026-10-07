@@ -15,15 +15,19 @@ router.get("/usage", async (req, res, next) => {
 router.get("/", async (req, res, next) => {
   try {
     const { authUser } = req as AuthenticatedRequest;
-    const [usage, documentCount] = await Promise.all([
+    const [usage, documentCount, user] = await Promise.all([
       getAccountUsage(authUser.id),
       prisma.document.count({
         where: { ownerProfileId: authUser.id, deletedAt: null },
       }),
+      prisma.user.findUnique({
+        where: { id: authUser.id },
+        select: { pinHash: true },
+      }),
     ]);
 
     return res.json({
-      user: { id: authUser.id, name: authUser.name, email: authUser.email },
+      user: { id: authUser.id, name: authUser.name, email: authUser.email, pinConfigured: Boolean(user?.pinHash) },
       ...usage,
       documentCount,
       version: "1",

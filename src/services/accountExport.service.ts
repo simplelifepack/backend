@@ -3,7 +3,7 @@ import { createStoredZip, sanitizeArchiveName, type ArchiveFile } from "./archiv
 import { readDecryptedDocumentLocation } from "./documentFileStorage";
 import { getStorageProvider } from "../infrastructure/storage/createStorageProvider";
 import { decryptJson, decryptString } from "../utils/documentEncryption";
-import { listWealthRecords } from "./wealthRecords.service";
+import { listFullWealthRecords } from "./wealthRecords.service";
 import { getUserPreferences } from "./userPreferences.service";
 
 const EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -108,7 +108,7 @@ export async function prepareAccountExport(jobId: string) {
       prisma.trustMember.findMany({ where: { ownerUserId: job.userId }, include: { permissions: true } }),
       prisma.trustMember.findMany({ where: { memberUserId: job.userId }, include: { permissions: true } }),
       getUserPreferences(job.userId),
-      listWealthRecords(job.userId).catch(() => []),
+      listFullWealthRecords(job.userId).catch(() => []),
     ]);
     const metadata = documents.map((document) => ({
       id: document.id,

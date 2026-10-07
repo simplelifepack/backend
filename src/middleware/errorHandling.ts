@@ -76,6 +76,9 @@ export function buildErrorResponse(input: {
     "TRUST_ACCESS_DENIED",
     "TRUST_MEMBER_REVOKED",
     "AI_PROCESSING_DISABLED",
+    "DIGILOCKER_NOT_CONFIGURED",
+    "DIGILOCKER_CONSENT_INCOMPLETE",
+    "DIGILOCKER_PROVIDER_ERROR",
   ]);
   const code =
     typeof candidateCode === "string" && safeCodes.has(candidateCode)
@@ -87,6 +90,12 @@ export function buildErrorResponse(input: {
     ? fileTooLargeMessage(MAX_DOCUMENT_UPLOAD_BYTES)
     : code === "AI_PROCESSING_DISABLED"
       ? "AI processing is disabled for this account."
+      : code === "DIGILOCKER_NOT_CONFIGURED"
+        ? "DigiLocker integration is coming soon."
+        : code === "DIGILOCKER_CONSENT_INCOMPLETE"
+          ? "DigiLocker consent is not complete."
+          : code === "DIGILOCKER_PROVIDER_ERROR"
+            ? "DigiLocker is unavailable right now. Please try again."
       : code ? documentValidationMessages[code] : undefined;
   if (validationMessage || (input.error instanceof DocumentEnvelopeError && ["IMAGE_DIMENSIONS_EXCEEDED", "PDF_PAGE_LIMIT_EXCEEDED"].includes(code ?? ""))) {
     return { status, body: { code, message: validationMessage ?? (input.error as Error).message, errorId } };

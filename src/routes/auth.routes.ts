@@ -227,7 +227,7 @@ router.post("/reset-password/otp", authLimiter, passwordResetVerifyAccountLimite
   }
 });
 
-router.get("/me", requireAuth, (req, res) => {
+router.get("/me", requireFreshAuth, (req, res) => {
   const { authUser } = req as AuthenticatedRequest;
   res.json({
     user: authUser,

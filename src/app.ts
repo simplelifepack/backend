@@ -69,7 +69,16 @@ app.get("/health", (_req, res) => {
   });
 });
 
+function apiDocsEnabled() {
+  return process.env.NODE_ENV !== "production";
+}
+
+function docsDisabled(res: express.Response) {
+  return res.status(404).json({ message: "Not found." });
+}
+
 app.get("/openapi.json", (_req, res) => {
+  if (!apiDocsEnabled()) return docsDisabled(res);
   res.setHeader("Cache-Control", "no-store");
   res.json(openApiDocument);
 });
@@ -78,6 +87,7 @@ const swaggerUiVersion = "5.33.0";
 const swaggerUiCdnBase = `https://cdn.jsdelivr.net/npm/swagger-ui-dist@${swaggerUiVersion}`;
 
 app.get(["/api-docs", "/api-docs/"], (_req, res) => {
+  if (!apiDocsEnabled()) return docsDisabled(res);
   res.setHeader("Cache-Control", "no-store");
   res.setHeader(
     "Content-Security-Policy",
@@ -117,7 +127,7 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
         url: "/openapi.json",
         dom_id: "#swagger-ui",
         deepLinking: true,
-        persistAuthorization: true,
+        persistAuthorization: false,
         withCredentials: true,
         presets: [
           SwaggerUIBundle.presets.apis,
@@ -146,6 +156,7 @@ app.use("/admin/notifications", lazyRouter(() => import("./routes/notifications.
 app.use("/admin/account", lazyRouter(() => import("./routes/account.routes"), "adminAccountRouter"));
 app.use("/api/integrations/gmail", lazyRouter(() => import("./routes/gmail.routes")));
 app.use("/api/integrations/drive", lazyRouter(() => import("./routes/drive.routes")));
+app.use("/api/integrations/digilocker", lazyRouter(() => import("./routes/digilocker.routes")));
 app.use("/api/trust", lazyRouter(() => import("./routes/trust.routes")));
 app.use("/api/wealth", lazyRouter(() => import("./routes/wealth.routes")));
 app.use("/api/health", lazyRouter(() => import("./routes/health.routes")));

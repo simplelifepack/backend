@@ -150,7 +150,7 @@ export type DocumentResponseDto = {
   ownershipStatus: string;
   readinessEligible: boolean;
   fields: Record<string, unknown>;
-  source: "MANUAL_UPLOAD" | "GMAIL" | "GOOGLE_DRIVE";
+  source: "MANUAL_UPLOAD" | "GMAIL" | "GOOGLE_DRIVE" | "DIGILOCKER";
   sourceProvider: string | null;
   driveFileId: string | null;
   openUrl: string | null;
@@ -167,7 +167,9 @@ export function toDocumentResponseDto(document: Document & { files?: EncryptedDo
     .map((file) => toDocumentPageDto(file, document.normalizedType ?? document.documentType));
   const source = decrypted.sourceProvider === "GOOGLE_DRIVE"
     ? "GOOGLE_DRIVE"
-    : decrypted.sourceProvider?.toLowerCase() === "gmail" ? "GMAIL" : "MANUAL_UPLOAD";
+    : decrypted.sourceProvider?.toLowerCase() === "gmail"
+      ? "GMAIL"
+      : decrypted.sourceProvider?.toLowerCase() === "digilocker" ? "DIGILOCKER" : "MANUAL_UPLOAD";
   return {
     id: decrypted.id,
     ownerProfileId: decrypted.ownerProfileId,

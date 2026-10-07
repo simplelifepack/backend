@@ -26,9 +26,19 @@ import {
   updateMedication,
   updateHealthRecord,
 } from "../services/health.service";
+import { getHealthHomeAttention } from "../services/healthHome.service";
 
 const router = Router();
 router.use(requireAuth);
+
+router.get("/home-attention", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.json(await getHealthHomeAttention(authUser.id));
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get("/members", async (req, res, next) => {
   try {

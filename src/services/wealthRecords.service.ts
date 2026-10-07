@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
 import { decryptString } from "../utils/documentEncryption";
+import { summaryDetails } from "./wealthRecordSummary";
 
 const types = ["ASSET", "LOAN_TAKEN", "LOAN_GIVEN", "INSURANCE", "PAYMENT_PROOF"] as const;
 let wealthRecordsTableAvailable: boolean | null = null;
@@ -17,6 +18,13 @@ const recordSchema = z.object({
   followUpNote: z.string().trim().max(2000).optional(),
   attachmentDocumentIds: z.array(z.string().trim().min(1)).default([]),
 }).strict();
+
+async function ensureWealthRecordsTableAvailable() {
+  if (wealthRecordsTableAvailable !== null) return wealthRecordsTableAvailable;
+  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
+  wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
+  return wealthRecordsTableAvailable;
+}
 
 function parseDate(value: string | null | undefined) {
   if (!value) return null;
@@ -120,12 +128,38 @@ function recordDto(encrypted: Prisma.WealthRecordGetPayload<{ include: { attachm
   };
 }
 
+function recordSummaryDto(encrypted: Prisma.WealthRecordGetPayload<{ include: { attachments: { select: { documentId: true } } } }>) {
+  const record = decryptWealthRecord(encrypted);
+  const attachmentDocumentIds = record.attachments.map((attachment) => attachment.documentId);
+  const breakdown = loanBreakdown(record);
+  const summary = {
+    id: record.id,
+    type: record.type,
+    title: record.title,
+    details: summaryDetails(record.details),
+    attachmentDocumentIds,
+    attachments: attachmentDocumentIds.map((documentId) => ({ id: documentId, documentId })),
+    loanBreakdown: breakdown ? { outstanding: breakdown.outstanding } : null,
+  };
+  return {
+    ...summary,
+    ...(record.notes ? { notes: "saved" } : {}),
+    ...(record.followUpDate ? { followUpDate: record.followUpDate } : {}),
+  };
+}
+
 export async function listWealthRecords(userId: string) {
-  if (wealthRecordsTableAvailable === null) {
-    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
-    wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
-  }
-  if (!wealthRecordsTableAvailable) return [];
+  if (!await ensureWealthRecordsTableAvailable()) return [];
+  const records = await prisma.wealthRecord.findMany({
+    where: { ownerUserId: userId },
+    include: { attachments: { select: { documentId: true } } },
+    orderBy: { updatedAt: "desc" },
+  });
+  return records.map(recordSummaryDto);
+}
+
+export async function listFullWealthRecords(userId: string) {
+  if (!await ensureWealthRecordsTableAvailable()) return [];
   const records = await prisma.wealthRecord.findMany({
     where: { ownerUserId: userId },
     include: { attachments: { include: { document: true } } },
@@ -134,12 +168,18 @@ export async function listWealthRecords(userId: string) {
   return records.map(recordDto);
 }
 
+export async function getWealthRecord(userId: string, recordId: string) {
+  if (!await ensureWealthRecordsTableAvailable()) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
+  const record = await prisma.wealthRecord.findFirst({
+    where: { id: recordId, ownerUserId: userId },
+    include: { attachments: { include: { document: true } } },
+  });
+  if (!record) throw Object.assign(new Error("Wealth record not found."), { statusCode: 404 });
+  return recordDto(record);
+}
+
 export async function createWealthRecord(userId: string, input: unknown) {
-  if (wealthRecordsTableAvailable === null) {
-    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
-    wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
-  }
-  if (!wealthRecordsTableAvailable) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
+  if (!await ensureWealthRecordsTableAvailable()) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
   const data = recordSchema.parse(input);
   validateMoneyLentBorrowedRecord(data);
   const documentIds = [...new Set(data.attachmentDocumentIds)];
@@ -161,11 +201,7 @@ export async function createWealthRecord(userId: string, input: unknown) {
 }
 
 export async function updateWealthRecord(userId: string, recordId: string, input: unknown) {
-  if (wealthRecordsTableAvailable === null) {
-    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
-    wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
-  }
-  if (!wealthRecordsTableAvailable) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
+  if (!await ensureWealthRecordsTableAvailable()) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
   const existing = await prisma.wealthRecord.findFirst({ where: { id: recordId, ownerUserId: userId } });
   if (!existing) throw Object.assign(new Error("Wealth record not found."), { statusCode: 404 });
   const data = recordSchema.parse(input);
@@ -192,11 +228,7 @@ export async function updateWealthRecord(userId: string, recordId: string, input
 }
 
 export async function deleteWealthRecord(userId: string, recordId: string) {
-  if (wealthRecordsTableAvailable === null) {
-    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`SELECT to_regclass('public.wealth_records') IS NOT NULL AS "exists"`;
-    wealthRecordsTableAvailable = Boolean(rows[0]?.exists);
-  }
-  if (!wealthRecordsTableAvailable) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
+  if (!await ensureWealthRecordsTableAvailable()) throw Object.assign(new Error("Wealth records storage is not migrated yet."), { statusCode: 503 });
   const existing = await prisma.wealthRecord.findFirst({ where: { id: recordId, ownerUserId: userId } });
   if (!existing) throw Object.assign(new Error("Wealth record not found."), { statusCode: 404 });
   await prisma.wealthRecord.delete({ where: { id: recordId } });

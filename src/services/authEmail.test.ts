@@ -1,4 +1,5 @@
 import "dotenv/config";
+/* eslint-disable max-lines */
 import assert from "node:assert/strict";
 
 import { prisma } from "../lib/prisma";

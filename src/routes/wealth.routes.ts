@@ -3,7 +3,7 @@ import { Router } from "express";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { createWealthRecordFromForm, getWealthFormSchema, listWealthFormCategories, listWealthFormSubtypes } from "../services/wealthForm.service";
 import { getWealthHandoffSummary, sendWealthHandoff } from "../services/wealthHandoff.service";
-import { createWealthRecord, deleteWealthRecord, listWealthRecords, updateWealthRecord } from "../services/wealthRecords.service";
+import { createWealthRecord, deleteWealthRecord, getWealthRecord, listWealthRecords, updateWealthRecord } from "../services/wealthRecords.service";
 
 const router = Router();
 router.use(requireAuth);
@@ -54,6 +54,15 @@ router.post("/records", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.status(201).json(await createWealthRecord(authUser.id, req.body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/records/:recordId", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.json(await getWealthRecord(authUser.id, req.params.recordId));
   } catch (error) {
     return next(error);
   }
