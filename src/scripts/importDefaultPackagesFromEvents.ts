@@ -28,9 +28,9 @@ type DefaultPackageRecord = {
   category: string;
   description: string;
   searchMetadata: Prisma.InputJsonObject;
-  sourceName: string;
-  sourceTitle: string;
-  lastCheckedAt: Date;
+  sourceName: string | null;
+  sourceTitle: string | null;
+  lastCheckedAt: Date | null;
   verificationSources: Prisma.InputJsonArray;
 };
 
@@ -303,7 +303,7 @@ function readEvents(sourcePath: string): EventPackage[] {
   return events.map((event) => ({
     ...event,
     conditional: event.conditional ?? [],
-    lastChecked: event.lastChecked || DEFAULT_LAST_CHECKED,
+    lastChecked: event.source === "" ? "" : event.lastChecked || DEFAULT_LAST_CHECKED,
   }));
 }
 
@@ -318,7 +318,8 @@ function requiredEvents(events: EventPackage[]) {
 }
 
 function toDefaultPackageRecord(event: EventPackage, eventOrder: number): DefaultPackageRecord {
-  const lastCheckedAt = parseLastChecked(event.lastChecked);
+  const hasSource = Boolean(event.source);
+  const lastCheckedAt = hasSource ? parseLastChecked(event.lastChecked) : null;
   const searchPhrases = [
     event.name,
     event.blurb,
@@ -353,14 +354,14 @@ function toDefaultPackageRecord(event: EventPackage, eventOrder: number): Defaul
       categoryOrder: categoryOrder(event.cat),
       eventOrder,
     },
-    sourceName: event.source,
-    sourceTitle: event.source,
+    sourceName: hasSource ? event.source : null,
+    sourceTitle: hasSource ? event.source : null,
     lastCheckedAt,
-    verificationSources: [{
+    verificationSources: hasSource && lastCheckedAt ? [{
       title: event.source,
       type: "published_requirement",
       retrievedAt: lastCheckedAt.toISOString(),
-    }],
+    }] : [],
   };
 }
 

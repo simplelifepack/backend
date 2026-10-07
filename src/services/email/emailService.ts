@@ -266,7 +266,7 @@ export async function sendSignupOtpEmail(input: { email: string }, otp: string) 
 export async function sendAccountChangeOtpEmail(input: {
   userId: string;
   email: string;
-  purpose: "email" | "password";
+  purpose: "email" | "password" | "pin";
 }, otp: string) {
   const provider = getEmailProvider();
   if (!provider) {

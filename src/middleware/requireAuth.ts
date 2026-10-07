@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { performance } from "node:perf_hooks";
 
 import { getUserById } from "../services/auth.service";
+import { getNotedAuthVersion } from "../services/authRevocationCache";
 import { isAccessTokenPayload, verifyAccessToken } from "../utils/jwt";
 
 export type AuthTiming = {
@@ -72,6 +73,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     };
 
     if (!payload.email || (payload.authVersion !== undefined && !Number.isFinite(payload.authVersion))) {
+      return res.status(401).json({
+        message: "Unauthorized.",
+      });
+    }
+
+    const revokedAuthVersion = getNotedAuthVersion(payload.sub);
+    if (revokedAuthVersion !== null && (payload.authVersion ?? 0) < revokedAuthVersion) {
       return res.status(401).json({
         message: "Unauthorized.",
       });

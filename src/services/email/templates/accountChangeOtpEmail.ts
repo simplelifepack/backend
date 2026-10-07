@@ -5,11 +5,11 @@ export function renderAccountChangeOtpEmail({
   purpose,
 }: {
   otp: string;
-  purpose: "email" | "password";
+  purpose: "email" | "password" | "pin";
 }): EmailRenderResult {
   const safeOtp = escapeHtml(otp);
-  const title = purpose === "email" ? "Confirm email change" : "Confirm password change";
-  const action = purpose === "email" ? "change your Readiness email address" : "change your Readiness password";
+  const title = purpose === "email" ? "Confirm email change" : purpose === "pin" ? "Confirm PIN reset" : "Confirm password change";
+  const action = purpose === "email" ? "change your Readiness email address" : purpose === "pin" ? "reset your Readiness sign-in PIN" : "change your Readiness password";
   const html = renderShell(`
     <tr>
       <td style="font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:30px;line-height:1.16;font-weight:700;color:${EMAIL_STYLE.ink};padding:0 0 12px 0;">${title}</td>
@@ -30,7 +30,7 @@ export function renderAccountChangeOtpEmail({
     </tr>`);
 
   return {
-    subject: purpose === "email" ? "Confirm your Readiness email change" : "Confirm your Readiness password change",
+    subject: purpose === "email" ? "Confirm your Readiness email change" : purpose === "pin" ? "Confirm your Readiness PIN reset" : "Confirm your Readiness password change",
     html,
     text: `Your Readiness ${purpose} change code is ${otp}.\n\nThis code expires in 10 minutes. If you did not request this, review your account security.`,
   };

@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { noteAuthVersion } from "./authRevocationCache";
 import { removePermanentFile } from "./documentFileStorage";
 
 const DELETE_PHRASE = "delete my account";
@@ -9,13 +10,15 @@ export async function scheduleAccountDeletion(userId: string, input: unknown) {
   if (phrase !== DELETE_PHRASE) throw Object.assign(new Error("Confirmation phrase does not match."), { statusCode: 400 });
   const now = new Date();
   const scheduledDeletionAt = new Date(now.getTime() + DELETION_DELAY_MS);
-  await prisma.$transaction([
+  const [updated] = await prisma.$transaction([
     prisma.user.update({
       where: { id: userId },
       data: { deletionRequestedAt: now, scheduledDeletionAt, authVersion: { increment: 1 } },
+      select: { authVersion: true },
     }),
     prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } }),
   ]);
+  noteAuthVersion(userId, updated.authVersion);
   return { message: "Account deletion scheduled.", scheduledDeletionAt };
 }
 

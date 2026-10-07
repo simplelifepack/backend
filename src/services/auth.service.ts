@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { createHash, randomBytes, randomInt } from "node:crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
@@ -9,6 +9,7 @@ import * as emailService from "./email/emailService";
 import { verifyGoogleCredential, type GoogleCredentialVerifier } from "./googleIdentity.service";
 import { acceptTrustInvitationsForUser } from "./trustCenter.service";
 import { cancelPendingDeletion } from "./accountDeletion.service";
+import { noteAuthVersion } from "./authRevocationCache";
 
 export type AuthUser = {
   id: string;
@@ -16,6 +17,7 @@ export type AuthUser = {
   email: string;
   authVersion?: number;
   accountTier?: "free" | "paid";
+  pinConfigured?: boolean;
 };
 
 type AuthResult = {
@@ -39,6 +41,13 @@ const signupOtpSchema = signupSchema.extend({
 const loginSchema = z.object({
   email: z.string().trim().email("A valid email is required."),
   password: z.string().min(1, "Password is required."),
+});
+
+const pinRules = z.string().regex(/^\d{6}$/, "Enter a 6-digit PIN.");
+
+const pinLoginSchema = z.object({
+  email: z.string().trim().email("A valid email is required."),
+  pin: pinRules,
 });
 
 const forgotPasswordSchema = z.object({
@@ -78,6 +87,20 @@ const requestPasswordChangeSchema = z.object({
   newPassword: passwordRules,
 });
 
+const setupPinSchema = z.object({
+  pin: pinRules,
+});
+
+const changePinSchema = z.object({
+  currentPin: pinRules,
+  newPin: pinRules,
+});
+
+const resetPinSchema = z.object({
+  otp: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from your email."),
+  newPin: pinRules,
+});
+
 const verifyAccountChangeSchema = z.object({
   otp: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from your email."),
 });
@@ -92,7 +115,13 @@ const SIGNUP_OTP_MINUTES = 30;
 const ACCOUNT_CHANGE_OTP_MINUTES = 10;
 const ACCOUNT_CHANGE_RESEND_SECONDS = 60;
 const ACCOUNT_CHANGE_MAX_ATTEMPTS = 5;
+const SIGNUP_OTP_MAX_ATTEMPTS = 5;
+const PASSWORD_RESET_OTP_MAX_ATTEMPTS = 5;
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_MINUTES = 15;
 const PASSWORD_RESET_MESSAGE = "If an account exists for that email, password reset instructions will be sent.";
+const PASSWORD_RESET_OTP_MESSAGE = "If an account exists for that email, a password reset code will be sent.";
+const PIN_LOGIN_MESSAGE = "Invalid email or PIN.";
 
 function httpError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode });
@@ -105,6 +134,7 @@ function toAuthUser(user: AuthUser): AuthUser {
     email: user.email,
     authVersion: user.authVersion ?? 0,
     accountTier: user.accountTier ?? "free",
+    pinConfigured: user.pinConfigured ?? false,
   };
 }
 
@@ -126,6 +156,12 @@ function hashSignupOtp(email: string, otp: string) {
 
 function hashAccountChangeOtp(userId: string, purpose: string, otp: string) {
   return hashPasswordResetToken(`account-change:${userId}:${purpose}:${otp}`);
+}
+
+function getPinLockoutExpiry() {
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + PIN_LOCKOUT_MINUTES);
+  return expiresAt;
 }
 
 function getRefreshTokenExpiry() {
@@ -217,6 +253,62 @@ function findUserByEmail(email: string) {
   });
 }
 
+function selectAuthUser(user: {
+  id: string;
+  name: string;
+  email: string;
+  authVersion?: number | null;
+  accountTier?: "free" | "paid" | null;
+  pinHash?: string | null;
+}): AuthUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    authVersion: user.authVersion ?? 0,
+    accountTier: user.accountTier ?? "free",
+    pinConfigured: Boolean(user.pinHash),
+  };
+}
+
+async function markPinFailure(userId: string, currentAttempts: number) {
+  const nextAttempts = currentAttempts + 1;
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      pinAttemptCount: nextAttempts,
+      pinLockedUntil: nextAttempts >= PIN_MAX_ATTEMPTS ? getPinLockoutExpiry() : null,
+    },
+  });
+}
+
+async function clearPinFailures(userId: string) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { pinAttemptCount: 0, pinLockedUntil: null },
+  });
+}
+
+async function assertPinMatches(user: {
+  id: string;
+  pinHash: string | null;
+  pinAttemptCount: number;
+  pinLockedUntil: Date | null;
+}, pin: string, message = "Invalid PIN.") {
+  const now = new Date();
+  if (!user.pinHash || (user.pinLockedUntil && user.pinLockedUntil > now)) {
+    throw httpError(message, 401);
+  }
+
+  const isMatch = await bcrypt.compare(pin, user.pinHash);
+  if (!isMatch) {
+    await markPinFailure(user.id, user.pinAttemptCount);
+    throw httpError(message, 401);
+  }
+
+  if (user.pinAttemptCount > 0 || user.pinLockedUntil) await clearPinFailures(user.id);
+}
+
 export async function requestSignupOtp(input: unknown) {
   const { name, email, password } = signupSchema.parse(input);
   const normalizedEmail = email.toLowerCase();
@@ -268,10 +360,13 @@ export async function signup(input: unknown): Promise<AuthResult> {
     where: { email: normalizedEmail },
   });
 
-  if (!pending || pending.expiresAt <= new Date() || pending.otpHash !== hashSignupOtp(normalizedEmail, otp)) {
-    if (pending) {
-      await prisma.signupVerification.update({
-        where: { email: normalizedEmail },
+  const now = new Date();
+  const expectedHash = hashSignupOtp(normalizedEmail, otp);
+
+  if (!pending || pending.expiresAt <= now || pending.attemptCount >= SIGNUP_OTP_MAX_ATTEMPTS || pending.otpHash !== expectedHash) {
+    if (pending && pending.expiresAt > now && pending.attemptCount < SIGNUP_OTP_MAX_ATTEMPTS) {
+      await prisma.signupVerification.updateMany({
+        where: { email: normalizedEmail, attemptCount: { lt: SIGNUP_OTP_MAX_ATTEMPTS } },
         data: { attemptCount: { increment: 1 } },
       });
     }
@@ -279,6 +374,17 @@ export async function signup(input: unknown): Promise<AuthResult> {
   }
 
   const user = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.signupVerification.deleteMany({
+      where: {
+        id: pending.id,
+        email: normalizedEmail,
+        otpHash: expectedHash,
+        expiresAt: { gt: new Date() },
+        attemptCount: { lt: SIGNUP_OTP_MAX_ATTEMPTS },
+      },
+    });
+    if (claimed.count !== 1) throw httpError("Invalid or expired signup code.", 400);
+
     const created = await tx.user.create({
       data: {
         name: pending.name || name,
@@ -291,10 +397,10 @@ export async function signup(input: unknown): Promise<AuthResult> {
         email: true,
         authVersion: true,
         accountTier: true,
+        pinHash: true,
       },
     });
-    await tx.signupVerification.delete({ where: { email: normalizedEmail } });
-    return created;
+    return selectAuthUser(created);
   });
 
   const deletionCancelled = await cancelPendingDeletion(user.id);
@@ -322,11 +428,128 @@ export async function login(input: unknown, context?: emailService.LoginAlertCon
     throw httpError("Invalid email or password.", 401);
   }
 
+  const authUser = selectAuthUser(user);
   const deletionCancelled = await cancelPendingDeletion(user.id);
-  const result = await buildAuthResult(user, { deletionCancelled });
+  const result = await buildAuthResult(authUser, { deletionCancelled });
   await acceptTrustInvitationsForUser(user.id, user.email);
   dispatchAuthEmail(() => emailService.sendLoginAlertEmail(user, context));
   return result;
+}
+
+export async function loginWithPin(input: unknown, context?: emailService.LoginAlertContext): Promise<AuthResult> {
+  const { email, pin } = pinLoginSchema.parse(input);
+  const user = await findUserByEmail(email);
+
+  if (!user?.pinHash) {
+    throw httpError(PIN_LOGIN_MESSAGE, 401);
+  }
+
+  await assertPinMatches(user, pin, PIN_LOGIN_MESSAGE);
+
+  const authUser = selectAuthUser(user);
+  const deletionCancelled = await cancelPendingDeletion(user.id);
+  const result = await buildAuthResult(authUser, { deletionCancelled });
+  await acceptTrustInvitationsForUser(user.id, user.email);
+  dispatchAuthEmail(() => emailService.sendLoginAlertEmail(user, context));
+  return result;
+}
+
+export async function setupPin(userId: string, input: unknown) {
+  const { pin } = setupPinSchema.parse(input);
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw httpError("Unauthorized.", 401);
+  if (user.pinHash) {
+    return { message: "PIN already configured.", user: toAuthUser(selectAuthUser(user)) };
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      pinHash: await bcrypt.hash(pin, 10),
+      pinAttemptCount: 0,
+      pinLockedUntil: null,
+    },
+    select: { id: true, name: true, email: true, authVersion: true, accountTier: true, pinHash: true },
+  });
+
+  return { message: "PIN configured.", user: toAuthUser(selectAuthUser(updated)) };
+}
+
+export async function changePin(userId: string, input: unknown) {
+  const { currentPin, newPin } = changePinSchema.parse(input);
+  if (currentPin === newPin) throw httpError("New PIN must be different from your current PIN.", 400);
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw httpError("Unauthorized.", 401);
+  await assertPinMatches(user, currentPin);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      pinHash: await bcrypt.hash(newPin, 10),
+      pinAttemptCount: 0,
+      pinLockedUntil: null,
+    },
+  });
+
+  return { message: "PIN updated." };
+}
+
+export async function requestPinReset(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw httpError("Unauthorized.", 401);
+
+  const previous = await prisma.accountChangeOtp.findUnique({ where: { userId_purpose: { userId, purpose: "pin" } } });
+  if (previous) assertOtpCooldown(previous.updatedAt);
+
+  const otp = String(randomInt(100000, 1000000));
+  await prisma.accountChangeOtp.upsert({
+    where: { userId_purpose: { userId, purpose: "pin" } },
+    update: {
+      newEmail: null,
+      newPasswordHash: null,
+      newPinHash: null,
+      otpHash: hashAccountChangeOtp(userId, "pin", otp),
+      expiresAt: getAccountChangeOtpExpiry(),
+      attemptCount: 0,
+    },
+    create: {
+      userId,
+      purpose: "pin",
+      otpHash: hashAccountChangeOtp(userId, "pin", otp),
+      expiresAt: getAccountChangeOtpExpiry(),
+    },
+  });
+
+  const delivery = await emailService.sendAccountChangeOtpEmail({ userId, email: user.email, purpose: "pin" }, otp);
+  if (!delivery.sent) throw httpError("Unable to send verification code. Please contact support@readiness.com.", 502);
+  return { message: "We sent a verification code to your email." };
+}
+
+export async function resetPin(userId: string, input: unknown) {
+  const { otp, newPin } = resetPinSchema.parse(input);
+  const saved = await prisma.accountChangeOtp.findUnique({ where: { userId_purpose: { userId, purpose: "pin" } } });
+  const now = new Date();
+  if (!saved || saved.expiresAt <= now || saved.attemptCount >= ACCOUNT_CHANGE_MAX_ATTEMPTS || saved.otpHash !== hashAccountChangeOtp(userId, "pin", otp)) {
+    if (saved && saved.attemptCount < ACCOUNT_CHANGE_MAX_ATTEMPTS) {
+      await prisma.accountChangeOtp.update({ where: { id: saved.id }, data: { attemptCount: { increment: 1 } } });
+    }
+    throw httpError("Invalid or expired verification code.", 400);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        pinHash: await bcrypt.hash(newPin, 10),
+        pinAttemptCount: 0,
+        pinLockedUntil: null,
+      },
+    });
+    await tx.accountChangeOtp.delete({ where: { id: saved.id } });
+  });
+
+  return { message: "PIN updated." };
 }
 
 export async function googleLogin(
@@ -336,7 +559,7 @@ export async function googleLogin(
 ): Promise<AuthResult> {
   const google = await verifyGoogleCredential(input, verifier);
 
-  let user: AuthUser | undefined;
+  let user: User | undefined;
   let emailType: "welcome" | "login_alert" = "login_alert";
   for (let attempt = 0; attempt < 3 && !user; attempt += 1) {
     try {
@@ -387,7 +610,8 @@ export async function googleLogin(
 
   if (!user) throw new Error("Unable to authenticate with Google.");
 
-  const result = await buildAuthResult(user);
+  const authUser = selectAuthUser(user);
+  const result = await buildAuthResult(authUser);
   await acceptTrustInvitationsForUser(user.id, user.email);
   if (emailType === "welcome") {
     dispatchAuthEmail(() => emailService.sendWelcomeEmail(user));
@@ -413,6 +637,7 @@ export async function refresh(input: unknown): Promise<AuthResult> {
           email: true,
           authVersion: true,
           accountTier: true,
+          pinHash: true,
         },
       },
     },
@@ -433,8 +658,9 @@ export async function refresh(input: unknown): Promise<AuthResult> {
   });
   if (claimed.count !== 1) throw httpError("Invalid refresh token.", 401);
 
+  const authUser = selectAuthUser(savedRefreshToken.user);
   const deletionCancelled = await cancelPendingDeletion(savedRefreshToken.user.id);
-  return buildAuthResult(savedRefreshToken.user, { deletionCancelled });
+  return buildAuthResult(authUser, { deletionCancelled });
 }
 
 export async function logout(input: unknown) {
@@ -456,7 +682,12 @@ export async function logout(input: unknown) {
 }
 
 export async function logoutAll(userId: string) {
-  await prisma.user.update({ where: { id: userId }, data: { authVersion: { increment: 1 } } });
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { authVersion: { increment: 1 } },
+    select: { authVersion: true },
+  });
+  noteAuthVersion(userId, updated.authVersion);
   await prisma.refreshToken.updateMany({
     where: { userId, revokedAt: null },
     data: { revokedAt: new Date() },
@@ -482,6 +713,7 @@ export async function requestEmailChange(userId: string, input: unknown) {
     update: {
       newEmail: normalizedEmail,
       newPasswordHash: null,
+      newPinHash: null,
       otpHash: hashAccountChangeOtp(userId, "email", otp),
       expiresAt: getAccountChangeOtpExpiry(),
       attemptCount: 0,
@@ -517,14 +749,15 @@ export async function verifyEmailChange(userId: string, input: unknown) {
     if (duplicate) throw httpError("Unable to use that email address.", 409);
     const updated = await tx.user.update({
       where: { id: userId },
-      data: { email: requestedEmail },
-      select: { id: true, name: true, email: true, authVersion: true, accountTier: true },
+      data: { email: requestedEmail, authVersion: { increment: 1 } },
+      select: { id: true, name: true, email: true, authVersion: true, accountTier: true, pinHash: true },
     });
     await tx.accountChangeOtp.delete({ where: { id: saved.id } });
     return updated;
   });
+  noteAuthVersion(userId, user.authVersion ?? 0);
 
-  return { message: "Email updated.", user: toAuthUser(user) };
+  return { message: "Email updated.", user: toAuthUser(selectAuthUser(user)) };
 }
 
 export async function requestPasswordChange(userId: string, input: unknown) {
@@ -544,6 +777,7 @@ export async function requestPasswordChange(userId: string, input: unknown) {
     update: {
       newEmail: null,
       newPasswordHash,
+      newPinHash: null,
       otpHash: hashAccountChangeOtp(userId, "password", otp),
       expiresAt: getAccountChangeOtpExpiry(),
       attemptCount: 0,
@@ -573,14 +807,17 @@ export async function verifyPasswordChange(userId: string, input: unknown) {
     throw httpError("Invalid or expired verification code.", 400);
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
+  const updated = await prisma.$transaction(async (tx) => {
+    const nextUser = await tx.user.update({
       where: { id: userId },
       data: { passwordHash: saved.newPasswordHash, authVersion: { increment: 1 } },
+      select: { authVersion: true },
     });
     await tx.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } });
     await tx.accountChangeOtp.delete({ where: { id: saved.id } });
+    return nextUser;
   });
+  noteAuthVersion(userId, updated.authVersion);
 
   return { message: "Password updated. Please sign in again." };
 }
@@ -607,7 +844,12 @@ export async function forgotPassword(input: unknown) {
         expiresAt: getPasswordResetExpiry(),
       },
     });
-    await emailService.sendPasswordResetEmail(user, buildPasswordResetUrl(token));
+    await emailService.sendPasswordResetEmail(user, buildPasswordResetUrl(token)).catch((error) => {
+      console.error({
+        event: "password_reset_email_failed",
+        errorCode: error instanceof Error ? error.name : "unknown",
+      });
+    });
   }
 
   return {
@@ -620,7 +862,9 @@ export async function requestPasswordResetOtp(input: unknown) {
   const user = await findUserByEmail(email);
 
   if (!user) {
-    throw httpError("Email not valid.", 404);
+    return {
+      message: PASSWORD_RESET_OTP_MESSAGE,
+    };
   }
 
   const otp = String(randomInt(100000, 1000000));
@@ -640,46 +884,76 @@ export async function requestPasswordResetOtp(input: unknown) {
       expiresAt: getPasswordResetExpiry(),
     },
   });
-  const delivery = await emailService.sendPasswordResetOtpEmail(user, otp);
-  if (!delivery.sent) {
-    throw httpError("Unable to send OTP email. Please contact support@readiness.com.", 502);
-  }
+  const delivery = await emailService.sendPasswordResetOtpEmail(user, otp).catch((error) => {
+    console.error({
+      event: "password_reset_otp_email_failed",
+      errorCode: error instanceof Error ? error.name : "unknown",
+    });
+    return { sent: false };
+  });
+  if (!delivery.sent) console.error({ event: "password_reset_otp_email_not_sent" });
 
   return {
-    message: "We sent a 6-digit password reset code to your email.",
+    message: PASSWORD_RESET_OTP_MESSAGE,
   };
 }
 
 export async function resetPasswordWithOtp(input: unknown) {
   const { email, otp, password } = resetPasswordOtpSchema.parse(input);
   const user = await findUserByEmail(email);
-  const tokenHash = user ? hashPasswordResetOtp(user.id, otp) : hashPasswordResetToken(`missing:${otp}`);
-  const savedToken = await prisma.passwordResetToken.findUnique({
-    where: {
-      tokenHash,
-    },
-    select: {
-      id: true,
-      userId: true,
-      usedAt: true,
-      expiresAt: true,
-    },
-  });
+  const now = new Date();
+  const savedToken = user
+    ? await prisma.passwordResetToken.findFirst({
+      where: {
+        userId: user.id,
+        usedAt: null,
+        expiresAt: { gt: now },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        tokenHash: true,
+        userId: true,
+        expiresAt: true,
+        attemptCount: true,
+      },
+    })
+    : null;
 
-  if (!user || !savedToken || savedToken.userId !== user.id || savedToken.usedAt || savedToken.expiresAt <= new Date()) {
+  const expectedHash = user ? hashPasswordResetOtp(user.id, otp) : hashPasswordResetToken(`missing:${otp}`);
+  if (!user || !savedToken || savedToken.userId !== user.id || savedToken.attemptCount >= PASSWORD_RESET_OTP_MAX_ATTEMPTS) {
     throw httpError("Invalid or expired password reset code.", 400);
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
-  await prisma.$transaction(async (tx) => {
-    const claimed = await tx.passwordResetToken.updateMany({
+  if (savedToken.tokenHash !== expectedHash) {
+    await prisma.passwordResetToken.updateMany({
       where: {
         id: savedToken.id,
         userId: user.id,
         usedAt: null,
+        expiresAt: { gt: now },
+        attemptCount: { lt: PASSWORD_RESET_OTP_MAX_ATTEMPTS },
+      },
+      data: {
+        attemptCount: { increment: 1 },
+        ...(savedToken.attemptCount + 1 >= PASSWORD_RESET_OTP_MAX_ATTEMPTS ? { usedAt: now } : {}),
+      },
+    });
+    throw httpError("Invalid or expired password reset code.", 400);
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  const updated = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.passwordResetToken.updateMany({
+      where: {
+        id: savedToken.id,
+        userId: user.id,
+        tokenHash: expectedHash,
+        usedAt: null,
         expiresAt: {
           gt: new Date(),
         },
+        attemptCount: { lt: PASSWORD_RESET_OTP_MAX_ATTEMPTS },
       },
       data: {
         usedAt: new Date(),
@@ -690,7 +964,7 @@ export async function resetPasswordWithOtp(input: unknown) {
       throw httpError("Invalid or expired password reset code.", 400);
     }
 
-    await tx.user.update({
+    const nextUser = await tx.user.update({
       where: {
         id: user.id,
       },
@@ -698,6 +972,7 @@ export async function resetPasswordWithOtp(input: unknown) {
         passwordHash,
         authVersion: { increment: 1 },
       },
+      select: { authVersion: true },
     });
     await tx.refreshToken.updateMany({
       where: {
@@ -708,7 +983,9 @@ export async function resetPasswordWithOtp(input: unknown) {
         revokedAt: new Date(),
       },
     });
+    return nextUser;
   });
+  noteAuthVersion(user.id, updated.authVersion);
 
   return {
     message: "Password updated. Please sign in again.",
@@ -735,7 +1012,7 @@ export async function resetPassword(input: unknown) {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  await prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const claimed = await tx.passwordResetToken.updateMany({
       where: {
         id: savedToken.id,
@@ -753,7 +1030,7 @@ export async function resetPassword(input: unknown) {
       throw httpError("Invalid or expired password reset link.", 400);
     }
 
-    await tx.user.update({
+    const nextUser = await tx.user.update({
       where: {
         id: savedToken.userId,
       },
@@ -761,6 +1038,7 @@ export async function resetPassword(input: unknown) {
         passwordHash,
         authVersion: { increment: 1 },
       },
+      select: { authVersion: true },
     });
     await tx.refreshToken.updateMany({
       where: {
@@ -771,7 +1049,9 @@ export async function resetPassword(input: unknown) {
         revokedAt: new Date(),
       },
     });
+    return nextUser;
   });
+  noteAuthVersion(savedToken.userId, updated.authVersion);
 
   return {
     message: "Password reset successfully. Please sign in with your new password.",
@@ -789,8 +1069,9 @@ export async function getUserById(id: string) {
       email: true,
       authVersion: true,
       accountTier: true,
+      pinHash: true,
     },
   });
 
-  return user ? toAuthUser(user) : null;
+  return user ? toAuthUser(selectAuthUser(user)) : null;
 }

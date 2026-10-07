@@ -1,8 +1,9 @@
 import jwt from "jsonwebtoken";
+import type { SignOptions } from "jsonwebtoken";
 
 // Compatibility: preserve existing development sessions during the product rename.
 const JWT_SECRET = process.env.JWT_SECRET || "lifepack-dev-secret";
-const JWT_EXPIRES_IN = "15m";
+const JWT_EXPIRES_IN = (process.env.ACCESS_TOKEN_TTL?.trim() || "5m") as SignOptions["expiresIn"];
 
 type JwtPayload = {
   sub: string;

@@ -1,5 +1,6 @@
 import type { CorsOptions } from "cors";
 import type { Request, Response, NextFunction } from "express";
+import { createHash } from "node:crypto";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { HelmetOptions } from "helmet";
 
@@ -20,17 +21,38 @@ function clientRateLimitKey(req: Request) {
   return ipKeyGenerator(req.ip || "unknown");
 }
 
+function normalizeEmail(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function hashRateLimitKey(scope: string, value: string) {
+  return `${scope}:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function emailRateLimitKey(req: Request) {
+  const email = normalizeEmail((req.body as { email?: unknown } | undefined)?.email);
+  return email ? hashRateLimitKey("email", email) : hashRateLimitKey("ip-fallback", clientRateLimitKey(req));
+}
+
+function authenticatedAccountRateLimitKey(req: Request) {
+  const userId = (req as { authUser?: { id?: unknown } }).authUser?.id;
+  return typeof userId === "string" && userId ? hashRateLimitKey("account", userId) : hashRateLimitKey("ip-fallback", clientRateLimitKey(req));
+}
+
 function buildRateLimiter(input: {
   windowMinutes: number;
   max: number;
   message: string;
+  keyGenerator?: (req: Request) => string;
+  skipSuccessfulRequests?: boolean;
 }) {
   return rateLimit({
     windowMs: input.windowMinutes * 60 * 1000,
     max: input.max,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: clientRateLimitKey,
+    keyGenerator: input.keyGenerator ?? clientRateLimitKey,
+    skipSuccessfulRequests: input.skipSuccessfulRequests,
     message: {
       message: input.message,
     },
@@ -78,6 +100,49 @@ export const authLimiter = buildRateLimiter({
   windowMinutes: numberFromEnv("AUTH_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("AUTH_RATE_LIMIT_MAX", 20),
   message: "Too many authentication attempts. Please try again later.",
+});
+
+export const loginAccountLimiter = buildRateLimiter({
+  windowMinutes: numberFromEnv("AUTH_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
+  max: numberFromEnv("LOGIN_ACCOUNT_RATE_LIMIT_MAX", 10),
+  message: "Too many authentication attempts. Please try again later.",
+  keyGenerator: emailRateLimitKey,
+  skipSuccessfulRequests: true,
+});
+
+export const signupOtpRequestAccountLimiter = buildRateLimiter({
+  windowMinutes: numberFromEnv("SIGNUP_OTP_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
+  max: numberFromEnv("SIGNUP_OTP_ACCOUNT_RATE_LIMIT_MAX", 5),
+  message: "Too many authentication attempts. Please try again later.",
+  keyGenerator: emailRateLimitKey,
+});
+
+export const signupOtpVerifyAccountLimiter = buildRateLimiter({
+  windowMinutes: numberFromEnv("SIGNUP_OTP_VERIFY_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
+  max: numberFromEnv("SIGNUP_OTP_VERIFY_ACCOUNT_RATE_LIMIT_MAX", 10),
+  message: "Invalid or expired signup code.",
+  keyGenerator: emailRateLimitKey,
+});
+
+export const passwordResetRequestAccountLimiter = buildRateLimiter({
+  windowMinutes: numberFromEnv("PASSWORD_RESET_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
+  max: numberFromEnv("PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX", 5),
+  message: "If an account exists for that email, a password reset code will be sent.",
+  keyGenerator: emailRateLimitKey,
+});
+
+export const passwordResetVerifyAccountLimiter = buildRateLimiter({
+  windowMinutes: numberFromEnv("PASSWORD_RESET_VERIFY_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
+  max: numberFromEnv("PASSWORD_RESET_VERIFY_ACCOUNT_RATE_LIMIT_MAX", 10),
+  message: "Invalid or expired password reset code.",
+  keyGenerator: emailRateLimitKey,
+});
+
+export const accountChangeOtpAccountLimiter = buildRateLimiter({
+  windowMinutes: numberFromEnv("ACCOUNT_CHANGE_OTP_RATE_LIMIT_WINDOW_MINUTES", 15),
+  max: numberFromEnv("ACCOUNT_CHANGE_OTP_RATE_LIMIT_MAX", 8),
+  message: "Too many authentication attempts. Please try again later.",
+  keyGenerator: authenticatedAccountRateLimitKey,
 });
 
 export const tokenRefreshLimiter = buildRateLimiter({

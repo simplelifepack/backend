@@ -4,7 +4,16 @@ import assert from "node:assert/strict";
 import { prisma } from "../lib/prisma";
 import type { TokenPayload } from "google-auth-library";
 
-import { forgotPassword, googleLogin, login, requestSignupOtp, resetPassword, signup } from "./auth.service";
+import {
+  forgotPassword,
+  googleLogin,
+  login,
+  requestPasswordResetOtp,
+  requestSignupOtp,
+  resetPassword,
+  resetPasswordWithOtp,
+  signup,
+} from "./auth.service";
 import type { SendEmailInput } from "./email/EmailProvider";
 import { setEmailProviderForTests } from "./email/emailService";
 import { renderLoginAlertEmail } from "./email/templates/loginAlertEmail";
@@ -129,6 +138,71 @@ async function run() {
     /Invalid or expired/,
   );
 
+  await requestSignupOtp({
+    name: "Locked Signup",
+    email: email("signup-lock"),
+    password: "password123",
+  });
+  const lockedSignupOtp = provider.sent[provider.sent.length - 1]?.text.match(/\b\d{6}\b/)?.[0];
+  assert.ok(lockedSignupOtp, "signup lock email includes OTP");
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await expectFailure(
+      () => signup({
+        name: "Locked Signup",
+        email: email("signup-lock"),
+        password: "password123",
+        otp: "000000",
+      }),
+      /Invalid or expired signup code/,
+    );
+  }
+  await expectFailure(
+    () => signup({
+      name: "Locked Signup",
+      email: email("signup-lock"),
+      password: "password123",
+      otp: lockedSignupOtp,
+    }),
+    /Invalid or expired signup code/,
+  );
+  await requestSignupOtp({
+    name: "Locked Signup",
+    email: email("signup-lock"),
+    password: "password123",
+  });
+  const renewedSignupOtp = provider.sent[provider.sent.length - 1]?.text.match(/\b\d{6}\b/)?.[0];
+  assert.ok(renewedSignupOtp, "renewed signup email includes OTP");
+  await signup({
+    name: "Locked Signup",
+    email: email("signup-lock"),
+    password: "password123",
+    otp: renewedSignupOtp,
+  });
+
+  const missingOtpResponse = await requestPasswordResetOtp({ email: email("reset-missing") });
+  assert.equal(missingOtpResponse.message, "If an account exists for that email, a password reset code will be sent.");
+  const sentBeforeResetOtp = provider.sent.length;
+  const resetOtpResponse = await requestPasswordResetOtp({ email: email("new") });
+  assert.equal(resetOtpResponse.message, missingOtpResponse.message);
+  assert.equal(provider.sent.length, sentBeforeResetOtp + 1, "reset OTP sends one email for existing account");
+  const resetOtp = provider.sent[provider.sent.length - 1]?.text.match(/\b\d{6}\b/)?.[0];
+  assert.ok(resetOtp, "reset OTP email includes OTP");
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await expectFailure(
+      () => resetPasswordWithOtp({ email: email("new"), otp: "000000", password: "Newer-password-123!" }),
+      /Invalid or expired password reset code/,
+    );
+  }
+  await expectFailure(
+    () => resetPasswordWithOtp({ email: email("new"), otp: resetOtp, password: "Newer-password-123!" }),
+    /Invalid or expired password reset code/,
+  );
+  await requestPasswordResetOtp({ email: email("new") });
+  const renewedResetOtp = provider.sent[provider.sent.length - 1]?.text.match(/\b\d{6}\b/)?.[0];
+  assert.ok(renewedResetOtp, "renewed reset OTP email includes OTP");
+  await resetPasswordWithOtp({ email: email("new"), otp: renewedResetOtp, password: "Newer-password-123!" });
+  await login({ email: email("new"), password: "Newer-password-123!" });
+
   const failingSignupProvider = new MockEmailProvider();
   failingSignupProvider.shouldFail = true;
   setEmailProviderForTests(failingSignupProvider);
@@ -141,7 +215,7 @@ async function run() {
   const failingLoginProvider = new MockEmailProvider();
   failingLoginProvider.shouldFail = true;
   setEmailProviderForTests(failingLoginProvider);
-  await login({ email: email("new"), password: "new-password-123" });
+  await login({ email: email("new"), password: "Newer-password-123!" });
   assert.equal(failingLoginProvider.sent.length, 0, "SMTP failure does not fail successful login");
 
   const googleProvider = new MockEmailProvider();
