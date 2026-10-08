@@ -144,35 +144,6 @@ GOOGLE_TOKEN_ENCRYPTION_KEY=base64:<dedicated-32-byte-value>
 Generate `GOOGLE_TOKEN_ENCRYPTION_KEY` with `openssl rand -base64 32`. Do not
 reuse any document encryption key.
 
-### Cashfree DigiLocker import
-
-Leave these empty until Cashfree onboarding is complete. When either credential
-is missing, backend endpoints stay disabled and clients show “DigiLocker
-integration is coming soon.” No Cashfree request is made.
-
-```env
-CASHFREE_DIGILOCKER_CLIENT_ID=
-CASHFREE_DIGILOCKER_CLIENT_SECRET=
-CASHFREE_DIGILOCKER_ENVIRONMENT=sandbox # sandbox or production
-# Optional; defaults to Cashfree's current VRS SDK version.
-CASHFREE_DIGILOCKER_API_VERSION=2024-12-01
-```
-
-Cashfree must allow the deployed HTTPS return URL used by Readiness Documents.
-For web this is:
-
-```text
-https://<readiness-frontend-origin>/documents
-```
-
-For local testing, use `http://localhost:5173/documents` only with Cashfree
-sandbox settings. Keep the Client ID and Client Secret only in the backend
-environment; never expose them as frontend or mobile variables. Before switching
-to production, confirm the Cashfree Secure ID/DigiLocker account is live,
-production credentials are issued, callback/redirect origins are registered,
-server outbound IP requirements are satisfied if Cashfree enables IP allowlisting
-for the account, and the environment is changed from `sandbox` to `production`.
-
 ### SMTP password-reset email delivery
 
 Email is disabled by default. To send reset emails through GoDaddy Professional
