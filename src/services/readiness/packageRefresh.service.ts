@@ -10,7 +10,7 @@ const inFlight = new Map<string, Promise<Awaited<ReturnType<typeof refreshPackag
 export async function refreshPackageForUser(userId: string, slug: string, research = researchPackageRefresh) {
   await assertAIProcessingEnabled(userId);
   // Exact lookup: refresh must never choose a fuzzy catalogue match.
-  const pack = await prisma.readinessPack.findUnique({ where: { slug }, include: { requirements: { orderBy: { sortOrder: "asc" } } } });
+  const pack = await prisma.readinessPack.findFirst({ where: { slug, deletedAt: null }, include: { requirements: { orderBy: { sortOrder: "asc" } } } });
   if (!pack || (!["seed", "ai"].includes(pack.createdBy) && pack.createdBy !== userId)) throw new PackageRefreshError("Package not found.", 404);
   let job = inFlight.get(pack.id);
   if (!job) {

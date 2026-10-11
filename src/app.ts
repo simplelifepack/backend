@@ -147,10 +147,12 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
 app.use(generalApiLimiter);
 app.use("/auth", authRouter);
 app.use("/api/bootstrap", bootstrapRouter);
+app.use("/api/search", lazyRouter(() => import("./routes/search.routes")));
 app.use("/documents", lazyRouter(() => import("./routes/documents.routes")));
 app.use("/packs", lazyRouter(() => import("./routes/packs.routes")));
 app.use("/packages", lazyRouter(() => import("./routes/packs.routes")));
 app.use("/api/packages", lazyRouter(() => import("./routes/packs.routes")));
+app.use("/api/admin/packages", lazyRouter(() => import("./routes/adminPackages.routes")));
 app.use("/admin/readiness", lazyRouter(() => import("./routes/readiness.admin.routes"), "adminReadinessRouter"));
 app.use("/admin/notifications", lazyRouter(() => import("./routes/notifications.routes"), "adminNotificationsRouter"));
 app.use("/admin/account", lazyRouter(() => import("./routes/account.routes"), "adminAccountRouter"));

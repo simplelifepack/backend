@@ -1,3 +1,5 @@
+import { documentDefinitions } from "../ingestion/documentDefinitions.registry";
+
 const explicitTypeMap: Record<string, string> = {
   aadhaar: "aadhaar",
   aadhar: "aadhaar",
@@ -216,6 +218,11 @@ function singularizeSearchTerms(input: string) {
 
 // Exact public labels only: never use fallback normalization on provider-bound values.
 export function publicDocumentLabel(value: string): string | null {
-  const key = value.trim().toLowerCase().replace(/[ -]+/g, "_");
-  return Object.prototype.hasOwnProperty.call(explicitTypeMap, key) ? explicitTypeMap[key]! : null;
+  const normalized = normalizeDocumentType(value);
+  return publicDocumentLabelSet.has(normalized) ? normalized : null;
 }
+
+const publicDocumentLabelSet = new Set([
+  ...Object.keys(documentDefinitions),
+  ...Object.values(documentDefinitions).flatMap((definition) => definition.supportedReadinessCapabilities),
+]);

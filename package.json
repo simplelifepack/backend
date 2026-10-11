@@ -34,6 +34,7 @@
     "documents:migrate-trust-state": "tsx src/scripts/migrateDocumentTrustState.ts",
     "packages:backfill-sources": "tsx -r dotenv/config src/scripts/backfillPackageSources.ts",
     "packages:import-defaults": "node --import tsx --require dotenv/config src/scripts/importDefaultPackagesFromEvents.ts",
+    "packages:provision-admin": "tsx -r dotenv/config src/scripts/provisionPackagesAdmin.ts",
     "email:verify-smtp": "tsx src/scripts/verifySmtp.ts",
     "email:send-test": "tsx src/scripts/sendAuthTestEmail.ts",
     "prisma:generate": "prisma generate",

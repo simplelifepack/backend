@@ -41,6 +41,12 @@ const SYSTEM_PACK_CREATORS = ["seed", "ai"];
 const STATIC_CATALOGUE_CACHE_MS = 60_000;
 let ensureCache: { expiresAt: number; value: number } | null = null;
 let categoriesCache: { expiresAt: number; value: string[] } | null = null;
+const activePackWhere: Prisma.ReadinessPackWhereInput = { deletedAt: null };
+
+export function invalidatePackageCatalogueCaches() {
+  ensureCache = null;
+  categoriesCache = null;
+}
 
 async function timed<T>(timing: PackageListTiming | undefined, key: keyof PackageListTiming, work: () => Promise<T>) {
   const start = performance.now();
@@ -81,7 +87,7 @@ function assignmentPayload(assignments: Map<string, RequirementAssignmentDto>, r
 export async function ensureReadinessPacks() {
   const now = Date.now();
   if (ensureCache && ensureCache.expiresAt > now) return ensureCache.value;
-  const value = await prisma.readinessPack.count({ take: 1 });
+  const value = await prisma.readinessPack.count({ where: activePackWhere, take: 1 });
   ensureCache = { value, expiresAt: now + STATIC_CATALOGUE_CACHE_MS };
   return value;
 }
@@ -89,6 +95,7 @@ export async function ensureReadinessPacks() {
 export async function getPackageDefinitions() {
   await ensureReadinessPacks();
   return prisma.readinessPack.findMany({
+    where: activePackWhere,
     select: {
       id: true,
       slug: true,
@@ -144,9 +151,9 @@ export async function listPackageSummaries(options: PackageListOptions, timing?:
   const customOnly = options.category === "My packs";
   const hasCategoryFilter = Boolean(options.category?.trim() && options.category !== "All" && !customOnly);
   const visibleWhere = options.userId
-    ? { OR: [{ createdBy: { in: SYSTEM_PACK_CREATORS } }, { createdBy: options.userId }] }
-    : { createdBy: { in: SYSTEM_PACK_CREATORS } };
-  const where: Prisma.ReadinessPackWhereInput = customOnly && options.userId ? { createdBy: options.userId } : visibleWhere;
+    ? { deletedAt: null, OR: [{ createdBy: { in: SYSTEM_PACK_CREATORS } }, { createdBy: options.userId }] }
+    : { deletedAt: null, createdBy: { in: SYSTEM_PACK_CREATORS } };
+  const where: Prisma.ReadinessPackWhereInput = customOnly && options.userId ? { deletedAt: null, createdBy: options.userId } : visibleWhere;
   const defaultListWhere: Prisma.ReadinessPackWhereInput = hasCategoryFilter
     ? { AND: [where, { category: options.category }] }
     : where;
@@ -272,7 +279,7 @@ async function getPackageCategories() {
   const now = Date.now();
   if (categoriesCache && categoriesCache.expiresAt > now) return categoriesCache.value;
   const rows = await prisma.readinessPack.findMany({
-    where: { createdBy: "seed" },
+    where: { createdBy: "seed", deletedAt: null },
     select: { category: true, searchMetadata: true },
   });
   const byCategory = new Map<string, { order: number; title: string }>();
@@ -299,7 +306,7 @@ export async function getReadinessPacksBySlugs(slugs: string[]) {
   const uniqueSlugs = [...new Set(slugs.map(slugify).filter(Boolean))].slice(0, 5);
   if (!uniqueSlugs.length) return [];
   const packs = await prisma.readinessPack.findMany({
-    where: { slug: { in: uniqueSlugs } },
+    where: { slug: { in: uniqueSlugs }, deletedAt: null },
     select: { id: true, slug: true, title: true, category: true, description: true },
   });
   const bySlug = new Map(packs.map((pack) => [pack.slug, pack]));
@@ -352,13 +359,14 @@ const packDefinitionSelect = {
 export async function getReadinessPackDefinitionBySlug(slug: string) {
   await ensureReadinessPacks();
   const normalizedSlug = slugify(slug);
-  const exact = await prisma.readinessPack.findUnique({
-    where: { slug: normalizedSlug },
+  const exact = await prisma.readinessPack.findFirst({
+    where: { slug: normalizedSlug, deletedAt: null },
     select: packDefinitionSelect,
   });
   if (exact) return exact;
 
   const packs = await prisma.readinessPack.findMany({
+    where: activePackWhere,
     select: packDefinitionSelect,
   });
   const [best] = packs
@@ -384,8 +392,8 @@ export async function getReadinessPackDefinitionBySlugForUser(slug: string, user
 
 export async function getReadinessPackDefinitionByCanonicalSlug(slug: string) {
   await ensureReadinessPacks();
-  return prisma.readinessPack.findUnique({
-    where: { slug: slugify(slug) },
+  return prisma.readinessPack.findFirst({
+    where: { slug: slugify(slug), deletedAt: null },
     select: packDefinitionSelect,
   });
 }

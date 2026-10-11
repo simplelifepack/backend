@@ -745,9 +745,11 @@ model ReadinessPack {
   requirements        Requirement[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
 
   @@index([category])
   @@index([createdBy])
+  @@index([deletedAt])
 }
 
 model Requirement {
@@ -764,10 +766,12 @@ model Requirement {
   acceptedDocumentTypes String[]
   alternativeLabels     String[]
   sortOrder             Int           @default(0)
+  deletedAt             DateTime?
   assignments           RequirementAssignment[]
 
   @@index([packId])
   @@index([documentType, owner])
+  @@index([deletedAt])
 }
 
 model RequirementAssignment {

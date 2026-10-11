@@ -19,6 +19,7 @@ export async function findDefaultPackSlug(query: string) {
 
 export async function findDefaultPackMatch(query: string): Promise<DefaultPackSearchMatch | null> {
   const packages = await prisma.readinessPack.findMany({
+    where: { deletedAt: null },
     select: {
       slug: true,
       title: true,
@@ -61,7 +62,7 @@ export async function saveGeneratedDefaultPack(query: string, generated: AIReadi
   const keywords = searchKeywords(query, generated);
   const verification = verificationMetadata(generated);
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.readinessPack.findUnique({ where: { slug }, select: { slug: true, aliases: true, keywords: true, createdBy: true, verificationSources: true } });
+    const existing = await tx.readinessPack.findFirst({ where: { slug, deletedAt: null }, select: { slug: true, aliases: true, keywords: true, createdBy: true, verificationSources: true } });
     if (existing) {
       await tx.readinessPack.update({
         where: { slug },
@@ -130,8 +131,8 @@ async function addSearchMetadata(slug: string, query: string, generated: AIReadi
   const alias = normalizeSearchText(query);
   const keywords = searchKeywords(query, generated);
   const verification = verificationMetadata(generated);
-  const existing = await prisma.readinessPack.findUnique({
-    where: { slug },
+  const existing = await prisma.readinessPack.findFirst({
+    where: { slug, deletedAt: null },
     select: { aliases: true, keywords: true, createdBy: true, verificationSources: true },
   });
   if (!existing) return;
