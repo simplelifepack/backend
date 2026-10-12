@@ -1,6 +1,7 @@
 import cors from "cors";
 import express, { type Router } from "express";
 import helmet from "helmet";
+import path from "node:path";
 import authRouter from "./routes/auth.routes";
 import bootstrapRouter from "./routes/bootstrap.routes";
 import { openApiDocument } from "./docs/openapi";
@@ -70,12 +71,15 @@ app.get("/health", (_req, res) => {
 });
 
 function apiDocsEnabled() {
-  return process.env.NODE_ENV !== "production";
+  return process.env.NODE_ENV !== "production" || process.env.API_DOCS_ENABLED === "true";
 }
 
 function docsDisabled(res: express.Response) {
   return res.status(404).json({ message: "Not found." });
 }
+
+const swaggerUiAssetPath = path.dirname(require.resolve("swagger-ui-dist/package.json"));
+const swaggerUiAssetRoute = "/api-docs/swagger-ui";
 
 app.get("/openapi.json", (_req, res) => {
   if (!apiDocsEnabled()) return docsDisabled(res);
@@ -83,8 +87,14 @@ app.get("/openapi.json", (_req, res) => {
   res.json(openApiDocument);
 });
 
-const swaggerUiVersion = "5.33.0";
-const swaggerUiCdnBase = `https://cdn.jsdelivr.net/npm/swagger-ui-dist@${swaggerUiVersion}`;
+app.use(swaggerUiAssetRoute, (req, res, next) => {
+  if (!apiDocsEnabled()) return docsDisabled(res);
+  return express.static(swaggerUiAssetPath, {
+    fallthrough: false,
+    immutable: true,
+    maxAge: "1y",
+  })(req, res, next);
+});
 
 app.get(["/api-docs", "/api-docs/"], (_req, res) => {
   if (!apiDocsEnabled()) return docsDisabled(res);
@@ -93,8 +103,8 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      `script-src 'self' 'unsafe-inline' ${swaggerUiCdnBase}`,
-      `style-src 'self' 'unsafe-inline' ${swaggerUiCdnBase}`,
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "font-src 'self' https: data:",
       "object-src 'none'",
@@ -109,7 +119,7 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
   <title>Readiness API Docs</title>
-  <link rel="stylesheet" href="${swaggerUiCdnBase}/swagger-ui.css" />
+  <link rel="stylesheet" href="${swaggerUiAssetRoute}/swagger-ui.css" />
   <style>
     html { box-sizing: border-box; overflow-y: scroll; }
     *, *::before, *::after { box-sizing: inherit; }
@@ -119,8 +129,8 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="${swaggerUiCdnBase}/swagger-ui-bundle.js"></script>
-  <script src="${swaggerUiCdnBase}/swagger-ui-standalone-preset.js"></script>
+  <script src="${swaggerUiAssetRoute}/swagger-ui-bundle.js"></script>
+  <script src="${swaggerUiAssetRoute}/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = function () {
       window.ui = SwaggerUIBundle({

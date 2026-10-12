@@ -35,6 +35,10 @@ Login, signup, Google login, and refresh also set or rotate the HttpOnly
 `readiness_refresh` cookie. Same-origin Swagger requests can send that cookie
 for `POST /auth/refresh`; the cookie value is not returned in JSON.
 
+Swagger/OpenAPI docs are enabled automatically outside production. In a
+production deployment, set `API_DOCS_ENABLED=true` only when you intentionally
+want `/api-docs` and `/openapi.json` exposed.
+
 ## Backend environment setup
 
 The tracked `.env.example` contains only the variables required for the normal
