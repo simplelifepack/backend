@@ -123,6 +123,24 @@ function logEmailFailure(type: SendType, userId: string, error: unknown) {
   });
 }
 
+/** Single choke point every send function below routes through instead of
+ * calling `provider.sendEmail` directly — records an `EmailLog` row for
+ * both outcomes, then re-throws on failure so each call site's own existing
+ * catch block (which differ — some just swallow, some return a `{sent:
+ * false, reason, errorCode}` shape) keeps working exactly as before. A
+ * logging failure itself must never break a real send, so the DB write is
+ * best-effort. */
+async function sendAndLog(provider: EmailProvider, template: SendType | "raw", recipientId: string | null, input: SendEmailInput) {
+  try {
+    const result = await withTimeout(provider.sendEmail(input));
+    void prisma.emailLog.create({ data: { template, recipient: input.to, recipientId, status: "sent" } }).catch(() => undefined);
+    return result;
+  } catch (error) {
+    void prisma.emailLog.create({ data: { template, recipient: input.to, recipientId, status: "failed", errorCode: errorCode(error) } }).catch(() => undefined);
+    throw error;
+  }
+}
+
 function isValidRecipient(email: string) {
   return RECIPIENT_PATTERN.test(email.trim());
 }
@@ -185,9 +203,24 @@ export async function sendWelcomeEmail(user: { id: string; name: string | null; 
   const rendered = renderWelcomeEmail({ name: user.name, appUrl: config.appUrl });
 
   try {
-    await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
+    await sendAndLog(provider, "welcome", user.id, { to: user.email, ...rendered });
   } catch (error) {
     logEmailFailure("welcome", user.id, error);
+  }
+}
+
+/** Generic send, bypassing the customer-template system above — for
+ * internal/operational mail (admin alerting, D8) rather than a specific
+ * user-facing `SendType`. Caller builds its own subject/html/text. */
+export async function sendRawEmail(input: { to: string; subject: string; html: string; text: string }): Promise<boolean> {
+  const provider = getEmailProvider();
+  if (!provider || !isValidRecipient(input.to)) return false;
+  try {
+    await sendAndLog(provider, "raw", null, input);
+    return true;
+  } catch (error) {
+    console.error({ event: "raw_email_failed", to: input.to, errorCode: errorCode(error), ...emailFailureDetails(error) });
+    return false;
   }
 }
 
@@ -204,7 +237,7 @@ export async function sendLoginAlertEmail(user: { id: string; email: string }, c
   });
 
   try {
-    await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
+    await sendAndLog(provider, "login_alert", user.id, { to: user.email, ...rendered });
   } catch (error) {
     logEmailFailure("login_alert", user.id, error);
   }
@@ -217,7 +250,7 @@ export async function sendPasswordResetEmail(user: { id: string; email: string }
   const rendered = renderPasswordResetEmail({ resetUrl });
 
   try {
-    await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
+    await sendAndLog(provider, "password_reset", user.id, { to: user.email, ...rendered });
   } catch (error) {
     logEmailFailure("password_reset", user.id, error);
   }
@@ -235,7 +268,7 @@ export async function sendPasswordResetOtpEmail(user: { id: string; email: strin
   const rendered = renderPasswordResetOtpEmail({ otp });
 
   try {
-    const result = await withTimeout(provider.sendEmail({ to: user.email, ...rendered }));
+    const result = await sendAndLog(provider, "password_reset", user.id, { to: user.email, ...rendered });
     return { sent: true, messageId: result?.messageId ?? null };
   } catch (error) {
     logEmailFailure("password_reset", user.id, error);
@@ -255,7 +288,7 @@ export async function sendSignupOtpEmail(input: { email: string }, otp: string) 
   const rendered = renderSignupOtpEmail({ otp });
 
   try {
-    const result = await withTimeout(provider.sendEmail({ to: input.email, ...rendered }));
+    const result = await sendAndLog(provider, "signup_otp", "pending", { to: input.email, ...rendered });
     return { sent: true, messageId: result?.messageId ?? null };
   } catch (error) {
     logEmailFailure("signup_otp", "pending", error);
@@ -279,7 +312,7 @@ export async function sendAccountChangeOtpEmail(input: {
   const rendered = renderAccountChangeOtpEmail({ otp, purpose: input.purpose });
 
   try {
-    const result = await withTimeout(provider.sendEmail({ to: input.email, ...rendered }));
+    const result = await sendAndLog(provider, "account_change", input.userId, { to: input.email, ...rendered });
     return { sent: true, messageId: result?.messageId ?? null };
   } catch (error) {
     logEmailFailure("account_change", input.userId, error);
@@ -315,7 +348,7 @@ export async function sendTrustInvitationEmail(input: {
   });
 
   try {
-    const result = await withTimeout(provider.sendEmail({ to: input.to, ...rendered }));
+    const result = await sendAndLog(provider, "trust_invitation", input.membershipId, { to: input.to, ...rendered });
     return { sent: true, messageId: result?.messageId ?? null };
   } catch (error) {
     logEmailFailure("trust_invitation", input.membershipId, error);
@@ -343,11 +376,11 @@ export async function sendWealthHandoffEmail(input: {
   const rendered = renderWealthHandoffEmail(input);
 
   try {
-    const result = await withTimeout(provider.sendEmail({
+    const result = await sendAndLog(provider, "wealth_handoff", input.handoffId, {
       to: input.to,
       ...rendered,
       attachments: [input.attachment],
-    }));
+    });
     return { sent: true, messageId: result?.messageId ?? null };
   } catch (error) {
     logEmailFailure("wealth_handoff", input.handoffId, error);

@@ -163,6 +163,26 @@ app.use("/packs", lazyRouter(() => import("./routes/packs.routes")));
 app.use("/packages", lazyRouter(() => import("./routes/packs.routes")));
 app.use("/api/packages", lazyRouter(() => import("./routes/packs.routes")));
 app.use("/api/admin/packages", lazyRouter(() => import("./routes/adminPackages.routes")));
+// New admin console (readiness-admin-console.html). Separate identity/route tree
+// from the rest of the API — see decisions D1-D2 in the design doc.
+app.use("/admin/v1/auth", lazyRouter(() => import("./routes/admin/auth.routes")));
+app.use("/admin/v1/audit", lazyRouter(() => import("./routes/admin/audit.routes")));
+app.use("/admin/v1/overview", lazyRouter(() => import("./routes/admin/overview.routes")));
+app.use("/admin/v1/users", lazyRouter(() => import("./routes/admin/users.routes")));
+app.use("/admin/v1/pipelines", lazyRouter(() => import("./routes/admin/pipelines.routes")));
+app.use("/admin/v1/security", lazyRouter(() => import("./routes/admin/security.routes")));
+app.use("/admin/v1/catalogue", lazyRouter(() => import("./routes/admin/catalogue.routes")));
+app.use("/admin/v1/jobs", lazyRouter(() => import("./routes/admin/jobs.routes")));
+app.use("/admin/v1/alerts", lazyRouter(() => import("./routes/admin/alerts.routes")));
+app.use("/admin/v1/comms", lazyRouter(() => import("./routes/admin/comms.routes")));
+app.use("/admin/v1/system-settings", lazyRouter(() => import("./routes/admin/systemSettings.routes")));
+app.use("/admin/v1/forms", lazyRouter(() => import("./routes/admin/forms.routes")));
+app.use("/admin/v1/admins", lazyRouter(() => import("./routes/admin/admins.routes")));
+app.use("/admin/v1/integrations", lazyRouter(() => import("./routes/admin/integrations.routes")));
+app.use("/admin/v1/trust", lazyRouter(() => import("./routes/admin/trust.routes")));
+app.use("/admin/v1/billing", lazyRouter(() => import("./routes/admin/billing.routes")));
+app.use("/admin/v1/feedback", lazyRouter(() => import("./routes/admin/feedback.routes")));
+app.use("/admin/v1/ai", lazyRouter(() => import("./routes/admin/ai.routes")));
 app.use("/admin/readiness", lazyRouter(() => import("./routes/readiness.admin.routes"), "adminReadinessRouter"));
 app.use("/admin/notifications", lazyRouter(() => import("./routes/notifications.routes"), "adminNotificationsRouter"));
 app.use("/admin/account", lazyRouter(() => import("./routes/account.routes"), "adminAccountRouter"));
@@ -175,6 +195,7 @@ app.use("/api/health", lazyRouter(() => import("./routes/health.routes")));
 app.use("/api/notifications", lazyRouter(() => import("./routes/notifications.routes")));
 app.use("/api/preferences", lazyRouter(() => import("./routes/preferences.routes")));
 app.use("/api/account", lazyRouter(() => import("./routes/account.routes")));
+app.use("/api/feedback", lazyRouter(() => import("./routes/feedback.routes")));
 
 app.use(errorHandler);
 
