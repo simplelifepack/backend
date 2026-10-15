@@ -1,13 +1,14 @@
 import fs from "node:fs/promises";
 import OpenAI from "openai";
 
-import type { DocumentAnalyzer } from "./DocumentAnalyzer";
+import type { AnalyzeDocumentContext, DocumentAnalyzer } from "./DocumentAnalyzer";
 import {
   documentCategories,
   fallbackDocumentAIResult,
   type DocumentAIResult,
   type UploadedFile,
 } from "./types";
+import { getTaskConfig, recordAIRequest } from "../aiTaskConfig.service";
 
 const allowedCategories = new Set<string>(documentCategories);
 const MAX_CLASSIFICATION_PAGES = Number(process.env.MAX_CLASSIFICATION_PDF_PAGES) || 3;
@@ -22,7 +23,11 @@ const imageMimeTypes = new Set([
   "image/webp",
 ]);
 
-const prompt = `You are the document vision classifier for Readiness.
+// Seeds AITaskConfig's "document_classification" row the first time
+// getTaskConfig runs after this ships — see aiTaskConfig.service.ts. Also
+// used directly if the DB read fails, so this stays the real prompt, not a
+// stale placeholder.
+export const DEFAULT_PROMPT = `You are the document vision classifier for Readiness.
 
 The supplied inputs are candidate pages from ONE logical document. Use them to identify the likely document type and primary page details. Use visual layout, logos, headings, issuer information, labels, identifier patterns, and only the visible text needed for recognition. Do not perform or return full-document OCR.
 
@@ -208,42 +213,57 @@ function imageClassificationCandidates(files: UploadedFile[]) {
   return files.slice(0, MAX_CLASSIFICATION_PAGES);
 }
 
+const RESPONSE_SCHEMA = { type: "json_schema" as const, name: "readiness_document_analysis", strict: true, schema: { type: "object", properties: { category: { type: "string", enum: [...documentCategories] }, documentType: { type: "string" }, uniqueNumber: { type: ["string", "null"] }, nameOnDocument: { type: ["string", "null"] }, expiryDate: { type: ["string", "null"] } }, required: ["category", "documentType", "uniqueNumber", "nameOnDocument", "expiryDate"], additionalProperties: false } };
+
 export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
   private readonly client: OpenAI;
-  private readonly model: string;
 
-  constructor(apiKey = process.env.OPENAI_API_KEY, model = process.env.OPENAI_ICR_MODEL ?? process.env.OPENAI_VISION_MODEL ?? "gpt-5-mini") {
+  constructor(apiKey = process.env.OPENAI_API_KEY) {
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY is not configured.");
     }
 
     this.client = new OpenAI({ apiKey });
-    this.model = model;
   }
 
-  async analyzeDocument(files: UploadedFile[]): Promise<DocumentAIResult> {
+  async analyzeDocument(files: UploadedFile[], context: AnalyzeDocumentContext = {}): Promise<DocumentAIResult> {
     if (!files.length) throw new Error("At least one document image is required.");
+    // Resolved per call, not cached on the instance — a config edit in the
+    // admin console should take effect on the next request, not require a
+    // server restart.
+    const config = await getTaskConfig("document_classification", {
+      primaryModel: process.env.OPENAI_ICR_MODEL ?? process.env.OPENAI_VISION_MODEL ?? "gpt-5-mini",
+      promptConfig: { kind: "string", text: DEFAULT_PROMPT },
+    });
+    const promptText = config.promptConfig.kind === "string" ? config.promptConfig.text : DEFAULT_PROMPT;
+    const startedAt = Date.now();
+
     const pdfs = files.filter((file) => file.mimeType === "application/pdf");
     if (pdfs.length) {
       if (pdfs.length !== files.length) throw new Error("PDF and image uploads cannot be analyzed together.");
       const extractedText = (await Promise.all(pdfs.map(extractPdfClassificationText))).join("\n\n").slice(0, MAX_CLASSIFICATION_TEXT_CHARS);
       if (!extractedText.trim()) throw new Error("PDF did not contain enough readable text for classification.");
-      const response = await this.client.responses.create({
-        store: false,
-        model: this.model,
-        input: [
-          {
-            role: "user",
-            content: [
-              { type: "input_text", text: prompt },
-              { type: "input_text", text: `Classify this PDF from only the bounded initial text below. Filename(s): ${pdfs.map((file) => file.originalName).join(", ")}\n\n${extractedText}` },
-            ],
-          },
-        ],
-        text: {
-          format: { type: "json_schema", name: "readiness_document_analysis", strict: true, schema: { type: "object", properties: { category: { type: "string", enum: [...documentCategories] }, documentType: { type: "string" }, uniqueNumber: { type: ["string", "null"] }, nameOnDocument: { type: ["string", "null"] }, expiryDate: { type: ["string", "null"] } }, required: ["category", "documentType", "uniqueNumber", "nameOnDocument", "expiryDate"], additionalProperties: false } },
-        },
-      });
+      let response;
+      try {
+        response = await this.client.responses.create({
+          store: false,
+          model: config.primaryModel,
+          input: [
+            {
+              role: "user",
+              content: [
+                { type: "input_text", text: promptText },
+                { type: "input_text", text: `Classify this PDF from only the bounded initial text below. Filename(s): ${pdfs.map((file) => file.originalName).join(", ")}\n\n${extractedText}` },
+              ],
+            },
+          ],
+          text: { format: RESPONSE_SCHEMA },
+        });
+      } catch (error) {
+        void recordAIRequest({ taskKey: "document_classification", userId: context.userId, model: config.primaryModel, success: false, errorCode: error instanceof Error ? error.name : "unknown", durationMs: Date.now() - startedAt });
+        throw error;
+      }
+      void recordAIRequest({ taskKey: "document_classification", userId: context.userId, model: config.primaryModel, success: true, tokensIn: response.usage?.input_tokens, tokensOut: response.usage?.output_tokens, durationMs: Date.now() - startedAt });
       return validateDocumentAIResult(parseJsonObject(response.output_text));
     }
 
@@ -253,23 +273,28 @@ export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
 
     const candidateFiles = imageClassificationCandidates(files);
     const images = await Promise.all(candidateFiles.map(async (file) => ({ type: "input_image" as const, image_url: `data:${file.mimeType};base64,${await fs.readFile(file.path, "base64")}`, detail: "low" as const })));
-    const response = await this.client.responses.create({
-      store: false,
-      model: this.model,
-      input: [
-        {
-          role: "user",
-          content: [
-            { type: "input_text", text: prompt },
-            { type: "input_text", text: `Classify from ${candidateFiles.length} candidate page(s) out of ${files.length} uploaded page(s). If these candidates do not confidently show a primary identifying page, return category "Other", documentType "Unknown", and null metadata rather than guessing.` },
-            ...images,
-          ],
-        },
-      ],
-      text: {
-        format: { type: "json_schema", name: "readiness_document_analysis", strict: true, schema: { type: "object", properties: { category: { type: "string", enum: [...documentCategories] }, documentType: { type: "string" }, uniqueNumber: { type: ["string", "null"] }, nameOnDocument: { type: ["string", "null"] }, expiryDate: { type: ["string", "null"] } }, required: ["category", "documentType", "uniqueNumber", "nameOnDocument", "expiryDate"], additionalProperties: false } },
-      },
-    });
+    let response;
+    try {
+      response = await this.client.responses.create({
+        store: false,
+        model: config.primaryModel,
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: promptText },
+              { type: "input_text", text: `Classify from ${candidateFiles.length} candidate page(s) out of ${files.length} uploaded page(s). If these candidates do not confidently show a primary identifying page, return category "Other", documentType "Unknown", and null metadata rather than guessing.` },
+              ...images,
+            ],
+          },
+        ],
+        text: { format: RESPONSE_SCHEMA },
+      });
+    } catch (error) {
+      void recordAIRequest({ taskKey: "document_classification", userId: context.userId, model: config.primaryModel, success: false, errorCode: error instanceof Error ? error.name : "unknown", durationMs: Date.now() - startedAt });
+      throw error;
+    }
+    void recordAIRequest({ taskKey: "document_classification", userId: context.userId, model: config.primaryModel, success: true, tokensIn: response.usage?.input_tokens, tokensOut: response.usage?.output_tokens, durationMs: Date.now() - startedAt });
 
     return validateDocumentAIResult(parseJsonObject(response.output_text));
   }

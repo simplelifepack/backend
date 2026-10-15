@@ -14,93 +14,124 @@ enum AccountTier {
 }
 
 model UserAIUsage {
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  period String
-  actionCount Int @default(0)
-  updatedAt DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period      String
+  actionCount Int      @default(0)
+  updatedAt   DateTime @updatedAt
 
   @@id([userId, period])
   @@map("user_ai_usage")
 }
 
 model User {
-  accountTier AccountTier @default(free)
-  aiUsage UserAIUsage[]
-  storageCleanup StorageCleanup[]
-  id                         String                      @id @default(cuid())
-  name                       String
-  email                      String                      @unique
-  authVersion                Int                         @default(0)
-  passwordHash               String?
-  pinHash                    String?
-  pinAttemptCount            Int                         @default(0)
-  pinLockedUntil             DateTime?
-  country                    String?
-  passportCountry            String?
-  homeCurrency               String?
-  appearance                 String                     @default("dark")
-  aiProcessingEnabled        Boolean                    @default(true)
-  deletionRequestedAt        DateTime?
-  scheduledDeletionAt        DateTime?
-  welcomeEmailSentAt         DateTime?
-  createdAt                  DateTime                    @default(now())
-  updatedAt                  DateTime                    @updatedAt
-  refreshTokens              RefreshToken[]
-  passwordResetTokens        PasswordResetToken[]
-  accountChangeOtps          AccountChangeOtp[]
-  identityProfile            UserIdentityProfile?
-  externalIdentities         ExternalIdentity[]
-  externalConnections        ExternalConnection[]
-  externalDocumentCandidates ExternalDocumentCandidate[]
-  externalOAuthStates        ExternalOAuthState[]
-  digiLockerConsentSessions  DigiLockerConsentSession[]
-  ownedTrustMembers          TrustMember[]               @relation("TrustMemberOwner")
-  linkedTrustMemberships     TrustMember[]               @relation("TrustMemberLinkedUser")
-  wealthRecords              WealthRecord[]
-  healthMembers              HealthMember[]
-  healthDocuments            HealthDocument[]
-  healthMeasurements         HealthMeasurement[]
-  trackedHealthMetrics       TrackedHealthMetric[]
-  healthMedications          HealthMedication[]
-  healthFollowUps            HealthFollowUp[]
-  healthReminders            HealthReminder[]
-  pushSubscriptions          PushSubscription[]
-  exportJobs                 AccountExportJob[]
-  requirementAssignments     RequirementAssignment[]
+  accountTier                 AccountTier                  @default(free)
+  aiUsage                     UserAIUsage[]
+  storageCleanup              StorageCleanup[]
+  id                          String                       @id @default(cuid())
+  name                        String
+  email                       String                       @unique
+  authVersion                 Int                          @default(0)
+  passwordHash                String?
+  pinHash                     String?
+  pinAttemptCount             Int                          @default(0)
+  pinLockedUntil              DateTime?
+  country                     String?
+  passportCountry             String?
+  homeCurrency                String?
+  appearance                  String                       @default("dark")
+  aiProcessingEnabled         Boolean                      @default(true)
+  deletionRequestedAt         DateTime?
+  scheduledDeletionAt         DateTime?
+  suspendedAt                 DateTime?
+  suspendedReason             String?
+  welcomeEmailSentAt          DateTime?
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  refreshTokens               RefreshToken[]
+  passwordResetTokens         PasswordResetToken[]
+  accountChangeOtps           AccountChangeOtp[]
+  identityProfile             UserIdentityProfile?
+  externalIdentities          ExternalIdentity[]
+  externalConnections         ExternalConnection[]
+  externalDocumentCandidates  ExternalDocumentCandidate[]
+  externalOAuthStates         ExternalOAuthState[]
+  digiLockerConsentSessions   DigiLockerConsentSession[]
+  ownedTrustMembers           TrustMember[]                @relation("TrustMemberOwner")
+  linkedTrustMemberships      TrustMember[]                @relation("TrustMemberLinkedUser")
+  wealthRecords               WealthRecord[]
+  healthMembers               HealthMember[]
+  healthDocuments             HealthDocument[]
+  healthMeasurements          HealthMeasurement[]
+  trackedHealthMetrics        TrackedHealthMetric[]
+  healthMedications           HealthMedication[]
+  healthFollowUps             HealthFollowUp[]
+  healthReminders             HealthReminder[]
+  pushSubscriptions           PushSubscription[]
+  exportJobs                  AccountExportJob[]
+  requirementAssignments      RequirementAssignment[]
   customPackageGenerationJobs CustomPackageGenerationJob[]
+  usageLimitOverrides         UserLimitOverride[]
+  signInEvents                SignInEvent[]
+  feedback                    Feedback[]
+  aiRequestLogs               AIRequestLog[]
 
   @@index([scheduledDeletionAt])
+  @@index([suspendedAt])
+}
+
+// Decision (design doc): "Free limits (50 MB, 3 AI actions/month) are
+// constants... No per-user override." This is the override half of that fix
+// — the base free/paid limits stay constants for now (that's the larger
+// `PlanPolicy` piece, not built in this pass); this table only lets an admin
+// grant a specific user a temporary exception. Expiry is required by design,
+// not optional — an "exception" that never expires is just a silent new
+// default, which defeats the point. At most one *active* override exists per
+// user at a time (enforced by the granting service, not a DB constraint):
+// granting a new one supersedes whatever was active.
+model UserLimitOverride {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storageLimitBytes Int?
+  aiActionLimit     Int?
+  reason            String
+  grantedByAdminId  String?
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  revokedAt         DateTime?
+
+  @@index([userId, expiresAt])
 }
 
 model CustomPackageGenerationJob {
-  id                 String    @id @default(cuid())
-  userId             String
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dedupeKey          String
-  packageType        String
-  documentLabels     String[]
-  status             String    @default("queued")
-  statusMessage      String?
-  draft              Json?
-  errorCode          String?
-  errorMessage       String?
-  retryCount         Int       @default(0)
-  provider429Count   Int       @default(0)
-  hasVerifiedOfficialSource Boolean @default(false)
-  confidence         String?
-  disclaimer         String?
-  queuedAt           DateTime  @default(now())
-  startedAt          DateTime?
-  completedAt        DateTime?
-  failedAt           DateTime?
-  leaseExpiresAt     DateTime?
-  lockedBy           String?
-  processingMs       Int?
-  aiMs               Int?
-  saveMs             Int?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                        String    @id @default(cuid())
+  userId                    String
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dedupeKey                 String
+  packageType               String
+  documentLabels            String[]
+  status                    String    @default("queued")
+  statusMessage             String?
+  draft                     Json?
+  errorCode                 String?
+  errorMessage              String?
+  retryCount                Int       @default(0)
+  provider429Count          Int       @default(0)
+  hasVerifiedOfficialSource Boolean   @default(false)
+  confidence                String?
+  disclaimer                String?
+  queuedAt                  DateTime  @default(now())
+  startedAt                 DateTime?
+  completedAt               DateTime?
+  failedAt                  DateTime?
+  leaseExpiresAt            DateTime?
+  lockedBy                  String?
+  processingMs              Int?
+  aiMs                      Int?
+  saveMs                    Int?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   @@index([userId, dedupeKey, status])
   @@index([status, queuedAt])
@@ -234,27 +265,27 @@ model UserIdentityProfile {
 }
 
 model RefreshToken {
-  authVersion Int @default(0)
-  id        String    @id @default(cuid())
-  tokenHash String    @unique
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
+  authVersion Int       @default(0)
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([userId])
 }
 
 model PasswordResetToken {
-  id        String    @id @default(cuid())
-  tokenHash String    @unique
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  usedAt    DateTime?
-  attemptCount Int    @default(0)
-  createdAt DateTime  @default(now())
+  id           String    @id @default(cuid())
+  tokenHash    String    @unique
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime
+  usedAt       DateTime?
+  attemptCount Int       @default(0)
+  createdAt    DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
@@ -378,56 +409,56 @@ model Document {
 }
 
 model HealthMember {
-  id           String                @id @default(cuid())
-  userId       String
-  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name         String
-  relation     String
-  bloodGroup   String?
-  dateOfBirth  DateTime?
-  conditions   String?
-  allergies    String?
+  id                    String                @id @default(cuid())
+  userId                String
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                  String
+  relation              String
+  bloodGroup            String?
+  dateOfBirth           DateTime?
+  conditions            String?
+  allergies             String?
   emergencyContactName  String?
   emergencyContactPhone String?
   primaryDoctor         String?
   insuranceProvider     String?
   insurancePolicyNumber String?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
-  documents    HealthDocument[]
-  measurements HealthMeasurement[]
-  tracked      TrackedHealthMetric[]
-  medications  HealthMedication[]
-  followUps    HealthFollowUp[]
-  reminders    HealthReminder[]
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  documents             HealthDocument[]
+  measurements          HealthMeasurement[]
+  tracked               TrackedHealthMetric[]
+  medications           HealthMedication[]
+  followUps             HealthFollowUp[]
+  reminders             HealthReminder[]
 
   @@index([userId])
   @@map("health_members")
 }
 
 model HealthDocument {
-  id               String              @id @default(cuid())
-  userId           String
-  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  memberId         String?
-  member           HealthMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
-  documentId       String
-  document         Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  type             String
-  documentDate     DateTime?
-  provider         String?
-  doctor           String?
-  processingStatus String              @default("pending")
-  processingError  String?
-  patientName      String?
+  id                 String              @id @default(cuid())
+  userId             String
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId           String?
+  member             HealthMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  documentId         String
+  document           Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  type               String
+  documentDate       DateTime?
+  provider           String?
+  doctor             String?
+  processingStatus   String              @default("pending")
+  processingError    String?
+  patientName        String?
   patientDateOfBirth DateTime?
-  pendingExtraction Json?
-  createdAt        DateTime            @default(now())
-  processedAt      DateTime?
-  measurements     HealthMeasurement[]
-  medications      HealthMedication[]
-  followUps        HealthFollowUp[]
-  reminders        HealthReminder[]
+  pendingExtraction  Json?
+  createdAt          DateTime            @default(now())
+  processedAt        DateTime?
+  measurements       HealthMeasurement[]
+  medications        HealthMedication[]
+  followUps          HealthFollowUp[]
+  reminders          HealthReminder[]
 
   @@unique([userId, documentId])
   @@index([userId, memberId, documentDate])
@@ -436,11 +467,11 @@ model HealthDocument {
 }
 
 model HealthMeasurement {
-  id               String         @id @default(cuid())
+  id               String          @id @default(cuid())
   userId           String
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   memberId         String
-  member           HealthMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  member           HealthMember    @relation(fields: [memberId], references: [id], onDelete: Cascade)
   sourceDocumentId String?
   sourceDocument   HealthDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
   metricKey        String
@@ -455,7 +486,7 @@ model HealthMeasurement {
   referenceMax     Float?
   referenceText    String?
   measuredAt       DateTime
-  createdAt        DateTime       @default(now())
+  createdAt        DateTime        @default(now())
 
   @@index([userId, memberId, metricKey, measuredAt])
   @@index([sourceDocumentId])
@@ -482,11 +513,11 @@ model TrackedHealthMetric {
 }
 
 model HealthMedication {
-  id               String         @id @default(cuid())
+  id               String          @id @default(cuid())
   userId           String
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   memberId         String
-  member           HealthMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  member           HealthMember    @relation(fields: [memberId], references: [id], onDelete: Cascade)
   sourceDocumentId String?
   sourceDocument   HealthDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
   name             String
@@ -494,15 +525,15 @@ model HealthMedication {
   frequency        String?
   duration         String?
   quantity         String?
-  whenToTake       String[]       @default([])
+  whenToTake       String[]        @default([])
   mealTiming       String?
   repeatRunsOut    DateTime?
-  status           String         @default("continuing")
-  repeats          Boolean        @default(false)
+  status           String          @default("continuing")
+  repeats          Boolean         @default(false)
   runsOutAt        DateTime?
   stoppedAt        DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([userId, memberId])
   @@index([userId, memberId, status])
@@ -743,6 +774,7 @@ model ReadinessPack {
   createdBy           String        @default("seed")
   version             Int           @default(1)
   requirements        Requirement[]
+  revisions           PackRevision[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   deletedAt           DateTime?
@@ -753,25 +785,44 @@ model ReadinessPack {
 }
 
 model Requirement {
-  id                    String        @id @default(cuid())
+  id                    String                  @id @default(cuid())
   packId                String
-  pack                  ReadinessPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  pack                  ReadinessPack           @relation(fields: [packId], references: [id], onDelete: Cascade)
   title                 String
-  documentType          String        @default("unknown")
-  owner                 String        @default("self")
+  documentType          String                  @default("unknown")
+  owner                 String                  @default("self")
   metadata              Json?
   description           String
-  required              Boolean       @default(true)
+  required              Boolean                 @default(true)
   group                 String
   acceptedDocumentTypes String[]
   alternativeLabels     String[]
-  sortOrder             Int           @default(0)
+  sortOrder             Int                     @default(0)
   deletedAt             DateTime?
   assignments           RequirementAssignment[]
 
   @@index([packId])
   @@index([documentType, owner])
   @@index([deletedAt])
+}
+
+// History for pack edits and the rollback action (design doc: "Package
+// preview, revision history and rollback"). `snapshot` is the full pack +
+// its active requirements at that point in time — captured right before an
+// edit or a rollback is applied, so every change is reversible, including a
+// rollback itself (rolling back snapshots the pre-rollback state too).
+model PackRevision {
+  id         String        @id @default(cuid())
+  packId     String
+  pack       ReadinessPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  version    Int
+  snapshot   Json
+  editedBy   String? // AdminUser id; null if attributable only via the audit log (shouldn't normally happen)
+  reason     String?
+  createdAt  DateTime      @default(now())
+
+  @@unique([packId, version])
+  @@index([packId, createdAt])
 }
 
 model RequirementAssignment {
@@ -826,16 +877,16 @@ model WealthRecordAttachment {
 }
 
 model ReadinessFormCategory {
-  id               String                @id @default(cuid())
+  id               String                 @id @default(cuid())
   module           String
   code             String
   label            String
   description      String?
-  sortOrder        Int                   @default(0)
-  isActive         Boolean               @default(true)
+  sortOrder        Int                    @default(0)
+  isActive         Boolean                @default(true)
   wealthRecordType WealthRecordType?
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
   subtypes         ReadinessFormSubtype[]
 
   @@unique([module, code])
@@ -844,16 +895,16 @@ model ReadinessFormCategory {
 }
 
 model ReadinessFormSubtype {
-  id          String               @id @default(cuid())
+  id          String                @id @default(cuid())
   categoryId  String
   category    ReadinessFormCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   code        String
   label       String
   description String?
-  sortOrder   Int                  @default(0)
-  isActive    Boolean              @default(true)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  sortOrder   Int                   @default(0)
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
   fields      ReadinessFormField[]
 
   @@unique([categoryId, code])
@@ -862,23 +913,23 @@ model ReadinessFormSubtype {
 }
 
 model ReadinessFormField {
-  id           String              @id @default(cuid())
+  id           String               @id @default(cuid())
   subtypeId    String
   subtype      ReadinessFormSubtype @relation(fields: [subtypeId], references: [id], onDelete: Cascade)
   fieldId      String
   label        String
   inputType    String
-  required     Boolean             @default(false)
+  required     Boolean              @default(false)
   placeholder  String?
   defaultValue Json?
   options      Json?
   validation   Json?
   group        String?
   visibility   Json?
-  sortOrder    Int                 @default(0)
-  isActive     Boolean             @default(true)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  sortOrder    Int                  @default(0)
+  isActive     Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
   @@unique([subtypeId, fieldId])
   @@index([subtypeId, isActive, sortOrder])
@@ -894,11 +945,12 @@ enum WealthRecordType {
 }
 
 model StorageCleanup {
-  storageKey String @id
+  storageKey  String   @id
   ownerUserId String
-  owner User @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  sizeBytes BigInt
-  createdAt DateTime @default(now())
+  owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  sizeBytes   BigInt
+  createdAt   DateTime @default(now())
+
   @@index([ownerUserId])
   @@map("storage_cleanup")
 }
@@ -922,4 +974,404 @@ model AccountExportJob {
   @@index([userId, status])
   @@index([expiresAt])
   @@map("account_export_jobs")
+}
+
+// DPDP Rules 2025 security/access-log retention floor (Phase 4 / #access —
+// "AdminAuditLog and SignInEvent both use that as the floor"): one row per
+// successful customer sign-in (password, PIN, Google, signup). `userId` is
+// nullable with `onDelete: SetNull` — identical to how `AdminAuditLog.adminId`
+// already handles `AdminUser` deletion — so a hard account deletion (the
+// existing 30-day self-service flow) never removes the security event itself,
+// only its live link to the now-erased user. No product code path deletes
+// rows from this table; the 1-year floor is structural (schema + absence of
+// a delete path), not enforced by a job. See GET /admin/v1/audit/retention.
+model SignInEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  method    String // "password" | "pin" | "google" | "signup"
+  ip        String?
+  userAgent String?
+  at        DateTime @default(now())
+
+  @@index([userId])
+  @@index([at])
+  @@map("sign_in_events")
+}
+
+// Phase 2 HOLD "Feedback & support" (design doc: "User-submitted feedback and
+// issues, triaged and resolved from one queue"). `email` is a snapshot taken
+// at submission — kept even if the submitting account is later deleted
+// (userId SetNull, same pattern as SignInEvent/AdminAuditLog) since a
+// feedback ticket is useful product-improvement history independent of
+// whether the account that filed it still exists.
+model Feedback {
+  id                String      @id @default(cuid())
+  userId            String?
+  user              User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email             String
+  platform          String // "web" | "ios" | "android"
+  category          String // "bug" | "idea" | "other"
+  message           String
+  status            String      @default("open") // "open" | "in_progress" | "resolved" | "dismissed"
+  assignedToAdminId String?
+  assignedToAdmin   AdminUser?  @relation(fields: [assignedToAdminId], references: [id], onDelete: SetNull)
+  resolutionNote    String?
+  resolvedAt        DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@map("feedback")
+}
+
+// Phase 2 HOLD "AI operations & prompts" (D7). One row per live AI task.
+// `promptConfig` is intentionally shape-agnostic Json rather than a plain
+// string: different tasks pass OpenAI different shapes today (a single
+// system-prompt string for document classification/health extraction, an
+// `instructions: string[]` array for package-intent generation) — forcing
+// one shape here would mean rewriting call sites' request-building logic,
+// not just externalizing their prompt text. Lazily seeded from each call
+// site's current hardcoded prompt/model the first time that task runs after
+// this ships (mirrors `wealthForm.service.ts`'s `ensureWealthCatalog()`
+// pattern from Phase 3) — never built with placeholder content.
+model AITaskConfig {
+  id               String           @id @default(cuid())
+  taskKey          String           @unique
+  primaryModel     String
+  fallbackModel    String?
+  promptConfig     Json
+  version          Int              @default(1)
+  updatedByAdminId String?
+  updatedAt        DateTime         @updatedAt
+  createdAt        DateTime         @default(now())
+  revisions        PromptRevision[]
+
+  @@map("ai_task_configs")
+}
+
+// One row per publish (not per edit) — a full snapshot of what went live,
+// including the test-before-publish result that justified it, so "why does
+// this prompt say X" always has an answer.
+model PromptRevision {
+  id                 String       @id @default(cuid())
+  taskKey            String
+  taskConfig         AITaskConfig @relation(fields: [taskKey], references: [taskKey], onDelete: Cascade)
+  version            Int
+  primaryModel       String
+  fallbackModel      String?
+  promptConfig       Json
+  testResult         Json?
+  publishedByAdminId String?
+  publishedBy        AdminUser?   @relation(fields: [publishedByAdminId], references: [id], onDelete: SetNull)
+  createdAt          DateTime     @default(now())
+
+  @@index([taskKey, version])
+  @@map("prompt_revisions")
+}
+
+// A monthly $ cap per task, checked against AIRequestLog's summed estimated
+// cost. Deliberately alert-only, not a hard block on the live call — see
+// the tracker for why a brand-new budget system blocking real customer AI
+// actions was scoped out of this pass.
+model AIBudget {
+  id               String   @id @default(cuid())
+  taskKey          String   @unique
+  monthlyCapUsd    Decimal  @db.Decimal(10, 2)
+  updatedByAdminId String?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  @@map("ai_budgets")
+}
+
+// One row per real AI call from a live task (not test-before-publish calls,
+// which carry their own result on PromptRevision instead). `costUsd` is an
+// estimate from a hardcoded per-model price table (see aiTaskConfig.service
+// .ts) — approximate, for budget tracking, not a billing-accurate figure.
+model AIRequestLog {
+  id         String   @id @default(cuid())
+  taskKey    String
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  model      String
+  success    Boolean
+  errorCode  String?
+  tokensIn   Int?
+  tokensOut  Int?
+  costUsd    Decimal? @db.Decimal(10, 6) // 6 places, not 4 — a single request often costs a fraction of a cent; summing many 4-decimal-rounded rows for a budget check would drift from the real total
+  durationMs Int?
+  targetType String?
+  targetId   String?
+  createdAt  DateTime @default(now())
+
+  @@index([taskKey, createdAt])
+  @@index([userId])
+  @@map("ai_request_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Admin console (Phase 0) — separate identity from customer `User`.
+// See ../readiness-admin-console.html and the design doc for the full model.
+// ---------------------------------------------------------------------------
+
+enum AdminRole {
+  support
+  catalogue
+  ops_security
+  owner
+}
+
+model AdminUser {
+  id               String          @id @default(cuid())
+  email            String          @unique
+  name             String
+  role             AdminRole
+  googleSub        String?         @unique
+  disabledAt       DateTime?
+  lastLoginAt      DateTime?
+  authVersion      Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  sessions         AdminSession[]
+  passkeys         AdminPasskey[]
+  auditLogsAsActor AdminAuditLog[]
+  assignedFeedback Feedback[]
+  publishedPromptRevisions PromptRevision[]
+
+  @@map("admin_users")
+}
+
+// One row per registered WebAuthn credential. An admin may register more than one
+// passkey (e.g. a laptop and a phone); @simplewebauthn stores the public key and
+// a monotonically increasing signCount to detect cloned authenticators.
+model AdminPasskey {
+  id           String    @id @default(cuid())
+  adminId      String
+  admin        AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  credentialId String    @unique
+  publicKey    Bytes
+  signCount    BigInt    @default(0)
+  transports   String[]  @default([])
+  deviceLabel  String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([adminId])
+  @@map("admin_passkeys")
+}
+
+// Short-lived WebAuthn registration/authentication challenges. Rows are deleted
+// once consumed or expired; nothing long-lived lives here.
+model AdminWebAuthnChallenge {
+  id        String   @id @default(cuid())
+  adminId   String
+  challenge String
+  type      String // "registration" | "authentication"
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([adminId, type])
+  @@index([expiresAt])
+  @@map("admin_webauthn_challenges")
+}
+
+// Backs adminLimiter (express-rate-limit's Store interface) so the admin
+// login/step-up rate limit survives a restart and is shared across more than
+// one backend instance — the in-memory default (fine today, single process)
+// was a tracked Phase 0 gap. One row per rate-limit key (already hashed by
+// the caller, never a raw email/IP); `resetAt` doubles as the TTL a cleanup
+// pass can use, same shape as AdminWebAuthnChallenge's `expiresAt` above.
+model RateLimitHit {
+  key     String   @id
+  points  Int      @default(0)
+  resetAt DateTime
+
+  @@index([resetAt])
+  @@map("rate_limit_hits")
+}
+
+model AdminSession {
+  id        String    @id @default(cuid())
+  adminId   String
+  admin     AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  userAgent String?
+  ip        String?
+  stepUpAt  DateTime?
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([adminId])
+  @@map("admin_sessions")
+}
+
+// Append-only, hash-chained. `prevHash` links to the previous row's `hash` so an
+// edited or deleted row breaks the chain — see decision D4 in the design doc.
+model AdminAuditLog {
+  id         String     @id @default(cuid())
+  at         DateTime   @default(now())
+  adminId    String?
+  admin      AdminUser? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  actorEmail String // denormalized: survives admin deletion, also covers denied pre-auth attempts
+  action     String // e.g. "user.tier.change", "auth.denied", "pack.rollback"
+  targetType String?
+  targetId   String?
+  reason     String?
+  diff       Json? // allowlisted before/after — never raw sealed fields
+  prevHash   String?
+  hash       String
+
+  @@index([adminId, at])
+  @@index([action, at])
+  @@index([targetType, targetId])
+  @@map("admin_audit_log")
+}
+
+// Decision D5: rewrap, storage audit and source backfill become dry-run-first,
+// chunked, resumable jobs with a progress cursor instead of CLI scripts run by
+// hand on a laptop — the runtime is serverless, so nothing can loop for an
+// hour in one request. A dry-run preview is stateless and never creates a
+// row here; only an approved `apply` run does.
+enum JobType {
+  key_rewrap
+  storage_audit
+  package_source_backfill
+  // Phase 4 "Scheduled audit-chain verification". Unlike the other three
+  // types, this one never chunks — AdminAuditLog's size is bounded by admin
+  // team activity, not customer data, so a run always completes in a single
+  // call. Started/history read via /admin/v1/audit/chain-verify/*, not the
+  // generic multi-type Jobs dispatcher in jobs.routes.ts — there's no
+  // tick/pause/resume state for it to ever reach.
+  audit_chain_verify
+}
+
+enum JobStatus {
+  running
+  paused
+  completed
+  failed
+}
+
+model Job {
+  id                String    @id @default(cuid())
+  type              JobType
+  status            JobStatus @default(running)
+  cursor            String? // job-type-specific resume point; key_rewrap doesn't need one (see below)
+  totalCount        Int? // candidate count captured once at start, for a progress bar
+  processedCount    Int       @default(0)
+  updatedCount      Int       @default(0)
+  failedCount       Int       @default(0)
+  lastError         String?
+  params            Json? // job-type-specific config, e.g. { batchSize }
+  resultSummary     Json?
+  startedByAdminId  String?
+  approvedByAdminId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  completedAt       DateTime?
+
+  @@index([type, status])
+}
+
+// Decision D8: one shared alerting capability instead of three bespoke ones.
+// Pipelines, Security & keys and (eventually) AI operations all write into
+// this same pair rather than each inventing its own notification system.
+// This pass wires exactly one real trigger — a Job transitioning to
+// `failed` — as the first concrete consumer; count-based checks (stuck
+// classification backlog, etc.) are a deliberately separate follow-up, not
+// built here (see the tracker).
+enum AlertChannelType {
+  email
+  webhook
+}
+
+model AlertChannel {
+  id        String           @id @default(cuid())
+  type      AlertChannelType
+  name      String
+  target    String // email address, or a webhook URL
+  enabled   Boolean          @default(true)
+  rules     AlertRule[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+// Only one condition exists for now (job_failed) — add to this enum, plus
+// the corresponding evaluate/trigger code, when a second one is built.
+enum AlertCondition {
+  job_failed
+  // Phase 2 HOLD "AI operations & prompts" (D7) — a task's month-to-date
+  // estimated spend (summed from AIRequestLog) crossing its AIBudget cap.
+  // Alert-only, same as the budget check itself: this never blocks a live
+  // AI call, it just tells someone it happened.
+  budget_exceeded
+}
+
+model AlertRule {
+  id              String         @id @default(cuid())
+  name            String
+  sourceModule    String // display label only ("pipelines" | "security" | "ai") — not filtering logic
+  condition       AlertCondition
+  jobType         JobType? // optional filter for job_failed: null matches any job type
+  taskKey         String? // optional filter for budget_exceeded: null matches any task
+  channelId       String
+  channel         AlertChannel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  cooldownMinutes Int            @default(60)
+  enabled         Boolean        @default(true)
+  lastTriggeredAt DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([condition, enabled])
+}
+
+// Phase 3 (Comms & system): a record of every email send attempt, hooked
+// into the existing `emailService.ts` send functions at their one shared
+// choke point (`sendAndLog`) rather than touching customer-facing send
+// behavior at all — this is purely additive logging on sends that already
+// happen today. `template` matches the existing `SendType` union in
+// emailService.ts by convention, not a DB-enforced relation (keeping that
+// union as the single source of truth for what the real templates are).
+enum EmailLogStatus {
+  sent
+  failed
+}
+
+model EmailLog {
+  id           String         @id @default(cuid())
+  template     String
+  recipient    String
+  recipientId  String? // the user/entity id the existing logEmailFailure() calls already pass, where available
+  status       EmailLogStatus
+  errorCode    String?
+  createdAt    DateTime       @default(now())
+
+  @@index([template, createdAt])
+  @@index([recipient, createdAt])
+  @@index([status, createdAt])
+}
+
+// Phase 3 (Comms & system): generic admin-managed config, read at request
+// time instead of baked into env vars or code (decision D7's "config lives
+// in the database" reasoning, applied here too). `key` is the setting name;
+// `value` is whatever shape that setting needs. This pass defines and uses
+// four well-known keys from the admin UI — "announcement", "feature_flags",
+// "min_supported_version", "maintenance_mode" — but the table itself is
+// generic, matching the design doc's own SystemSetting(key, value, updatedBy)
+// shape exactly, not hardcoded to just these four.
+//
+// Exposed to clients additively via GET /api/bootstrap's existing response
+// (a new `systemConfig` block) — nothing before this session's change reads
+// those fields, so any client version in the wild is unaffected until it's
+// updated to look for them. `maintenance_mode`'s *storage* is built here;
+// whether to also wire real server-side enforcement (blocking live customer
+// requests) is a separate, bigger decision not made in this pass — see the
+// tracker.
+model SystemSetting {
+  key              String    @id
+  value            Json
+  updatedByAdminId String?
+  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime  @default(now())
 }

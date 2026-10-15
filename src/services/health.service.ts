@@ -661,6 +661,7 @@ export async function createHealthRecord(userId: string, input: unknown) {
           mimeType: document.mimeType,
           name: decryptString(document.originalName) ?? "health-record",
         },
+        userId,
       });
       const extractedType = extraction.documentType;
       const suspiciousLabExtraction = extractedType === "lab_report" && extraction.measurements.length === 0 && !extraction.provider && !extraction.doctor;
@@ -871,6 +872,7 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
         mimeType: document.mimeType,
         name: decryptString(document.originalName) ?? "health-record",
       },
+      userId,
     });
     if (record.type === "lab_report" && extraction.measurements.length === 0 && !extraction.provider && !extraction.doctor) {
       throw new Error("No structured data could be extracted from this lab report.");

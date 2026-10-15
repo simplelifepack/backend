@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { HelmetOptions } from "helmet";
 
+import { createPostgresRateLimitStore } from "./rateLimitStore";
+
 function numberFromEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -45,6 +47,7 @@ function buildRateLimiter(input: {
   message: string;
   keyGenerator?: (req: Request) => string;
   skipSuccessfulRequests?: boolean;
+  store?: ReturnType<typeof createPostgresRateLimitStore>;
 }) {
   return rateLimit({
     windowMs: input.windowMinutes * 60 * 1000,
@@ -53,6 +56,11 @@ function buildRateLimiter(input: {
     legacyHeaders: false,
     keyGenerator: input.keyGenerator ?? clientRateLimitKey,
     skipSuccessfulRequests: input.skipSuccessfulRequests,
+    store: input.store,
+    // The Postgres store makes a real query per request; a store error (DB
+    // blip) should never turn into "nobody can sign in" — fail open on the
+    // limiter itself rather than 500 every admin auth request.
+    passOnStoreError: Boolean(input.store),
     message: {
       message: input.message,
     },
@@ -161,6 +169,11 @@ export const adminLimiter = buildRateLimiter({
   windowMinutes: numberFromEnv("ADMIN_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("ADMIN_RATE_LIMIT_MAX", 10),
   message: "Too many admin requests. Please try again later.",
+  // Persisted (Phase 0 tracker item): admin auth/step-up is the one limiter
+  // that must hold across more than one backend instance, since an admin
+  // brute-forcing sign-in getting `max` attempts *per instance* defeats the
+  // limit entirely. See rateLimitStore.ts.
+  store: createPostgresRateLimitStore(),
 });
 
 export const gmailAuthorizeLimiter = buildRateLimiter({

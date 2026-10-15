@@ -2,6 +2,8 @@ import OpenAI from "openai";
 import type { ResponseInputContent } from "openai/resources/responses/responses";
 import { z } from "zod";
 
+import { getTaskConfig, recordAIRequest } from "./aiTaskConfig.service";
+
 const documentTypes = ["lab_report", "medical_report", "prescription"] as const;
 const prescriptionOutcomes = ["not_prescription", "medications_detected", "partial_medications_detected", "handwriting_unreadable", "no_medications_detected"] as const;
 
@@ -78,7 +80,10 @@ const extractionSchema = z
 export type HealthExtraction = z.infer<typeof extractionSchema>;
 export type HealthDocumentType = HealthExtraction["documentType"];
 
-const prompt = `Extract structured health information from the supplied Readiness document text.
+// Seeds AITaskConfig's "health_extraction" row the first time getTaskConfig
+// runs after this ships, and is the fallback if that DB read fails — see
+// aiTaskConfig.service.ts.
+export const DEFAULT_PROMPT = `Extract structured health information from the supplied Readiness document text.
 
 Return JSON only. Do not diagnose, infer conditions, create health scores, choose tracked metrics, invent follow-ups, assign ownership, or calculate reminders.
 
@@ -126,11 +131,17 @@ export function fallbackHealthExtraction(type: HealthDocumentType): HealthExtrac
   };
 }
 
-export async function extractHealthDocument(input: { type?: HealthDocumentType; text: string; file: { bytes: Buffer; mimeType: string; name: string } }) {
+export async function extractHealthDocument(input: { type?: HealthDocumentType; text: string; file: { bytes: Buffer; mimeType: string; name: string }; userId?: string }) {
   if (!input.file.bytes.length || !process.env.OPENAI_API_KEY) {
     throw new Error("The stored health document could not be sent for extraction.");
   }
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const config = await getTaskConfig("health_extraction", {
+    primaryModel: process.env.OPENAI_HEALTH_EXTRACTION_MODEL ?? process.env.OPENAI_ICR_MODEL ?? "gpt-5-mini",
+    promptConfig: { kind: "string", text: DEFAULT_PROMPT },
+  });
+  const promptText = config.promptConfig.kind === "string" ? config.promptConfig.text : DEFAULT_PROMPT;
+  const startedAt = Date.now();
   const encoded = input.file.bytes.toString("base64");
   const documentContent: ResponseInputContent = input.file.mimeType.startsWith("image/")
     ? {
@@ -143,14 +154,16 @@ export async function extractHealthDocument(input: { type?: HealthDocumentType; 
         filename: input.file.name,
         file_data: `data:${input.file.mimeType};base64,${encoded}`,
       };
-  const response = await client.responses.create({
+  let response;
+  try {
+    response = await client.responses.create({
     store: false,
-    model: process.env.OPENAI_HEALTH_EXTRACTION_MODEL ?? process.env.OPENAI_ICR_MODEL ?? "gpt-5-mini",
+    model: config.primaryModel,
     input: [
       {
         role: "user",
         content: [
-          { type: "input_text", text: prompt },
+          { type: "input_text", text: promptText },
           {
             type: "input_text",
             text: `${input.type ? `Expected documentType from manual selection: ${input.type}. Validate against the document content and correct it when the document clearly belongs to another supported Health type.` : "No manual documentType was supplied. Classify documentType from the attached document content."} Extract only values visible in the attached original document.${input.text.trim() ? `\n\nOCR text (supporting context only):\n${input.text.slice(0, 24_000)}` : ""}`,
@@ -275,6 +288,11 @@ export async function extractHealthDocument(input: { type?: HealthDocumentType; 
       },
     },
   });
+  } catch (error) {
+    void recordAIRequest({ taskKey: "health_extraction", userId: input.userId, model: config.primaryModel, success: false, errorCode: error instanceof Error ? error.name : "unknown", durationMs: Date.now() - startedAt });
+    throw error;
+  }
+  void recordAIRequest({ taskKey: "health_extraction", userId: input.userId, model: config.primaryModel, success: true, tokensIn: response.usage?.input_tokens, tokensOut: response.usage?.output_tokens, durationMs: Date.now() - startedAt });
   return extractionSchema.parse(parseJsonObject(response.output_text));
 }
 

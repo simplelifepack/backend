@@ -1,5 +1,6 @@
 import { drainStorageCleanup } from "../services/storageCleanup.service";
 import { getAccountUsage } from "../services/accountUsage.service";
+import { getPublicSystemConfig } from "../services/systemSettings.service";
 import { Router } from "express";
 
 import { prisma } from "../lib/prisma";
@@ -15,7 +16,7 @@ router.get("/usage", async (req, res, next) => {
 router.get("/", async (req, res, next) => {
   try {
     const { authUser } = req as AuthenticatedRequest;
-    const [usage, documentCount, user] = await Promise.all([
+    const [usage, documentCount, user, systemConfig] = await Promise.all([
       getAccountUsage(authUser.id),
       prisma.document.count({
         where: { ownerProfileId: authUser.id, deletedAt: null },
@@ -24,6 +25,7 @@ router.get("/", async (req, res, next) => {
         where: { id: authUser.id },
         select: { pinHash: true },
       }),
+      getPublicSystemConfig(),
     ]);
 
     return res.json({
@@ -31,6 +33,11 @@ router.get("/", async (req, res, next) => {
       ...usage,
       documentCount,
       version: "1",
+      // Additive (Phase 3, Comms & system) — a client build that predates
+      // this field simply never looks at it. `maintenanceMode.active` here
+      // is a value the client *could* act on; nothing server-side currently
+      // enforces it — see the tracker for why that's a separate decision.
+      systemConfig,
     });
   } catch (error) {
     return next(error);
