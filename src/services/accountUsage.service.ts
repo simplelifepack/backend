@@ -31,12 +31,12 @@ export async function storedBytes(userId: string, db: Prisma.TransactionClient =
   const [row] = await db.$queryRaw<Array<{ bytes: bigint }>>`
     SELECT COALESCE(SUM(bytes), 0)::bigint AS bytes FROM (
       SELECT key, MAX(bytes) AS bytes FROM (
-        SELECT COALESCE(NULLIF(d."storageKey", ''), NULLIF(d.path, '')) AS key,
+        SELECT d."storageUsageKey" AS key,
           COALESCE(d."encryptedSize", d.size)::bigint AS bytes
         FROM "Document" d WHERE d."ownerProfileId" = ${userId}
           AND (${excludeId}::text IS NULL OR d.id <> ${excludeId})
         UNION ALL
-        SELECT f."storageKey" AS key, COALESCE(f."encryptedSize", f.size)::bigint AS bytes
+        SELECT f."storageUsageKey" AS key, COALESCE(f."encryptedSize", f.size)::bigint AS bytes
         FROM "DocumentFile" f JOIN "Document" d ON d.id = f."documentId"
         WHERE d."ownerProfileId" = ${userId}
           AND (${excludeId}::text IS NULL OR d.id <> ${excludeId})

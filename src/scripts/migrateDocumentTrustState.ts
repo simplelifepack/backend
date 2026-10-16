@@ -1,3 +1,4 @@
+import { withPrivateMigration } from "../privacy/access";
 import crypto from "node:crypto";
 import { prisma } from "../lib/prisma";
 import { getStorageProvider } from "../infrastructure/storage/createStorageProvider";
@@ -93,9 +94,9 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-void main()
+void withPrivateMigration("offline trust-state migration", main)
   .finally(() => prisma.$disconnect())
   .catch((error) => {
-    console.error(error instanceof Error ? error.message : "Document migration failed.");
+    console.error("Document migration failed.");
     process.exitCode = 1;
   });

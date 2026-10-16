@@ -134,7 +134,7 @@ READINESS_AI_PROVIDER=mock
 Use `READINESS_AI_PROVIDER=mock` only for local development. Omit it to use the
 configured OpenAI provider.
 
-### Gmail or Google Drive connection
+### Future Gmail or Google Drive connection (routes disabled)
 
 ```env
 FRONTEND_URL=http://localhost:5173
@@ -224,7 +224,7 @@ vercel --prod
 
 For Vercel production, set `APP_ENV=production`, `STORAGE_DRIVER=s3`, and use an external database plus S3-compatible object storage. Do not rely on `LOCAL_STORAGE_PATH` or `.secrets/` in Vercel; local uploads use `/tmp` during a function invocation, while permanent encrypted documents must go to S3. Document uploads always validate encrypted envelopes, file size, MIME type, extension, magic bytes, PDF/image structure, and malformed content before storage. `DOCUMENT_MALWARE_SCANNER_COMMAND` is optional and plugs into the same validation flow when ClamAV or a cloud scanner is added later.
 
-Add optional integration env vars only for features you enable: `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, Gmail/Drive redirect URIs, `GOOGLE_TOKEN_ENCRYPTION_KEY`, SMTP settings, Web Push VAPID keys, and `ADMIN_SEED_TOKEN`.
+Add optional integration env vars only for features you enable: `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, future Gmail/Drive redirect URIs, `GOOGLE_TOKEN_ENCRYPTION_KEY`, SMTP settings, Web Push VAPID keys, and `ADMIN_SEED_TOKEN`.
 
 ### Production document keys and malware scanning
 
@@ -269,33 +269,9 @@ Google Sign-In itself does not require Google Cloud billing. Basic sign-in reque
 
 To replace the temporary test client later, update only `VITE_GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_ID`, update the new client's Authorized JavaScript Origins, and restart or redeploy the frontend and backend.
 
-## Gmail document import
+## Future Gmail and Drive integrations
 
-Gmail connection is separate from Google sign-in and is optional. Readiness requests only `https://www.googleapis.com/auth/gmail.readonly`, scans candidate metadata, and downloads content only after the user selects it. It never sends, modifies, labels, marks as read, or deletes email. Selected Gmail content uses the local rules/OCR ingestion pipeline and the normal confirm-before-save flow; it is not sent to an AI provider.
-
-Add these backend variables to `be/.env` without removing existing values:
-
-```env
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_GMAIL_REDIRECT_URI=http://localhost:4000/api/integrations/gmail/callback
-GOOGLE_TOKEN_ENCRYPTION_KEY=
-```
-
-`GOOGLE_TOKEN_ENCRYPTION_KEY` must be a dedicated 32-byte base64 key, optionally prefixed with `base64:`. It encrypts stored Gmail refresh tokens with AES-256-GCM. Access tokens are refreshed in memory and are not stored.
-
-Google Cloud Console setup:
-
-1. Enable **Gmail API** for the OAuth project.
-2. Keep the OAuth consent application in **Testing** mode.
-3. Add `https://www.googleapis.com/auth/gmail.readonly` to the consent screen scopes.
-4. Add each Gmail account used for development under **Test users**.
-5. In the OAuth Web client, add this exact **Authorized redirect URI**:
-   `http://localhost:4000/api/integrations/gmail/callback`
-6. Keep `http://localhost:5173` as an Authorized JavaScript Origin for Google Sign-In.
-7. Restart the backend after adding or changing these variables.
-
-Google Cloud billing is not required. Gmail readonly is a restricted scope: Testing-mode test users can develop locally, but a public production launch may require Google OAuth verification and, when restricted-scope data is stored or transmitted by the server, a security assessment under Google's current policy.
+Gmail and Drive API route mounts and their OpenAPI operations are commented out. Connection, scanning and import work is deferred. Google Sign-In remains available. Preserve existing integration records, OAuth encryption keys and legacy decryption readers; disabling routes does not delete data. The old local OCR/rules import pipeline has been removed. Any future import activation must use the same authorized original-file AI/manual flow as document uploads.
 
 ## Google identity linking policy
 

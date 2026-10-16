@@ -129,11 +129,10 @@ function assertImageTerminalMarker(plaintext: Buffer, mimeType: ValidatedEncrypt
 
 async function validatePdf(plaintext: Buffer) {
   assertStaticPdfSafety(plaintext);
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: plaintext });
+  const { PDFDocument } = await import("pdf-lib");
   try {
-    const info = await parser.getInfo({ parsePageInfo: true });
-    if (info.total < 1 || info.total > MAX_PDF_PAGES) {
+    const pdf = await PDFDocument.load(plaintext, { updateMetadata: false });
+    if (pdf.getPageCount() < 1 || pdf.getPageCount() > MAX_PDF_PAGES) {
       throw new DocumentEnvelopeError(
         "PDF_PAGE_LIMIT_EXCEEDED",
         `PDFs must contain between 1 and ${MAX_PDF_PAGES} pages.`,
@@ -151,8 +150,6 @@ async function validatePdf(plaintext: Buffer) {
       );
     }
     throw new DocumentEnvelopeError("FILE_CORRUPTED", "The PDF could not be safely parsed.", 422);
-  } finally {
-    await parser.destroy().catch(() => undefined);
   }
 }
 

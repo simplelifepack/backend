@@ -151,8 +151,6 @@ export class OpenAIProvider implements AIProvider {
     if (!text) {
       console.warn("[Readiness AI] OpenAI response contained no structured intent output", {
         status: payload.status,
-        error: payload.error,
-        incomplete_details: payload.incomplete_details,
         outputItemTypes: payload.output?.flatMap((item) => [item.type, ...(item.content ?? []).map((content) => content.type)]).filter(Boolean),
       });
       throw new Error("OpenAI returned no structured intent output.");

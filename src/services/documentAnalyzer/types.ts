@@ -16,6 +16,8 @@ export const documentCategories = [
 export type DocumentCategory = (typeof documentCategories)[number];
 
 export type DocumentAIResult = {
+  extractedText?: string;
+  fields?: Record<string, string>;
   category: DocumentCategory;
   documentType: string;
   uniqueNumber: string | null;

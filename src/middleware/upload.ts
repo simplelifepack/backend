@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
+import { pipeline } from "node:stream";
 import { AES_GCM_TAG_BYTES, MAX_DOCUMENT_UPLOAD_BYTES } from "../services/documentUploadLimits";
 
 const defaultUploadsDir = process.env.VERCEL ? path.join("/tmp", "readiness-uploads") : path.resolve(process.cwd(), "uploads");
@@ -11,18 +12,28 @@ const permanentUploadsDir = path.join(uploadsDir, "documents");
 
 for (const directory of [uploadsDir, temporaryUploadsDir, permanentUploadsDir]) {
   if (!fs.existsSync(directory)) {
-    fs.mkdirSync(directory, { recursive: true });
+    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   }
+  fs.chmodSync(directory, 0o700);
 }
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, temporaryUploadsDir);
+const storage: multer.StorageEngine = {
+  _handleFile: (_req, file, cb) => {
+    const filename = `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`;
+    const filePath = path.join(temporaryUploadsDir, filename);
+    const output = fs.createWriteStream(filePath, { flags: "wx", mode: 0o600 });
+    pipeline(file.stream, output, error => {
+      if (error) {
+        fs.unlink(filePath, () => cb(error));
+        return;
+      }
+      cb(null, { destination: temporaryUploadsDir, filename, path: filePath, size: output.bytesWritten });
+    });
   },
-  filename: (_req, file, cb) => {
-    cb(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`);
+  _removeFile: (_req, file, cb) => {
+    fs.unlink(file.path, cb);
   },
-});
+};
 
 const allowedMimeTypes = new Set([
   "application/msword",

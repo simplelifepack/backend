@@ -166,8 +166,10 @@ app.use("/api/admin/packages", lazyRouter(() => import("./routes/adminPackages.r
 app.use("/admin/readiness", lazyRouter(() => import("./routes/readiness.admin.routes"), "adminReadinessRouter"));
 app.use("/admin/notifications", lazyRouter(() => import("./routes/notifications.routes"), "adminNotificationsRouter"));
 app.use("/admin/account", lazyRouter(() => import("./routes/account.routes"), "adminAccountRouter"));
-app.use("/api/integrations/gmail", lazyRouter(() => import("./routes/gmail.routes")));
-app.use("/api/integrations/drive", lazyRouter(() => import("./routes/drive.routes")));
+// Future integration: intentionally disabled until Gmail work resumes.
+// app.use("/api/integrations/gmail", lazyRouter(() => import("./routes/gmail.routes")));
+// Future integration: intentionally disabled until Drive work resumes.
+// app.use("/api/integrations/drive", lazyRouter(() => import("./routes/drive.routes")));
 app.use("/api/integrations/digilocker", lazyRouter(() => import("./routes/digilocker.routes")));
 app.use("/api/trust", lazyRouter(() => import("./routes/trust.routes")));
 app.use("/api/wealth", lazyRouter(() => import("./routes/wealth.routes")));

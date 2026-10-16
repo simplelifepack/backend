@@ -440,8 +440,8 @@ function summary(packages: DefaultPackageRecord[], requirements: DefaultRequirem
 }
 
 main()
-  .catch((error) => {
-    console.error("[Default Packages Import] failed", error);
+  .catch(() => {
+    console.error("[Default Packages Import] failed.");
     process.exitCode = 1;
   })
   .finally(async () => {
