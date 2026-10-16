@@ -29,12 +29,22 @@ const CSV_COLUMNS = [
   "sourcesJson",
 ];
 
+function looksLikeUrl(value: string) {
+  return /https?:\/\//i.test(value);
+}
+
+const sourceTypeSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return looksLikeUrl(trimmed) ? undefined : trimmed;
+}, z.string().max(80).optional());
+
 const sourceSchema = z.object({
   title: z.string().trim().min(1).max(200),
   url: z.string().trim().url().max(500),
   name: z.string().trim().max(160).optional(),
   organization: z.string().trim().max(160).optional(),
-  type: z.string().trim().max(80).optional(),
+  type: sourceTypeSchema,
   retrievedAt: z.string().trim().max(40).optional(),
 }).strict();
 
@@ -66,7 +76,7 @@ export const packageAdminInputSchema = z.object({
   slug: z.string().trim().min(1).max(160).optional(),
   sourceName: z.string().trim().max(160).optional().nullable(),
   sourceTitle: z.string().trim().max(200).optional().nullable(),
-  sourceType: z.string().trim().max(80).optional().nullable(),
+  sourceType: sourceTypeSchema.nullable(),
   sourceUrl: z.string().trim().url().max(500).optional().nullable(),
   sources: z.array(sourceSchema).max(20).default([]),
   subtitle: z.string().trim().max(240).optional().nullable(),
