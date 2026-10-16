@@ -937,6 +937,7 @@ ops.push(
   { method: "patch", path: "/api/preferences", tags: ["Preferences"], summary: "Update user preferences", operationId: "updateUserPreferences", security: secured, description: "Updates fixed-option Settings preferences for the authenticated user. Unknown countries, currencies, appearances, or non-boolean AI settings are rejected.", requestBody: body({ ...userPreferencesSchema, required: [] }, { country: "IN", passportCountry: "IN", homeCurrency: "INR", appearance: "dark", aiProcessingEnabled: true }), responses: { 200: response("Updated user preferences", userPreferencesSchema, { country: "IN", passportCountry: "IN", homeCurrency: "INR", appearance: "dark", aiProcessingEnabled: true }), ...errorResponses("400", "401") } },
 );
 
+/* Future integrations: Gmail and Drive routes are intentionally unmounted.
 function oauthCallback(provider: "gmail" | "drive") {
   const name = provider === "gmail" ? "Gmail" : "Google Drive";
   const prefix = provider === "gmail" ? "/api/integrations/gmail" : "/api/integrations/drive";
@@ -960,6 +961,8 @@ ops.push(
   { method: "post", path: "/api/integrations/drive/scan", tags: ["Google Drive Integration"], summary: "Scan Google Drive", operationId: "scanDrive", security: secured, description: "Scans Drive documents and imports/indexes them according to duplicateAction. Returns 409 if a scan is already running.", requestBody: body(objectSchema({ full: { type: "boolean", default: false }, duplicateAction: { type: "string", enum: ["replace", "keep_both", "ignore"], default: "ignore" } }), { full: false, duplicateAction: "ignore" }), responses: { 200: response("Drive scan result", ref("DriveScanResult")), ...errorResponses("400", "401", "409", "429", "503") } },
   { method: "delete", path: "/api/integrations/drive", tags: ["Google Drive Integration"], summary: "Disconnect Google Drive", operationId: "disconnectDrive", security: secured, description: "Disconnects Google Drive. Returns 204 even when absent; returns 409 while a scan is running.", responses: { 204: response("Disconnected"), ...errorResponses("401", "409", "429") } },
 );
+*/
+
 
 ops.push(
   { method: "get", path: "/api/trust/invitations/{token}", tags: ["Trust Center"], summary: "Get public trust invitation", operationId: "getTrustInvitation", description: "Public endpoint for invitation preview. Token must be at least 32 trimmed characters and invitation must be active/unexpired.", parameters: [idParam("token", "Invitation token")], responses: { 200: response("Invitation", objectSchema({ id: { type: "string" }, ownerName: { type: "string" }, memberName: { type: "string" }, relationLabel: { type: "string" }, accessType: { type: "object", additionalProperties: true }, expiresAt: dateTime })), ...errorResponses("404") } },

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { NormalizedDocumentMetadata, ReadinessRequirementMetadata } from "./metadataTypes";
-import { validateDocumentMetadata } from "../ingestion/documentDefinitions";
+import { validateDocumentMetadata } from "../documents/fieldValidation";
 import { matchRequirementMetadata } from "./metadataMatcher";
 import { buildDocumentMetadata } from "./documentMetadata";
 import { normalizeDocumentType, normalizeRequirementDocumentTypes } from "./normalization";

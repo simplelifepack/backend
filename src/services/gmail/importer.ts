@@ -1,12 +1,11 @@
-import { withIsolatedPlaintextFile } from "../documentSecurityValidation";
+import { withIsolatedPlaintextFile, validateDecryptedDocument } from "../documentSecurityValidation";
+import { encryptDocumentOnBackend } from "../documentHybridEncryption";
 import crypto from "node:crypto";
-import fsp from "node:fs/promises";
 import path from "node:path";
 
 import { prisma } from "../../lib/prisma";
-import { temporaryUploadsDir } from "../../middleware/upload";
 import { createTemporaryUpload } from "../documentFileStorage";
-import { ingestDocument } from "../ingestion/pipeline";
+import { analyzeImportedDocument } from "../documentImportAnalysis";
 import { flattenParts, isSupportedGmailMime } from "./candidates";
 import { authorizedGmail, type createOAuthClient } from "./oauth";
 import { userScopedDocumentHash } from "../../utils/documentEncryption";
@@ -20,44 +19,24 @@ function decode(data: string | null | undefined) {
   return Buffer.from(data ?? "", "base64url");
 }
 
-function htmlToPlainText(html: string) {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '\"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function bodyContent(message: Awaited<ReturnType<ReturnType<typeof createOAuthClient>["getTokenInfo"]>> | never): never {
-  throw message;
-}
-void bodyContent;
-
 function extractMessageBody(payload: import("googleapis").gmail_v1.Schema$MessagePart | undefined) {
   const parts = flattenParts(payload);
   const plain = parts.find((part) => part.mimeType === "text/plain" && part.body?.data);
   if (plain?.body?.data) return decode(plain.body.data);
   const html = parts.find((part) => part.mimeType === "text/html" && part.body?.data);
   if (html?.body?.data) {
-    return Buffer.from(htmlToPlainText(decode(html.body.data).toString("utf8")), "utf8");
+    return decode(html.body.data);
   }
   if (payload?.body?.data) return decode(payload.body.data);
   return Buffer.alloc(0);
 }
 
-function localAnalysisResponse(temporaryUpload: Awaited<ReturnType<typeof createTemporaryUpload>>, analysis: Awaited<ReturnType<typeof ingestDocument>>) {
+function importAnalysisResponse(temporaryUpload: Awaited<ReturnType<typeof createTemporaryUpload>>, analysis: Awaited<ReturnType<typeof analyzeImportedDocument>>) {
   const category = analysis.suggestedCategory.charAt(0).toUpperCase() + analysis.suggestedCategory.slice(1);
   const fields = analysis.extractedFields as Record<string, unknown>;
   return {
     success: analysis.success,
-    analysisSource: "rules" as const,
+    analysisSource: analysis.analysisSource,
     analysis: {
       category, documentType: analysis.documentType,
       uniqueNumber: typeof fields.uniqueIdentifier === "string" ? fields.uniqueIdentifier : analysis.validation.uniqueIdentifier,
@@ -74,8 +53,7 @@ function localAnalysisResponse(temporaryUpload: Awaited<ReturnType<typeof create
   };
 }
 
-function importFailureMessage(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
+function importFailureMessage(_error: unknown) {
   return "Unable to import this Gmail document.";
 }
 
@@ -113,6 +91,10 @@ export async function importGmailCandidates(userId: string, candidateIds: string
       if (candidate.mimeType === "application/pdf" && content.includes(Buffer.from("/Encrypt"))) {
         throw Object.assign(new Error("This PDF is password protected. Enter the password to analyse it."), { statusCode: 422, code: "PASSWORD_PROTECTED_PDF" });
       }
+      if (["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(candidate.mimeType)) {
+        const envelope = encryptDocumentOnBackend(content, { filename: candidate.filename, mimeType: candidate.mimeType as "application/pdf" | "image/jpeg" | "image/png" | "image/webp" });
+        await validateDecryptedDocument(content, envelope);
+      }
       const contentHash = crypto.createHash("sha256").update(content).digest("hex");
       const duplicate = await prisma.document.findFirst({
         where: { ownerProfileId: userId, userScopedDedupHash: userScopedDocumentHash(userId, contentHash), deletedAt: null },
@@ -123,33 +105,27 @@ export async function importGmailCandidates(userId: string, candidateIds: string
         continue;
       }
       const extension = extensionByMime[candidate.mimeType] ?? path.extname(candidate.filename);
-      const filePath = path.join(temporaryUploadsDir, `${crypto.randomUUID()}${extension}`);
-      await fsp.writeFile(filePath, content, { flag: "wx", mode: 0o600 });
-      const upload = await createTemporaryUpload(userId, {
-        path: filePath, originalname: candidate.filename, mimetype: candidate.mimeType, size: content.length,
-      } as Express.Multer.File);
+      const upload = await withIsolatedPlaintextFile(content, extension, filePath => createTemporaryUpload(userId, {
+        path: filePath, originalname: candidate.filename, mimetype: candidate.mimeType, size: content!.length,
+      } as Express.Multer.File));
       const temporaryUpload = await prisma.temporaryUpload.update({
         where: { id: upload.id }, data: {
           contentHash, sourceProvider: "gmail", sourceMessageId: candidate.externalMessageId,
           sourceAttachmentId: candidate.externalAttachmentId, externalCandidateId: candidate.id,
         },
       });
-      const analysis = await withIsolatedPlaintextFile(content, extension, plaintextPath => ingestDocument({
+      const analysis = await withIsolatedPlaintextFile(content, extension, plaintextPath => analyzeImportedDocument(userId, {
         path: plaintextPath, originalName: temporaryUpload.originalName,
         mimeType: temporaryUpload.detectedMimeType, size: temporaryUpload.size,
       }));
       await prisma.externalDocumentCandidate.update({ where: { id: candidate.id }, data: { status: "pending_review", ignoredReason: null } });
-      results.push({ candidateId: candidate.id, status: "ready_for_review", analysis: localAnalysisResponse(temporaryUpload, analysis) });
+      results.push({ candidateId: candidate.id, status: "ready_for_review", analysis: importAnalysisResponse(temporaryUpload, analysis) });
     } catch (error) {
       const message = importFailureMessage(error);
-      const { statusCode, code } = importFailureStatus(error);
+      const { statusCode } = importFailureStatus(error);
       console.warn("[Gmail Import] candidate failed", {
         candidateId: candidate.id,
-        filename: candidate.filename,
-        mimeType: candidate.mimeType,
         statusCode,
-        code,
-        message,
       });
       await prisma.externalDocumentCandidate.update({
         where: { id: candidate.id },

@@ -60,13 +60,10 @@ export async function readPackageSourcePage(value: string, signal: AbortSignal, 
   signal.throwIfAborted();
   let text: string;
   if (result.pdf) {
-    const runtime = globalThis as Record<string, unknown>;
-    const canvas = await import("@napi-rs/canvas");
-    runtime.DOMMatrix ??= canvas.DOMMatrix; runtime.ImageData ??= canvas.ImageData; runtime.Path2D ??= canvas.Path2D;
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: result.body! });
-    try { text = (await parser.getText({ first: 20 })).text; }
-    finally { await parser.destroy(); }
+    const { OpenAIDocumentAnalyzer } = await import("../services/documentAnalyzer/openaiDocumentAnalyzer");
+    const { withIsolatedPlaintextFile } = await import("../services/documentSecurityValidation");
+    const analysis = await withIsolatedPlaintextFile(result.body!, ".pdf", filePath => new OpenAIDocumentAnalyzer().analyzeDocument([{ path: filePath, originalName: "public-source.pdf", mimeType: "application/pdf", size: result.body!.length }]));
+    text = analysis.extractedText ?? "";
   } else text = packageSourceText(result.body!.toString("utf8"));
   text = text.replace(/\s+/g, " ").trim().slice(0, 60_000);
   if (text.length < 100) throw new Error("Source page contains no useful evidence.");

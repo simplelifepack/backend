@@ -17,5 +17,7 @@ export async function analyzeDocument(files: UploadedFile[]): Promise<DocumentAI
   return getDocumentAnalyzer().analyzeDocument(files);
 }
 
+export function setDocumentAnalyzerForTests(value: DocumentAnalyzer | null) { analyzer = value; }
+
 export { fallbackDocumentAIResult };
 export type { DocumentAnalyzer, DocumentAIResult, UploadedFile };

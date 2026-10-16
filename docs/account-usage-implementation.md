@@ -26,7 +26,7 @@ Both were tested in rolled-back transactions with unchanged user/document counts
 
 Usage is the sum of retained file bytes, grouped by physical storage key across `Document`, `DocumentFile`, and pending `storage_cleanup` rows. The parent document aliases the first page, so that alias is counted once. Every additional stored scan page is counted. `encryptedSize` is authoritative for current files and includes the AES-GCM tag; legacy rows fall back to recorded `size`. The audited local database contained three documents and no retained documents missing `encryptedSize`. No downloads are needed to display usage.
 
-Drive currently downloads temporarily for local extraction, then retains a link and metadata with an empty storage key/path. It contributes zero retained file bytes. Gmail attachments and supported message imports become quota-bearing documents only when saved from review through the shared document save route. Temporary encrypted review uploads are staging, excluded from permanent storage; their database validity is 30 minutes. Existing temporary-file cleanup behavior remains separate.
+Gmail and Drive routes are disabled for future work. Existing imported documents and storage-accounting records are preserved. Temporary encrypted review uploads are staging, excluded from permanent storage; their database validity is 30 minutes.
 
 There are no separately persisted thumbnail/preview copies in the audited upload path. Browser previews and isolated processing files do not add permanent storage. Soft-deleted records with retained file references remain counted until physical removal, rather than silently treating retained data as free space.
 
@@ -71,7 +71,7 @@ One action is one user-requested public package generation operation that reache
 
 These do **not** count: catalogue searches/matches, opening pages, typing, invalid payloads, unavailable provider configuration, rejected quota requests, explicit development mocks, and cancellation before provider invocation. A reservation cancelled before `fetch` is invoked is refunded. Once the provider request starts, its action remains counted even if the upstream response fails or the client disconnects; the server cannot reliably determine whether the upstream request incurred cost.
 
-The operator-only catalogue source-backfill script uses the same allowlisted public payload but is not an end-user operation and does not debit an account. It has no public route. Document OCR/analysis does not consume this package quota.
+The operator-only catalogue source-backfill script uses the same allowlisted public payload but is not an end-user operation and does not debit an account. It has no public route. Document AI analysis does not consume this package quota.
 
 ## 9. Calendar policy
 
@@ -130,9 +130,9 @@ These are the only provider input fields. Top-level unknown fields and document 
 | Package search/generation via `analyzeIntent` / `OpenAIProvider` | A: public/package AI | Package query and dictionary labels only | Free monthly quota |
 | Operator source-backfill script | A: public catalogue maintenance | Package title and empty labels | No end-user debit |
 | `OpenAIDocumentAnalyzer.analyzeDocument` | B: document-content AI | Uploaded image bytes as image inputs, for classification/name/number/expiry extraction | Separate; no package quota |
-| Gmail/Drive `ingestDocument` | Local content processing | Local extraction/classification; no provider call in this pipeline | No package quota |
+| Gmail/Drive (future) | Routes disabled | Stored records and decryption readers retained | No active import flow |
 
-Category B deliberately remains separate. The upload UI discloses that analysis sends document content to OpenAI; the backend invokes it when upload analysis consent is selected. PDF analysis currently falls back to manual review because image-page rendering is not implemented in that analyzer; this pre-existing behavior was retained. The package proxy does not receive OCR images, document text, decrypted fields, or document/database objects. The application as a whole must **not** be described as never sending document contents to OpenAI.
+Category B deliberately remains separate. The upload UI discloses that analysis sends document content to OpenAI; the backend invokes it when upload analysis consent is selected. Original PDFs and all image pages are sent directly to AI when enabled and authorized. Disabled or failed AI offers manual entry/retry without local OCR or text extraction. The package proxy does not receive OCR images, document text, decrypted fields, or document/database objects. The application as a whole must **not** be described as never sending document contents to OpenAI.
 
 ## 18. Validation
 

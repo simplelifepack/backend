@@ -1,3 +1,5 @@
+import { currentPrivateUserId } from "../../privacy/access";
+import { randomUUID } from "node:crypto";
 import type { AIReadinessPackage } from "../../ai/intentTypes";
 import { prisma } from "../../lib/prisma";
 import { normalizeRequirementDocumentTypes, normalizeSearchText, slugify } from "./normalization";
@@ -53,11 +55,13 @@ export async function saveGeneratedDefaultPack(query: string, generated: AIReadi
   const queryScoped = isQueryScopedPackage(query, generated.packageName);
   const duplicate = queryScoped ? null : await findDefaultPackMatch(`${query} ${generated.packageName}`);
   if (duplicate) {
-    await addSearchMetadata(duplicate.slug, query, generated);
+    // User queries must never be appended to public catalogue metadata.
     return duplicate.slug;
   }
 
-  const slug = queryScoped ? slugify(`${query} ${generated.packageName}`) : slugify(generated.packageName);
+  const userId = currentPrivateUserId();
+  if (!userId) throw new Error("PRIVATE_ACCESS_REQUIRED");
+  const slug = `generated-${randomUUID()}`;
   const alias = normalizeSearchText(query);
   const keywords = searchKeywords(query, generated);
   const verification = verificationMetadata(generated);
@@ -91,11 +95,11 @@ export async function saveGeneratedDefaultPack(query: string, generated: AIReadi
         verificationSources: verification.verificationSources,
         lastVerifiedAt: verification.lastVerifiedAt,
         verificationStatus: verification.verificationStatus,
-        createdBy: "ai",
+        createdBy: userId,
         version: 1,
         requirements: {
           create: generated.requiredDocuments.map((requirement, index) => ({
-            id: `${slug}:${requirement.id}`,
+            id: randomUUID(),
             title: requirement.title,
             documentType: normalizeRequirementDocumentTypes(requirement.documentType, requirement.title)[0]!,
             owner: requirement.owner,

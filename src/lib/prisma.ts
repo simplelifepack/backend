@@ -1,7 +1,9 @@
+import { encryptedClient } from "../privacy/encryptedClient";
 import { PrismaClient } from "@prisma/client";
+import { assertPrivateWrite } from "../privacy/persistenceGuard";
 
 declare global {
-  var __prisma__: PrismaClient | undefined;
+  var __prisma__: ReturnType<typeof createPrivateClient> | undefined;
 }
 
 function databaseUrl() {
@@ -18,11 +20,22 @@ function databaseUrl() {
   }
 }
 
-export const prisma =
-  global.__prisma__ ??
-  new PrismaClient({
+function createPrivateClient(): PrismaClient {
+  const client = new PrismaClient({
     ...(databaseUrl() ? { datasources: { db: { url: databaseUrl() } } } : {}),
-    log: ["error", "warn"],
-  });
+    // Prisma validation/query diagnostics can contain bound private values.
+    log: [],
+  }).$extends({
+    name: "private-persistence-guard",
+    query: { $allModels: {
+      $allOperations({ model, operation, args, query }) {
+        assertPrivateWrite(model, operation, args as { data?: unknown; create?: unknown; update?: unknown });
+        return query(args);
+      },
+    } },
+  }) as unknown as PrismaClient;
+  return encryptedClient(client);
+}
 
+export const prisma = global.__prisma__ ?? createPrivateClient();
 global.__prisma__ = prisma;

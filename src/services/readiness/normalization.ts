@@ -1,4 +1,4 @@
-import { documentDefinitions } from "../ingestion/documentDefinitions.registry";
+import { documentDefinitions } from "../documents/fieldDefinitions";
 
 const explicitTypeMap: Record<string, string> = {
   aadhaar: "aadhaar",

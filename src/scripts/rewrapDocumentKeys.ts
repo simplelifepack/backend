@@ -1,3 +1,4 @@
+import { withPrivateMigration } from "../privacy/access";
 import { prisma } from "../lib/prisma";
 import {
   KEY_ALGORITHM,
@@ -49,9 +50,9 @@ async function run() {
   );
 }
 
-void run()
+void withPrivateMigration("offline document key rotation", run)
   .catch((error) => {
-    console.error(error instanceof Error ? error.message : "Document key rotation failed.");
+    console.error("Document key rotation failed.");
     process.exitCode = 1;
   })
   .finally(() => prisma.$disconnect());

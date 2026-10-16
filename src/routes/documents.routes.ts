@@ -10,8 +10,6 @@ import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAut
 import { uploadLimiter } from "../middleware/security";
 import { encryptedUpload } from "../middleware/upload";
 import { analyzeDocument } from "../services/documentAnalyzer";
-import { ingestDocument } from "../services/ingestion/pipeline";
-import { validateDocumentMetadata } from "../services/ingestion/documentDefinitions";
 import {
   buildAnalyzeResponse,
   buildManualValidation,
@@ -287,16 +285,7 @@ router.post("/", async (req, res, next) => {
       : suppliedFields;
     const validation = payload.analysisSource === "ai"
       ? buildMinimalAIValidation(payload, fieldsForValidation)
-      : payload.analysisSource === "manual"
-        ? buildManualValidation(payload, fieldsForValidation, pendingTemporaryUpload.originalName)
-      : validateDocumentMetadata({
-          documentType: payload.documentType,
-          rawText: payload.rawExtractedText,
-          fields: fieldsForValidation,
-          reviewFields: payload.reviewFields,
-          confidence: payload.confidence,
-          userConfirmedUnknown: payload.userConfirmedUnknown,
-        });
+      : buildManualValidation(payload, fieldsForValidation, pendingTemporaryUpload.originalName);
     if (!validation.canSave) {
       return res.status(422).json({
         message: "Please review required document fields before saving.",
@@ -444,12 +433,7 @@ router.post("/", async (req, res, next) => {
       normalizedType: validation.normalizedType,
       documentTypeCode: validation.normalizedType,
       category: validation.category || normalizeCategory(payload.category),
-      analysisSource:
-        payload.analysisSource === "manual"
-          ? "user"
-          : payload.analysisSource === "rules" && payload.extraction
-            ? "hybrid"
-            : payload.analysisSource,
+      analysisSource: payload.analysisSource === "manual" ? "user" : "ai",
       confidence: payload.confidence,
       classificationStatus,
       classificationConfidence: payload.confidence,

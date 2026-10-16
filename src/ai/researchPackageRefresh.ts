@@ -29,8 +29,7 @@ async function requestResearch(apiKey: string, body: Record<string, unknown>, si
     body: JSON.stringify({ reasoning: { effort: process.env.OPENAI_REQUIREMENTS_REASONING_EFFORT ?? process.env.OPENAI_REASONING_EFFORT ?? "none" }, ...body }),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { error?: { code?: string; param?: string; message?: string } } | null;
-    console.warn("[Package refresh] Research request rejected", { status: response.status, code: payload?.error?.code, param: payload?.error?.param });
+    console.warn("[Package refresh] Research request rejected", { status: response.status });
     throw new PackageRefreshError("Research is unavailable. Your package was not changed.", 503);
   }
   return response.json() as Promise<ResearchResponse>;

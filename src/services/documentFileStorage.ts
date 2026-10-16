@@ -1,3 +1,4 @@
+import { withPrivateMaintenance } from "../privacy/access";
 /* eslint-disable max-lines, no-control-regex */
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
@@ -135,7 +136,7 @@ async function safeUnlink(filePath: string | null | undefined) {
     await fsp.unlink(filePath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn("Failed to remove upload file", { error: (error as Error).message });
+      console.warn({ event: "upload_cleanup_failed" });
     }
   }
 }
@@ -495,6 +496,7 @@ export async function readDecryptedDocumentFile(
 }
 
 export async function cleanupTemporaryUploads() {
+  return withPrivateMaintenance("expired temporary upload cleanup", async () => {
   await fsp.mkdir(temporaryUploadsDir, { recursive: true });
   const now = new Date();
   const staleUploads = await prisma.temporaryUpload.findMany({
@@ -506,6 +508,7 @@ export async function cleanupTemporaryUploads() {
       ],
     },
     take: 100,
+    select: { id: true, storagePath: true },
   });
 
   for (const upload of staleUploads) {
@@ -526,10 +529,13 @@ export async function cleanupTemporaryUploads() {
   const files = await fsp.readdir(temporaryUploadsDir).catch(() => []);
   for (const file of files) {
     const filePath = path.resolve(temporaryUploadsDir, file);
-    if (!knownPaths.has(filePath)) {
+    const stat = await fsp.stat(filePath).catch(() => null);
+    // Other workers may still be staging an upload that has no row yet.
+    if (!knownPaths.has(filePath) && stat?.isFile() && stat.mtimeMs < now.getTime() - TEMP_UPLOAD_TTL_MS) {
       await safeUnlink(filePath);
     }
   }
+  });
 }
 
 export async function streamDecryptedDocumentFile(

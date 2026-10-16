@@ -1,3 +1,5 @@
+/* eslint-disable max-lines */
+import { withCredentialLookup, withPrivateUser } from "../privacy/access";
 import bcrypt from "bcrypt";
 import { createHash, randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
@@ -137,7 +139,7 @@ function memberDto(member: Prisma.TrustMemberGetPayload<{
   };
 }
 
-function connectionDto(member: Prisma.TrustMemberGetPayload<{ include: { owner: true; permissions: true } }>) {
+function connectionDto(member: Prisma.TrustMemberGetPayload<{ include: { owner: { select: { id: true, name: true, email: true } }; permissions: true } }>) {
   return {
     id: member.id,
     owner: { id: member.owner.id, name: member.owner.name, email: member.owner.email },
@@ -159,7 +161,7 @@ async function writeMemberPermissions(memberId: string, permissions: z.infer<typ
   }
 }
 
-async function deliverInvitation(member: Prisma.TrustMemberGetPayload<{ include: { owner: true } }>, token: string) {
+async function deliverInvitation(member: Prisma.TrustMemberGetPayload<{ include: { owner: { select: { id: true, name: true, email: true } } } }>, token: string) {
   return emailService.sendTrustInvitationEmail({
     membershipId: member.id,
     to: member.email,
@@ -181,7 +183,7 @@ export async function getTrustCenter(userId: string) {
     }),
     prisma.trustMember.findMany({
       where: { memberUserId: userId, status: "ACTIVE" },
-      include: { owner: true, permissions: true },
+      include: { owner: { select: { id: true, name: true, email: true } }, permissions: true },
       orderBy: { acceptedAt: "desc" },
     }),
   ]);
@@ -225,7 +227,7 @@ export async function addTrustMember(ownerUserId: string, input: unknown) {
         pinAttemptCount: 0,
         pinLockedUntil: null,
       },
-      include: { owner: true, permissions: true },
+      include: { owner: { select: { id: true, name: true, email: true } }, permissions: true },
     });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
@@ -255,7 +257,7 @@ export async function addFamilyMember(ownerUserId: string, input: unknown) {
     for (const permission of data.permissions) {
       await tx.trustMemberPermission.create({ data: { trustMemberId: created.id, ...permission } });
     }
-    return created;
+    return tx.trustMember.findUniqueOrThrow({ where: { id: created.id }, include: { permissions: true } });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   return memberDto(member);
 }
@@ -312,10 +314,10 @@ export async function leaveTrustCenter(memberUserId: string, memberId: string) {
 }
 
 export async function acceptTrustInvitationsForUser(userId: string, email: string) {
-  await prisma.trustMember.updateMany({
-    where: { email: normalizeEmail(email), status: "ACTIVE", memberUserId: null },
-    data: { memberUserId: userId },
-  });
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+  if (user.email !== normalizeEmail(email)) throw new Error("PRIVATE_RELATION_OWNERSHIP_MISMATCH");
+  const memberships = await prisma.trustMember.findMany({ where: { email: normalizeEmail(email), status: "ACTIVE", memberUserId: null }, select: { id: true, ownerUserId: true } });
+  for (const member of memberships) await withPrivateUser(member.ownerUserId, () => prisma.trustMember.updateMany({ where: { id: member.id, status: "ACTIVE", memberUserId: null }, data: { memberUserId: userId } }));
 }
 
 export async function resendTrustInvitation(ownerUserId: string, memberId: string) {
@@ -337,7 +339,7 @@ export async function resendTrustInvitation(ownerUserId: string, memberId: strin
       pinAttemptCount: 0,
       pinLockedUntil: null,
     },
-    include: { owner: true },
+    include: { owner: { select: { id: true, name: true, email: true } } },
   });
   const invitationDelivery = await deliverInvitation(member, token);
   const saved = await getMemberRecord(ownerUserId, member.id);
@@ -359,35 +361,30 @@ export async function resetTrustInvitationPin(ownerUserId: string, memberId: str
 }
 
 export async function getInvitation(token: string) {
-  const member = await prisma.trustMember.findUnique({
+  const member = await withCredentialLookup(() => prisma.trustMember.findUnique({
     where: { inviteTokenHash: tokenHash(token) },
-    include: { owner: true },
-  });
-  if (!member || member.status !== "INVITED" || !member.inviteExpiresAt || member.inviteExpiresAt <= new Date()) {
-    throw Object.assign(new Error("Invitation expired or invalid."), { statusCode: 404 });
-  }
-  return {
-    id: member.id,
-    ownerName: member.owner.name,
-    memberName: member.name,
-    relationLabel: relationLabel(member.relation, member.customRelation),
-    accessType: accessTypeDto(member.accessType),
-    expiresAt: member.inviteExpiresAt,
-  };
+    select: { id: true, status: true, inviteExpiresAt: true, accessType: true },
+  }));
+  if (!member || member.status !== "INVITED" || !member.inviteExpiresAt || member.inviteExpiresAt <= new Date()) throw Object.assign(new Error("Invitation expired or invalid."), { statusCode: 404 });
+  return { id: member.id, ownerName: "A Readiness member", memberName: "Invited member", relationLabel: "Private", accessType: accessTypeDto(member.accessType), expiresAt: member.inviteExpiresAt };
 }
 
 export async function rejectInvitation(token: string) {
+  const identity = await withCredentialLookup(() => prisma.trustMember.findUnique({ where: { inviteTokenHash: tokenHash(token) }, select: { id: true, ownerUserId: true } }));
+  if (!identity) throw Object.assign(new Error("Invitation expired or invalid."), { statusCode: 404 });
+  return withPrivateUser(identity.ownerUserId, async () => {
   const updated = await prisma.trustMember.updateMany({
     where: { inviteTokenHash: tokenHash(token), status: "INVITED", inviteExpiresAt: { gt: new Date() } },
     data: { status: "REJECTED", rejectedAt: new Date(), inviteTokenHash: null, inviteExpiresAt: null },
   });
   if (updated.count !== 1) throw Object.assign(new Error("Invitation expired or invalid."), { statusCode: 404 });
   return { message: "Invitation rejected." };
+  });
 }
 
 export async function acceptInvitation(token: string, input: unknown) {
   const { pin } = pinSchema.parse(input);
-  const member = await prisma.trustMember.findUnique({
+  const member = await withCredentialLookup(() => prisma.trustMember.findUnique({
     where: { inviteTokenHash: tokenHash(token) },
     select: {
       id: true,
@@ -396,9 +393,9 @@ export async function acceptInvitation(token: string, input: unknown) {
       invitePinHash: true,
       pinAttemptCount: true,
       pinLockedUntil: true,
-      email: true,
+      ownerUserId: true,
     },
-  });
+  }));
   const now = new Date();
   if (!member || member.status !== "INVITED" || !member.inviteExpiresAt || member.inviteExpiresAt <= now || !member.invitePinHash) {
     throw Object.assign(new Error("Invitation expired or invalid."), { statusCode: 400 });
@@ -409,15 +406,19 @@ export async function acceptInvitation(token: string, input: unknown) {
   const validPin = await bcrypt.compare(pin, member.invitePinHash);
   if (!validPin) {
     const nextCount = member.pinAttemptCount + 1;
-    await prisma.trustMember.update({
+    await withPrivateUser(member.ownerUserId, () => prisma.trustMember.update({
       where: { id: member.id },
       data: {
         pinAttemptCount: nextCount,
         pinLockedUntil: nextCount >= MAX_PIN_ATTEMPTS ? new Date(Date.now() + PIN_LOCK_MINUTES * 60 * 1000) : null,
       },
-    });
+      select: { id: true },
+    }));
     throw Object.assign(new Error("Invitation could not be verified."), { statusCode: 400 });
   }
+  return withPrivateUser(member.ownerUserId, async () => {
+  const verified = await prisma.trustMember.findUniqueOrThrow({ where: { id: member.id }, select: { email: true } });
+  const account = await withCredentialLookup(() => prisma.user.findUnique({ where: { email: verified.email }, select: { id: true } }));
   await prisma.trustMember.update({
     where: { id: member.id },
     data: {
@@ -427,8 +428,9 @@ export async function acceptInvitation(token: string, input: unknown) {
       inviteExpiresAt: null,
       pinAttemptCount: 0,
       pinLockedUntil: null,
-      memberUserId: (await prisma.user.findUnique({ where: { email: member.email }, select: { id: true } }))?.id,
+      memberUserId: account?.id,
     },
   });
   return { message: "Invitation accepted." };
+  });
 }

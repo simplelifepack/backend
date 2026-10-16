@@ -1,6 +1,6 @@
 import type { DocumentOwner, NormalizedDocumentMetadata } from "./metadataTypes";
 import { normalizeDocumentType } from "./normalization";
-import { getDocumentDefinition } from "../ingestion/documentDefinitions";
+import { getDocumentDefinition } from "../documents/fieldValidation";
 
 const owners = new Set<DocumentOwner>([
   "self", "spouse", "father", "mother", "child", "seller", "buyer",

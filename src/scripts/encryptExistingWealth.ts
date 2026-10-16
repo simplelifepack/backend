@@ -1,3 +1,4 @@
+import { withPrivateMigration } from "../privacy/access";
 import 'dotenv/config';
 import { prisma } from '../lib/prisma';
 import { encryptWealthFields } from '../services/wealthEncryption';
@@ -23,4 +24,4 @@ async function run() {
   }
   console.log(JSON.stringify({ mode: process.argv.includes('--apply') ? 'applied' : 'dry-run', records: updated }));
 }
-run().catch(() => { console.error('Financial encryption migration failed. Verify key configuration and database access.'); process.exitCode = 1; }).finally(() => prisma.$disconnect());
+withPrivateMigration("offline legacy wealth migration", run).catch(() => { console.error('Financial encryption migration failed. Verify key configuration and database access.'); process.exitCode = 1; }).finally(() => prisma.$disconnect());

@@ -2,7 +2,7 @@ import type { Document, DocumentFile } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
-import { validateDocumentMetadata } from "../services/ingestion/documentDefinitions";
+import { validateDocumentMetadata } from "../services/documents/fieldValidation";
 import {
   decryptJson,
   decryptString,
@@ -29,7 +29,7 @@ const baseSaveSchema = z.object({
   warnings: z.array(z.unknown()).default([]),
   extraction: z.record(z.unknown()).optional(),
   evidence: z.array(z.unknown()).default([]),
-  analysisSource: z.enum(["rules", "manual", "ai"]).default("rules"),
+  analysisSource: z.enum(["rules", "manual", "ai"]).default("manual").transform(value => value === "rules" ? "manual" as const : value),
   duplicateAction: z.enum(["fail", "replace", "keep_both"]).default("fail"),
   userConfirmedUnknown: z.boolean().default(false),
   owner: z.enum(["self", "spouse", "father", "mother", "child", "seller", "buyer", "employer", "bank", "hospital", "government", "other", "unknown"]).default("self"),

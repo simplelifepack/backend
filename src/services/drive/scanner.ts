@@ -1,4 +1,4 @@
-import { lockAccount } from "../accountUsage.service";
+import { lockAccount, storedBytes, enforceStorage } from "../accountUsage.service";
 import { queueStorageCleanup, drainStorageCleanup } from "../storageCleanup.service";
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
@@ -8,7 +8,10 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../lib/prisma";
 import { temporaryUploadsDir } from "../../middleware/upload";
-import { ingestDocument } from "../ingestion/pipeline";
+import { createEncryptedTemporaryUpload, saveEncryptedPermanentFile, deleteTemporaryUploadFile, removePermanentFile } from "../documentFileStorage";
+import { encryptDocumentOnBackend } from "../documentHybridEncryption";
+import { validateDecryptedDocument } from "../documentSecurityValidation";
+import { analyzeImportedDocument } from "../documentImportAnalysis";
 import {
   documentLookupHash,
   documentMetadataIntegrityHash,
@@ -61,14 +64,17 @@ export type DriveScanResult = {
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-function logDriveScan(message: string, details: Record<string, unknown> = {}) {
-  console.info(`[Drive Scan] ${message}`, details);
+const scanLogFields = new Set(["userId", "connectionId", "size", "pageSize", "pageFiles", "hasNextPage", "full", "discovered", "processed", "imported", "skipped", "failed"]);
+function scanLogDetails(details: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(details).filter(([key, value]) => scanLogFields.has(key) &&
+    (typeof value === "number" || typeof value === "boolean" || (["userId", "connectionId"].includes(key) && typeof value === "string"))));
 }
-
+function logDriveScan(message: string, details: Record<string, unknown> = {}) {
+  console.info(`[Drive Scan] ${message}`, scanLogDetails(details));
+}
 function logDriveScanError(message: string, error: unknown, details: Record<string, unknown> = {}) {
   const status = (error as { response?: { status?: unknown } }).response?.status;
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.error(`[Drive Scan] ${message}`, { ...details, status, error: errorMessage });
+  console.error(`[Drive Scan] ${message}`, { ...scanLogDetails(details), ...(typeof status === "number" ? { status } : {}) });
 }
 
 function displayDriveFileName(name: string) {
@@ -79,9 +85,7 @@ function displayDriveFileName(name: string) {
 
 function summarizeDriveFailures(failures: DriveFailure[]) {
   if (!failures.length) return null;
-  const [first] = failures;
-  const suffix = failures.length > 1 ? ` and ${failures.length - 1} more` : "";
-  return `${failures.length} PDF(s) could not be processed: ${first.name}${suffix}. Reason: ${first.reason}`;
+  return `${failures.length} PDF(s) could not be processed. Please retry the scan.`;
 }
 
 function driveFailureReason(error: unknown) {
@@ -180,20 +184,9 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
   const plaintextHash = crypto.createHash("sha256").update(content).digest("hex");
   const checksum = userScopedDocumentHash(userId, plaintextHash)!;
   const temporaryPath = path.join(temporaryUploadsDir, `${crypto.randomUUID()}.pdf`);
-  await fsp.writeFile(temporaryPath, content, { flag: "wx", mode: 0o600 });
   try {
-    const analysis = await ingestDocument({ path: temporaryPath, originalName: file.name, mimeType: PDF_MIME, size: content.length });
-    if (!analysis.success || analysis.documentType.toLowerCase() === "unknown") {
-      logDriveScan("skipped unsupported analysis", {
-        fileId: file.id,
-        fileName: displayDriveFileName(file.name),
-        mimeType: file.mimeType,
-        documentType: analysis.documentType,
-        reason: analysis.reason,
-        warningCodes: analysis.warnings.map((warning) => warning.code),
-      });
-      return "ignored";
-    }
+    await fsp.writeFile(temporaryPath, content, { flag: "wx", mode: 0o600 });
+    const analysis = await analyzeImportedDocument(userId, { path: temporaryPath, originalName: file.name, mimeType: PDF_MIME, size: content.length });
     const uniqueNumber = analysis.validation.uniqueIdentifier;
     const duplicate = await prisma.document.findFirst({
       where: {
@@ -222,7 +215,18 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
       capabilities: analysis.validation.capabilities,
       driveWebViewLink: file.webViewLink ?? `https://drive.google.com/open?id=${encodeURIComponent(file.id)}`,
     };
+    const id = existingFile?.id ?? crypto.randomUUID();
+    const envelope = encryptDocumentOnBackend(content, { filename: file.name, mimeType: PDF_MIME });
+    await validateDecryptedDocument(content, envelope);
+    const temporary = await createEncryptedTemporaryUpload(userId, envelope);
+    let saved: Awaited<ReturnType<typeof saveEncryptedPermanentFile>>;
+    try { saved = await saveEncryptedPermanentFile(userId, `${id}/imports/${crypto.randomUUID()}`, temporary); }
+    finally {
+      await deleteTemporaryUploadFile(temporary);
+      await prisma.temporaryUpload.delete({ where: { id: temporary.id } });
+    }
     const data = {
+      ...saved,
       title: encryptString(analysis.title),
       displayName: analysis.validation.displayName,
       ownerProfileId: userId,
@@ -232,10 +236,8 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
       extractedKeyFields: encryptJson(analysis.extractedFields),
       rawText: encryptString(analysis.extractedText),
       originalName: encryptString(file.name)!,
-      storedName: "",
       mimeType: PDF_MIME,
       size: content.length,
-      path: "",
       documentType: analysis.validation.normalizedType,
       normalizedType: analysis.validation.normalizedType,
       documentTypeCode: analysis.validation.normalizedType,
@@ -260,8 +262,12 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
       sourceChecksum: checksum,
       lastAnalyzed: new Date(),
     };
+    let committed = false;
+    try {
     await prisma.$transaction(async tx => {
-      await lockAccount(tx, userId);
+      const tier = await lockAccount(tx, userId);
+      enforceStorage(tier, await storedBytes(userId, tx, existingFile?.id ?? null), saved.encryptedSize);
+      if (existingFile?.storageKey || existingFile?.path) await queueStorageCleanup(tx, userId, [existingFile]);
       if (duplicate && duplicateAction === "replace") {
         const replaced = await tx.document.findFirst({ where: { id: duplicate.id, ownerProfileId: userId }, include: { files: true } });
         if (replaced) {
@@ -271,9 +277,11 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
       }
       await tx.document.upsert({
         where: { ownerProfileId_driveFileId: { ownerProfileId: userId, driveFileId: file.id } },
-        create: data, update: data,
+        create: { ...data, id }, update: data,
       });
     });
+    committed = true;
+    } finally { if (!committed) await removePermanentFile(saved.storageKey); }
     await drainStorageCleanup(userId);
     const outcome = duplicate ? "duplicate_kept" : existingFile ? "updated" : "indexed";
     logDriveScan("stored", { fileId: file.id, mimeType: file.mimeType, outcome });
@@ -314,7 +322,7 @@ export async function scanDrive(
     await mapBounded(files, async (file) => {
       const fileName = displayDriveFileName(file.name);
       try {
-        await prisma.externalConnection.update({ where: { id: connection.id }, data: { scanPhase: `Indexing ${fileName}` } });
+        await prisma.externalConnection.update({ where: { id: connection.id }, data: { scanPhase: "Indexing PDFs..." } });
         const outcome = await processPdf(userId, drive, file, options.duplicateAction ?? "ignore", Boolean(options.full));
         counts[outcome] = (counts[outcome] ?? 0) + 1;
       } catch (error) {

@@ -1,12 +1,11 @@
-import { Prisma, type Prisma as PrismaTypes } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
 import { drainStorageCleanup, queueStorageCleanup } from "./storageCleanup.service";
 import { readDecryptedDocumentLocation } from "./documentFileStorage";
-import { withIsolatedPlaintextFile } from "./documentSecurityValidation";
-import { ingestDocument } from "./ingestion/pipeline";
-import { decryptJson, decryptString } from "../utils/documentEncryption";
+import { decryptString } from "../utils/documentEncryption";
+import type { OriginalDocumentFile } from "./documentAnalyzer/fileInput";
 import { extractHealthDocument, extractionSchema, fallbackHealthExtraction, type HealthDocumentType, type HealthExtraction } from "./healthExtraction.service";
 import { metricSearchTerms, normalizeMetricName } from "./healthMetricRegistry";
 import { assertAIProcessingEnabled } from "./aiProcessing.service";
@@ -273,52 +272,20 @@ function addDuration(base: Date | null, duration: { value: number; unit: string 
   return date;
 }
 
-function sourceText(document: { rawText: string | null; fields: PrismaTypes.JsonValue }) {
-  const rawText = decryptString(document.rawText) ?? "";
-  const fields = decryptJson<Record<string, unknown> | null>(document.fields, null);
-  return [rawText, fields && typeof fields === "object" ? JSON.stringify(fields).slice(0, 12_000) : ""].filter(Boolean).join("\n\n");
-}
-
-function extensionForMimeType(mimeType: string) {
-  return (
-    (
-      {
-        "application/pdf": ".pdf",
-        "image/jpeg": ".jpg",
-        "image/png": ".png",
-        "image/webp": ".webp",
-      } as Record<string, string>
-    )[mimeType] ?? ".bin"
-  );
-}
-
 type HealthSourceDocument = Prisma.DocumentGetPayload<{ include: { files: true } }>;
-
-async function healthSource(document: HealthSourceDocument) {
-  const saved = sourceText(document);
-  const pages = [...(document.files ?? [])].sort((a, b) => a.pageIndex - b.pageIndex);
-  const firstLocation = pages[0] ?? document;
-  const bytes = await readDecryptedDocumentLocation(firstLocation);
-  if (saved.trim()) return { text: saved, bytes };
-
-  // The normal document-save path intentionally does not retain full OCR text.
-  // Health extraction therefore reads the encrypted original only long enough to
-  // run the existing local extractor; the temporary plaintext is removed by the
-  // isolation helper before the record is persisted.
-  const sourcePages = pages.length ? pages : [document];
-  const texts = await Promise.all(sourcePages.map(async (page, index) => {
-    const pageBytes = page === firstLocation ? bytes : await readDecryptedDocumentLocation(page);
-    return withIsolatedPlaintextFile(pageBytes, extensionForMimeType(page.mimeType), async (filePath) => {
-      const analysis = await ingestDocument({
-        path: filePath,
-        originalName: decryptString(page.originalName) ?? `health-record-page-${index + 1}`,
-        mimeType: page.mimeType,
-        size: page.size,
-      });
-      return analysis.extractedText;
+async function healthSource(document: HealthSourceDocument): Promise<OriginalDocumentFile[]> {
+  const pages = [...document.files].sort((a, b) => a.pageIndex - b.pageIndex);
+  const files: OriginalDocumentFile[] = [];
+  try {
+    for (const page of pages.length ? pages : [document]) files.push({
+      bytes: await readDecryptedDocumentLocation(page), mimeType: page.mimeType,
+      name: decryptString(page.originalName) ?? "health-record",
     });
-  }));
-  return { text: texts.filter(Boolean).join("\n\n"), bytes };
+    return files;
+  } catch {
+    files.forEach(file => file.bytes.fill(0));
+    throw new Error("The original health document could not be read. Retry or enter the information manually.");
+  }
 }
 
 function parseBirthDate(value: string | null | undefined) {
@@ -625,8 +592,7 @@ export async function createHealthRecord(userId: string, input: unknown) {
   if (existing?.memberId) return getHealthRecord(userId, existing.id);
   if (existing && !data.memberId) return pendingProfileResponse(userId, existing);
 
-  let text = "";
-  let documentBytes: Buffer | null = null;
+  let originalFiles: OriginalDocumentFile[] = [];
   let extractionError: string | null = null;
   let extraction: HealthExtraction | null = null;
   let processingStatus = "processing";
@@ -641,26 +607,18 @@ export async function createHealthRecord(userId: string, input: unknown) {
     extractionError = "AI processing is turned off. Turn on AI processing in Preferences to automatically extract medications from prescriptions, or enter the medications manually.";
   } else
     try {
-      const source = await healthSource(document);
-      text = source.text;
-      documentBytes = source.bytes;
+      originalFiles = await healthSource(document);
     } catch (error) {
       // The record remains available for review, but never pretends extraction
       // succeeded when its encrypted source could not be read.
-      text = "";
-      extractionError = error instanceof Error ? error.message : "The original document could not be read.";
+      extractionError = "The original document could not be read. Retry or enter the information manually.";
     }
   if (!extraction)
     try {
-      if (!documentBytes) throw new Error(extractionError ?? "The original document could not be read.");
+      if (!originalFiles.length) throw new Error("The original document could not be read.");
       extraction = await extractHealthDocument({
         type: data.type,
-        text,
-        file: {
-          bytes: documentBytes,
-          mimeType: document.mimeType,
-          name: decryptString(document.originalName) ?? "health-record",
-        },
+        files: originalFiles,
       });
       const extractedType = extraction.documentType;
       const suspiciousLabExtraction = extractedType === "lab_report" && extraction.measurements.length === 0 && !extraction.provider && !extraction.doctor;
@@ -674,9 +632,9 @@ export async function createHealthRecord(userId: string, input: unknown) {
         extractionError = "AI processing is turned off. Turn on AI processing in Preferences to automatically extract medications from prescriptions, or enter the medications manually.";
       } else {
         processingStatus = "failed";
-        extractionError = error instanceof Error ? error.message : "Health document extraction failed.";
+        extractionError = "AI could not extract this health document. Retry or enter the information manually.";
       }
-    }
+    } finally { originalFiles.forEach(file => file.bytes.fill(0)); }
 
   const extracted = extraction ?? fallbackHealthExtraction(data.type ?? "medical_report");
   const recordType = extracted.documentType;
@@ -860,17 +818,13 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
   let extraction: HealthExtraction;
   let processingStatus = "processing";
   let processingError: string | null = null;
+  let originalFiles: OriginalDocumentFile[] = [];
   try {
     await assertAIProcessingEnabled(userId);
-    const source = await healthSource(document);
+    originalFiles = await healthSource(document);
     extraction = await extractHealthDocument({
       type: record.type as HealthDocumentType,
-      text: source.text,
-      file: {
-        bytes: source.bytes,
-        mimeType: document.mimeType,
-        name: decryptString(document.originalName) ?? "health-record",
-      },
+      files: originalFiles,
     });
     if (record.type === "lab_report" && extraction.measurements.length === 0 && !extraction.provider && !extraction.doctor) {
       throw new Error("No structured data could be extracted from this lab report.");
@@ -884,8 +838,13 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
       processingError = "AI processing is turned off. Turn on AI processing in Preferences to automatically extract medications from prescriptions, or enter the medications manually.";
     } else {
       processingStatus = "failed";
-      processingError = error instanceof Error ? error.message : "Health document extraction failed.";
+      processingError = "AI could not extract this health document. Retry or enter the information manually.";
     }
+  } finally { originalFiles.forEach(file => file.bytes.fill(0)); }
+  // A failed/disabled retry must never delete previously stored clinical data.
+  if (processingStatus === "failed" || processingStatus === "ai_processing_disabled") {
+    await prisma.healthDocument.update({ where: { id: record.id }, data: { processingStatus, processingError, processedAt: new Date() } });
+    return getHealthRecord(userId, record.id);
   }
   const documentDate = parseDate(extraction.documentDate) ?? record.documentDate ?? document.createdAt;
   await prisma.$transaction(async (tx) => {

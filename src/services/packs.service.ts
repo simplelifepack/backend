@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /* eslint-disable max-lines */
 import type { Prisma } from "@prisma/client";
 import { performance } from "node:perf_hooks";
@@ -37,7 +38,7 @@ type RequirementAssignmentDto = {
   overriddenAt: string | null;
 };
 
-const SYSTEM_PACK_CREATORS = ["seed", "ai"];
+const SYSTEM_PACK_CREATORS = ["seed"];
 const STATIC_CATALOGUE_CACHE_MS = 60_000;
 let ensureCache: { expiresAt: number; value: number } | null = null;
 let categoriesCache: { expiresAt: number; value: string[] } | null = null;
@@ -586,7 +587,7 @@ function packageCategoryMatches(packCategory: string, selectedCategory: string) 
 }
 
 async function uniqueUserPackSlug(userId: string, title: string) {
-  const base = `custom-${slugify(userId).slice(0, 12)}-${slugify(title) || "pack"}`;
+  const base = `custom-${randomUUID()}`;
   let slug = base;
   for (let index = 2; await prisma.readinessPack.findUnique({ where: { slug }, select: { id: true } }); index += 1) {
     slug = `${base}-${index}`;
@@ -614,7 +615,7 @@ function customPackMetadata(metadata: Record<string, unknown> | undefined) {
 function customRequirement(packSlug: string, title: string, index: number) {
   const acceptedDocumentTypes = normalizeRequirementDocumentTypes(title, title);
   return {
-    id: `${packSlug}:custom:${index}:${slugify(title) || "document"}`,
+    id: randomUUID(),
     title,
     documentType: acceptedDocumentTypes[0] ?? "unknown",
     owner: "self",
