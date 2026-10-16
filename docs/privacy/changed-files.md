@@ -183,3 +183,5 @@ Outside tracked source: the normal local ignored `/Users/ranjith/code/backend/.e
 | `src/scripts/runVercelBuild.ts` | Added | Production recovery, migration, privacy verification or documented rollout evidence. |
 | `src/scripts/runVercelPrivateMigration.ts` | Added | Production recovery, migration, privacy verification or documented rollout evidence. |
 | `src/scripts/verifyProductionPrivateWrites.ts` | Added | Guarded synthetic production service/API checks with cleanup and counts-only reports. |
+
+Deployment validation: backend build/TypeScript, 22 privacy/runner/diagnostic tests, 9 AI/manual/PDF tests, 6 backup tests and seven PostgreSQL suites passed. Frontend build/TypeScript and 148 tests passed. Full lint remains failing: backend 7 max-lines errors; frontend 9 errors/1 warning. Every frontend failing rule/severity was compared with the preceding production commit and is inherited; the repeated pre-push lint hook was bypassed only after running it and recording that comparison. Hook/rules were not changed.

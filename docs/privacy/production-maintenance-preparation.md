@@ -1,6 +1,6 @@
 # Production maintenance preparation — 2026-10-16
 
-**Latest executed checkpoint:** the manual database/all-Storage backup and two isolated restore checks passed; Data API is confirmed disabled and public-schema access hardening is applied and verified. See [manual-production-backup.md](manual-production-backup.md). Earlier sections below describe historical preparation and must not be used as current absence-of-backup evidence. The original nine encryption migrations and the additive health extraction outcome migration are now applied. Resumable backfills are running; validation and application deployment remain pending. Old writers and automatic builds remain blocked.
+**Latest executed checkpoint:** the manual database/all-Storage backup and two isolated restore checks passed; Data API is confirmed disabled and public-schema access hardening is applied and verified. See [manual-production-backup.md](manual-production-backup.md). Earlier sections below describe historical preparation and must not be used as current absence-of-backup evidence. The original nine encryption migrations and the additive health extraction outcome migration are now applied. Both resumable backfills and their verification passes are complete: zero pending protected records/jobs/exports/cleanup, all 30 constraints validated. Application deployment and controlled smoke tests follow this checkpoint. Old writers and automatic builds remain blocked.
 
 ## Remote configuration-only preflight: completed
 
