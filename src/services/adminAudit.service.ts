@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { prisma } from "../lib/prisma";
+import { withAdminAccess } from "../privacy/access";
 
 type AuditEntry = {
   adminId: string | null;
@@ -69,6 +70,29 @@ export async function withAudit<T>(
     await writeAuditLog(tx, entry);
     return result;
   });
+}
+
+// DRAFT (22 Oct) — see the long comment on withAdminAccess in
+// src/privacy/access.ts for why this exists and why it's split across two
+// files (circular-import constraint). This is the version admin routes
+// should actually call: it makes auditing structurally mandatory rather
+// than relying on every route author remembering a separate writeAuditLog
+// call, the same "enforce via code, not discipline" reasoning behind every
+// contract test in this project. Only audits on success, matching the
+// existing /admin/v1/users/:id precedent (opening a record that turns out
+// not to exist isn't logged as a "view"). Not yet reviewed by Ranjith —
+// this entire primitive is a proposal, not a decided design.
+export async function withAuditedAdminAccess<T>(
+  ctx: { adminId: string; actorEmail: string },
+  input: { capability: string; action: string; targetType?: string; targetId?: string },
+  work: () => Promise<T>,
+): Promise<T> {
+  const result = await withAdminAccess({ adminId: ctx.adminId, capability: input.capability }, work);
+  await writeAuditLog(prisma, {
+    adminId: ctx.adminId, actorEmail: ctx.actorEmail,
+    action: input.action, targetType: input.targetType, targetId: input.targetId,
+  });
+  return result;
 }
 
 const RETENTION_FLOOR_DAYS = 365; // DPDP Rules 2025 — security/access log minimum.

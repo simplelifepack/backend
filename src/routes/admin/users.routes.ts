@@ -5,7 +5,8 @@ import { prisma } from "../../lib/prisma";
 import { requireAdminAuth, type AdminAuthenticatedRequest } from "../../middleware/adminAuth";
 import { requireCapability, requireStepUp } from "../../middleware/adminRbac";
 import { getAccountUsage } from "../../services/accountUsage.service";
-import { writeAuditLog } from "../../services/adminAudit.service";
+import { withAuditedAdminAccess, writeAuditLog } from "../../services/adminAudit.service";
+import { withAdminAccess } from "../../privacy/access";
 import {
   AdminUsersError, cancelDeletionOnBehalf, changeUserTier, forceSignOutUser,
   listExportJobsForUser, listSignInEventsForUser, suspendUser, unsuspendUser,
@@ -38,21 +39,31 @@ router.get("/", requireCapability("users.view"), async (req, res, next) => {
       ...(tier ? { accountTier: tier } : {}),
       ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { email: { contains: search, mode: "insensitive" as const } }] } : {}),
     };
-    const [total, items] = await Promise.all([
-      prisma.user.count({ where }),
-      prisma.user.findMany({
-        where,
-        select: {
-          id: true, name: true, email: true, accountTier: true, createdAt: true,
-          passwordHash: true, pinHash: true,
-          externalIdentities: { select: { provider: true } },
-          scheduledDeletionAt: true, suspendedAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-    ]);
+    // DRAFT: withAuditedAdminAccess (proposal, not yet reviewed — see
+    // src/privacy/access.ts). Also note: `search` filters by name/email
+    // (encrypted, `contains`+insensitive) — whether that's honored
+    // correctly post-decryption or silently ignored at the SQL level is a
+    // separate, unverified question this draft doesn't address.
+    const { adminUser } = req as unknown as AdminAuthenticatedRequest;
+    const [total, items] = await withAuditedAdminAccess(
+      { adminId: adminUser.id, actorEmail: adminUser.email },
+      { capability: "users.view", action: "user.list_view" },
+      () => Promise.all([
+        prisma.user.count({ where }),
+        prisma.user.findMany({
+          where,
+          select: {
+            id: true, name: true, email: true, accountTier: true, createdAt: true,
+            passwordHash: true, pinHash: true,
+            externalIdentities: { select: { provider: true } },
+            scheduledDeletionAt: true, suspendedAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+      ]),
+    );
     return res.json({
       items: items.map((u) => ({
         id: u.id, name: u.name, email: u.email, accountTier: u.accountTier,
@@ -70,17 +81,28 @@ router.get("/", requireCapability("users.view"), async (req, res, next) => {
 router.get("/:id", requireCapability("users.view"), async (req, res, next) => {
   try {
     const id = z.string().min(1).parse(req.params.id);
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true, name: true, email: true, accountTier: true, createdAt: true,
-        passwordHash: true, pinHash: true,
-        externalIdentities: { select: { provider: true } },
-        deletionRequestedAt: true, scheduledDeletionAt: true,
-        suspendedAt: true, suspendedReason: true,
-        aiProcessingEnabled: true, country: true,
-      },
-    });
+    // DRAFT: withAdminAccess (proposal, not yet reviewed — see
+    // src/privacy/access.ts). Using the unaudited primitive directly here,
+    // not withAuditedAdminAccess — that wrapper audits unconditionally once
+    // work() resolves, but a not-found lookup must neither be audited as a
+    // "view" nor lose its specific "User not found." message to the
+    // generic error handler's message-stripping (confirmed: a thrown error
+    // without a whitelisted .code gets reduced to "Request failed." — see
+    // errorHandling.ts). Preserves the original control flow exactly.
+    const { adminUser } = req as unknown as AdminAuthenticatedRequest;
+    const user = await withAdminAccess({ adminId: adminUser.id, capability: "users.view" }, () =>
+      prisma.user.findUnique({
+        where: { id },
+        select: {
+          id: true, name: true, email: true, accountTier: true, createdAt: true,
+          passwordHash: true, pinHash: true,
+          externalIdentities: { select: { provider: true } },
+          deletionRequestedAt: true, scheduledDeletionAt: true,
+          suspendedAt: true, suspendedReason: true,
+          aiProcessingEnabled: true, country: true,
+        },
+      }),
+    );
     if (!user) return res.status(404).json({ message: "User not found." });
 
     const [usage, documentCount, healthMemberCount, trustMemberCount] = await Promise.all([
@@ -92,7 +114,6 @@ router.get("/:id", requireCapability("users.view"), async (req, res, next) => {
 
     // Opening a user's record is itself logged — sensitive reads are audited,
     // not just writes (decision D4).
-    const { adminUser } = req as unknown as AdminAuthenticatedRequest;
     await writeAuditLog(prisma, {
       adminId: adminUser.id, actorEmail: adminUser.email, action: "user.view",
       targetType: "User", targetId: id,
