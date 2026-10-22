@@ -1,3 +1,5 @@
+import { withCredentialLookup, withPrivateUser } from "../privacy/access";
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
@@ -8,7 +10,9 @@ import { normalizeRequirementDocumentTypes, slugify } from "./readiness/normaliz
 import bcrypt from "bcrypt";
 
 export const PACKAGES_ADMIN_EMAIL = "admin@readines.com";
-const SYSTEM_PACK_CREATORS = ["seed", "ai"];
+// AI-derived catalogue entries can include legacy user queries/aliases. They are
+// excluded from operator APIs until a separate public-content review is complete.
+const SYSTEM_PACK_CREATORS = ["seed"];
 const CSV_COLUMNS = [
   "title",
   "slug",
@@ -29,12 +33,22 @@ const CSV_COLUMNS = [
   "sourcesJson",
 ];
 
+function looksLikeUrl(value: string) {
+  return /https?:\/\//i.test(value);
+}
+
+const sourceTypeSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return looksLikeUrl(trimmed) ? undefined : trimmed;
+}, z.string().max(80).optional());
+
 const sourceSchema = z.object({
   title: z.string().trim().min(1).max(200),
   url: z.string().trim().url().max(500),
   name: z.string().trim().max(160).optional(),
   organization: z.string().trim().max(160).optional(),
-  type: z.string().trim().max(80).optional(),
+  type: sourceTypeSchema,
   retrievedAt: z.string().trim().max(40).optional(),
 }).strict();
 
@@ -66,7 +80,7 @@ export const packageAdminInputSchema = z.object({
   slug: z.string().trim().min(1).max(160).optional(),
   sourceName: z.string().trim().max(160).optional().nullable(),
   sourceTitle: z.string().trim().max(200).optional().nullable(),
-  sourceType: z.string().trim().max(80).optional().nullable(),
+  sourceType: sourceTypeSchema.nullable(),
   sourceUrl: z.string().trim().url().max(500).optional().nullable(),
   sources: z.array(sourceSchema).max(20).default([]),
   subtitle: z.string().trim().max(240).optional().nullable(),
@@ -178,12 +192,14 @@ export async function provisionPackagesAdminFromEnv() {
   if (!password) throw new Error("PACKAGES_ADMIN_INITIAL_PASSWORD is required.");
   if (password.length < 8) throw new Error("PACKAGES_ADMIN_INITIAL_PASSWORD must be at least 8 characters.");
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await prisma.user.upsert({
+  const existing = await withCredentialLookup(() => prisma.user.findUnique({ where: { email: PACKAGES_ADMIN_EMAIL }, select: { id: true } }));
+  const id = existing?.id ?? randomUUID();
+  const user = await withPrivateUser(id, () => prisma.user.upsert({
     where: { email: PACKAGES_ADMIN_EMAIL },
-    create: { email: PACKAGES_ADMIN_EMAIL, name: "Packages Admin", passwordHash },
+    create: { id, email: PACKAGES_ADMIN_EMAIL, name: "Packages Admin", passwordHash },
     update: { passwordHash, name: "Packages Admin", authVersion: { increment: 1 } },
     select: { id: true, email: true },
-  });
+  }));
   return user;
 }
 

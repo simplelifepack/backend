@@ -4,6 +4,25 @@
 // therefore only promise 'support cannot see your vault' if the DTO layer,
 // the contract tests and the audit log all hold."
 //
+// CURRENTLY FAILING (21-22 Oct) — expected, not a regression in this PR.
+// Merging main's 16 Oct field-level encryption work (src/privacy/) exposed
+// that no admin-access mode exists in the privacy layer at all: at least 8
+// of the 25 routes below now 404/500 (confirmed directly, not just here —
+// e.g. GET /admin/v1/users throws "Private record not found" because its
+// select includes User.name/email, which are encrypted and unreadable
+// outside a withPrivateUser(ownUserId) context an admin reading SOMEONE
+// ELSE's data structurally doesn't have). Sent Ranjith three precise
+// questions about this (22 Oct); confirmed in his own words: "no one can
+// view user details, but yes, this should be implemented." This is a real,
+// acknowledged, system-wide gap — not something to route around here with
+// withPrivateMigration (that bypasses the exact ownership check the whole
+// encryption effort exists to enforce). See admin-web/TRACKER.md's
+// "Merging with main's privacy/encryption work" section for the full
+// writeup and all three confirmed gaps. Left this test's assertions
+// unchanged (asserting 200 + 0 leaks for every route) rather than curating
+// a passing subset — it's testing the right thing, and should go green on
+// its own once an admin-access mode exists, with no rewrite needed here.
+//
 // This seeds ONE real user carrying a distinct marker string in every
 // field sealedFields.ts tracks, boots the real Express app on an ephemeral
 // port, signs in as a real admin via the existing dev-login bypass, and
@@ -38,6 +57,7 @@ import type { AddressInfo } from "node:net";
 
 import { app } from "../../app";
 import { prisma } from "../../lib/prisma";
+import { withPrivateMigration } from "../../privacy/access";
 import { devLogin } from "../../services/adminAuth.service";
 
 const ALL_MARKERS: string[] = [];
@@ -79,7 +99,16 @@ const ROUTE_TEMPLATES = [
 
 const MINIMUM_ROUTES_CHECKED = ROUTE_TEMPLATES.length; // guards against the test silently checking fewer routes than intended
 
+// Wrapped in withPrivateMigration (main's own sanctioned pattern for
+// synthetic test fixtures — see src/privacy/modules.integration.test.ts):
+// without an access context, main's field-level encryption layer (16 Oct,
+// untouched by this file) rejects any create() on an encrypted model with
+// "Private record not found." This fixture predates that work.
 async function seed() {
+  return withPrivateMigration("admin dto allowlist contract test seed", () => seedInner());
+}
+
+async function seedInner() {
   const stamp = Date.now();
   const user = await prisma.user.create({
     data: {
@@ -91,10 +120,10 @@ async function seed() {
   });
 
   await prisma.refreshToken.create({
-    data: { userId: user.id, tokenHash: marker("RefreshToken.tokenHash"), expiresAt: new Date(Date.now() + 86_400_000) },
+    data: { userId: user.id, tokenHash: marker(`RefreshToken.tokenHash:${stamp}`), expiresAt: new Date(Date.now() + 86_400_000) },
   });
   await prisma.passwordResetToken.create({
-    data: { userId: user.id, tokenHash: marker("PasswordResetToken.tokenHash"), expiresAt: new Date(Date.now() + 86_400_000) },
+    data: { userId: user.id, tokenHash: marker(`PasswordResetToken.tokenHash:${stamp}`), expiresAt: new Date(Date.now() + 86_400_000) },
   });
   await prisma.accountChangeOtp.create({
     data: {
@@ -118,6 +147,12 @@ async function seed() {
 
   const document = await prisma.document.create({
     data: {
+      // Required since main's encryption work (16 Oct): the privacy layer
+      // derives the encryption binding's ownerId from ownerProfileId for
+      // Document specifically, and refuses to encrypt a field with no
+      // resolvable owner. A real document always has one; this seed just
+      // never had to set it before.
+      ownerProfileId: user.id,
       title: marker("Document.title"),
       displayName: marker("Document.displayName"),
       uniqueIdentifier: marker("Document.uniqueIdentifier"),
@@ -234,7 +269,7 @@ async function seed() {
       dateOfBirth: "2000-01-01",
       bloodGroup: "O+",
       accessType: "VIEW_ONLY",
-      inviteTokenHash: marker("TrustMember.inviteTokenHash"),
+      inviteTokenHash: marker(`TrustMember.inviteTokenHash:${stamp}`),
       invitePinHash: marker("TrustMember.invitePinHash"),
     },
   });
@@ -245,23 +280,34 @@ async function seed() {
   return { userId: user.id, documentId: document.id, healthMemberId: healthMember.id, trustMemberId: trustMember.id };
 }
 
-async function cleanup(userId: string) {
-  // Cascades cover everything FK'd to the user (RefreshToken, Document's
-  // health/wealth linkage, TrustMember, etc.) except Document itself, which
-  // has no direct FK to User — delete it by id explicitly.
-  await prisma.healthFollowUp.deleteMany({ where: { userId } });
-  await prisma.healthReminder.deleteMany({ where: { userId } });
-  await prisma.healthMedication.deleteMany({ where: { userId } });
-  await prisma.trackedHealthMetric.deleteMany({ where: { userId } });
-  await prisma.healthMeasurement.deleteMany({ where: { userId } });
-  await prisma.healthDocument.deleteMany({ where: { userId } });
-  await prisma.healthMember.deleteMany({ where: { userId } });
-  await prisma.wealthRecordAttachment.deleteMany({ where: { wealthRecord: { ownerUserId: userId } } });
-  await prisma.wealthRecord.deleteMany({ where: { ownerUserId: userId } });
-  await prisma.trustMemberPermission.deleteMany({ where: { trustMember: { ownerUserId: userId } } });
-  await prisma.trustMember.deleteMany({ where: { ownerUserId: userId } });
-  await prisma.document.deleteMany({ where: { originalName: "contract-test.pdf" } });
-  await prisma.user.deleteMany({ where: { id: userId } });
+async function cleanup(userId: string, documentId: string) {
+  // Same withPrivateMigration requirement as seed() above — a kind:"migration"
+  // access context passes assertPrivateOwner unconditionally (see
+  // src/privacy/access.ts), which is what "for offline backfills and
+  // isolated tests" means in practice.
+  await withPrivateMigration("admin dto allowlist contract test cleanup", async () => {
+    // Cascades cover everything FK'd to the user (RefreshToken, Document's
+    // health/wealth linkage, TrustMember, etc.) except Document itself, which
+    // has no direct FK to User — delete it by id explicitly.
+    await prisma.healthFollowUp.deleteMany({ where: { userId } });
+    await prisma.healthReminder.deleteMany({ where: { userId } });
+    await prisma.healthMedication.deleteMany({ where: { userId } });
+    await prisma.trackedHealthMetric.deleteMany({ where: { userId } });
+    await prisma.healthMeasurement.deleteMany({ where: { userId } });
+    await prisma.healthDocument.deleteMany({ where: { userId } });
+    await prisma.healthMember.deleteMany({ where: { userId } });
+    await prisma.wealthRecordAttachment.deleteMany({ where: { wealthRecord: { ownerUserId: userId } } });
+    await prisma.wealthRecord.deleteMany({ where: { ownerUserId: userId } });
+    await prisma.trustMemberPermission.deleteMany({ where: { trustMember: { ownerUserId: userId } } });
+    await prisma.trustMember.deleteMany({ where: { ownerUserId: userId } });
+    // By id, not originalName — deleteMany on an arbitrary protected string
+    // field needs a known owner scope to compute its lookup token, which
+    // withPrivateMigration's kind:"migration" context doesn't carry (that's
+    // "offline backfill", not "this specific user's data"). Deleting by id
+    // sidesteps the lookup-token path entirely.
+    await prisma.document.deleteMany({ where: { id: documentId } });
+    await prisma.user.deleteMany({ where: { id: userId } });
+  });
 }
 
 async function run() {
@@ -306,7 +352,7 @@ async function run() {
     }
   } finally {
     await new Promise((resolve) => server.close(resolve));
-    await cleanup(seeded.userId);
+    await cleanup(seeded.userId, seeded.documentId);
   }
 }
 

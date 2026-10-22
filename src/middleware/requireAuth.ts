@@ -1,3 +1,4 @@
+import { withPrivateUser } from "../privacy/access";
 import type { NextFunction, Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import { performance } from "node:perf_hooks";
@@ -25,10 +26,6 @@ export type AuthenticatedRequest = Request & {
   authTiming?: AuthTiming;
 };
 
-function fallbackNameFromEmail(email: string) {
-  return email.split("@")[0] || "User";
-}
-
 function isDatabaseConnectionError(error: unknown) {
   if (error instanceof Prisma.PrismaClientInitializationError) return true;
   if (error instanceof Prisma.PrismaClientKnownRequestError) return true;
@@ -44,6 +41,7 @@ function attachTiming(req: Request, res: Response, authTiming: AuthTiming | unde
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  res.setHeader("Cache-Control", "private, no-store");
   const timingEnabled = req.get("x-readiness-timing") === "1";
   const requestStartMs = performance.now();
   const authTiming: AuthTiming | undefined = timingEnabled ? { requestStartMs, authDbLookups: 0 } : undefined;
@@ -67,28 +65,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       });
     }
 
-    const authUser = {
-      id: payload.sub,
-      name: payload.name?.trim() || fallbackNameFromEmail(payload.email),
-      email: payload.email,
-    };
-
-    if (!payload.email || (payload.authVersion !== undefined && !Number.isFinite(payload.authVersion))) {
-      return res.status(401).json({
-        message: "Unauthorized.",
-      });
-    }
-
     const revokedAuthVersion = getNotedAuthVersion(payload.sub);
-    if (revokedAuthVersion !== null && (payload.authVersion ?? 0) < revokedAuthVersion) {
-      return res.status(401).json({
-        message: "Unauthorized.",
-      });
-    }
+    if (revokedAuthVersion !== null && (payload.authVersion ?? 0) < revokedAuthVersion) return res.status(401).json({ message: "Unauthorized." });
+    // SQL checks revocation version before the facade can decrypt a profile.
+    const user = await withPrivateUser(payload.sub, () => getUserById(payload.sub, payload.authVersion ?? 0));
+    if (!user) return res.status(401).json({ message: "Unauthorized." });
+    const authUser = user;
+    if (authTiming) authTiming.authDbLookups = 1;
 
     (req as AuthenticatedRequest).authUser = authUser;
     attachTiming(req, res, authTiming, requestStartMs);
-    return next();
+    return withPrivateUser(authUser.id, next);
   } catch (error) {
     if (isDatabaseConnectionError(error)) {
       if (authTiming) {
@@ -110,6 +97,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 }
 
 export async function requireFreshAuth(req: Request, res: Response, next: NextFunction) {
+  res.setHeader("Cache-Control", "private, no-store");
   const timingEnabled = req.get("x-readiness-timing") === "1";
   const requestStartMs = performance.now();
   const authTiming: AuthTiming | undefined = timingEnabled ? { requestStartMs, authDbLookups: 0 } : undefined;
@@ -127,7 +115,7 @@ export async function requireFreshAuth(req: Request, res: Response, next: NextFu
 
     const userLookupStartMs = performance.now();
     if (authTiming) authTiming.authDbLookups = 1;
-    const user = await getUserById(payload.sub);
+    const user = await withPrivateUser(payload.sub, () => getUserById(payload.sub, payload.authVersion ?? 0));
     if (authTiming) authTiming.userLookupMs = performance.now() - userLookupStartMs;
 
     if (!user || (payload.authVersion ?? 0) !== (user.authVersion ?? 0)) {
@@ -136,7 +124,7 @@ export async function requireFreshAuth(req: Request, res: Response, next: NextFu
 
     (req as AuthenticatedRequest).authUser = user;
     attachTiming(req, res, authTiming, requestStartMs);
-    return next();
+    return withPrivateUser(user.id, next);
   } catch (error) {
     if (isDatabaseConnectionError(error)) {
       if (authTiming) {

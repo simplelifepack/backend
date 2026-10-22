@@ -1,3 +1,4 @@
+import { withCredentialLookup, withPrivateUser } from "../privacy/access";
 import { Router } from "express";
 
 import { adminLimiter, requireAdminSeedToken } from "../middleware/security";
@@ -79,16 +80,18 @@ router.post("/test", async (req, res, next) => {
 adminNotificationsRouter.post("/send", adminLimiter, requireAdminSeedToken, async (req, res, next) => {
   try {
     const payload = adminPayload(req.body);
-    const user = await prisma.user.findFirst({
+    const user = await withCredentialLookup(() => prisma.user.findFirst({
       where: payload.userId ? { id: payload.userId } : { email: payload.email },
       select: { id: true },
-    });
+    }));
     if (!user) return res.status(404).json({ message: "User not found." });
-    const result = await sendPushToUser(user.id, {
+    // The authenticated operator authorizes delivery, never a private-data read.
+    // Only the delivery service consumes credentials; the response contains counts.
+    const result = await withPrivateUser(user.id, () => sendPushToUser(user.id, {
       title: payload.title,
       body: payload.body,
       url: payload.url,
-    });
+    }));
     return res.json(result);
   } catch (error) {
     return next(error);

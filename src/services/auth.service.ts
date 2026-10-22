@@ -1,6 +1,7 @@
+import { withCredentialLookup, withPrivateUser } from "../privacy/access";
 /* eslint-disable max-lines */
 import bcrypt from "bcrypt";
-import { createHash, randomBytes, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { Prisma, type User } from "@prisma/client";
 import { z } from "zod";
 
@@ -248,11 +249,13 @@ async function buildAuthResult(user: AuthUser, extra: Pick<AuthResult, "deletion
 }
 
 function findUserByEmail(email: string) {
-  return prisma.user.findUnique({
-    where: {
-      email: email.toLowerCase(),
-    },
-  });
+  return withCredentialLookup(() => prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+    select: { id: true, passwordHash: true, pinHash: true, pinAttemptCount: true, pinLockedUntil: true, authVersion: true },
+  }));
+}
+async function authenticatedUser(userId: string) {
+  return prisma.user.findUniqueOrThrow({ where: { id: userId } });
 }
 
 function selectAuthUser(user: {
@@ -281,6 +284,7 @@ async function markPinFailure(userId: string, currentAttempts: number) {
       pinAttemptCount: nextAttempts,
       pinLockedUntil: nextAttempts >= PIN_MAX_ATTEMPTS ? getPinLockoutExpiry() : null,
     },
+    select: { id: true },
   });
 }
 
@@ -288,6 +292,7 @@ async function clearPinFailures(userId: string) {
   await prisma.user.update({
     where: { id: userId },
     data: { pinAttemptCount: 0, pinLockedUntil: null },
+    select: { id: true },
   });
 }
 
@@ -304,11 +309,11 @@ async function assertPinMatches(user: {
 
   const isMatch = await bcrypt.compare(pin, user.pinHash);
   if (!isMatch) {
-    await markPinFailure(user.id, user.pinAttemptCount);
+    await withPrivateUser(user.id, () => markPinFailure(user.id, user.pinAttemptCount));
     throw httpError(message, 401);
   }
 
-  if (user.pinAttemptCount > 0 || user.pinLockedUntil) await clearPinFailures(user.id);
+  if (user.pinAttemptCount > 0 || user.pinLockedUntil) await withPrivateUser(user.id, () => clearPinFailures(user.id));
 }
 
 export async function requestSignupOtp(input: unknown) {
@@ -322,7 +327,11 @@ export async function requestSignupOtp(input: unknown) {
   const passwordHash = await bcrypt.hash(password, 10);
   const otp = String(randomInt(100000, 1000000));
 
+  const previous = await withCredentialLookup(() => prisma.signupVerification.findUnique({ where: { email: normalizedEmail }, select: { id: true } }));
+  const pendingId = previous?.id ?? randomUUID();
+  return withPrivateUser(pendingId, async () => {
   await prisma.signupVerification.upsert({
+    select: { id: true },
     where: { email: normalizedEmail },
     update: {
       name,
@@ -332,6 +341,7 @@ export async function requestSignupOtp(input: unknown) {
       attemptCount: 0,
     },
     create: {
+      id: pendingId,
       name,
       email: normalizedEmail,
       passwordHash,
@@ -348,6 +358,7 @@ export async function requestSignupOtp(input: unknown) {
   return {
     message: "We sent a 6-digit signup code to your email.",
   };
+  });
 }
 
 export async function signup(input: unknown, context?: emailService.LoginAlertContext): Promise<AuthResult> {
@@ -358,25 +369,27 @@ export async function signup(input: unknown, context?: emailService.LoginAlertCo
     throw httpError("User already exists. Log in.", 409);
   }
 
-  const pending = await prisma.signupVerification.findUnique({
-    where: { email: normalizedEmail },
-  });
+  const pending = await withCredentialLookup(() => prisma.signupVerification.findUnique({
+    where: { email: normalizedEmail }, select: { id: true, passwordHash: true, otpHash: true, expiresAt: true, attemptCount: true },
+  }));
 
   const now = new Date();
   const expectedHash = hashSignupOtp(normalizedEmail, otp);
 
   if (!pending || pending.expiresAt <= now || pending.attemptCount >= SIGNUP_OTP_MAX_ATTEMPTS || pending.otpHash !== expectedHash) {
     if (pending && pending.expiresAt > now && pending.attemptCount < SIGNUP_OTP_MAX_ATTEMPTS) {
-      await prisma.signupVerification.updateMany({
-        where: { email: normalizedEmail, attemptCount: { lt: SIGNUP_OTP_MAX_ATTEMPTS } },
-        data: { attemptCount: { increment: 1 } },
-      });
+      await withPrivateUser(pending.id, () => prisma.signupVerification.updateMany({
+        where: { id: pending.id, attemptCount: { lt: SIGNUP_OTP_MAX_ATTEMPTS } }, data: { attemptCount: { increment: 1 } },
+      }));
     }
     throw httpError("Invalid or expired signup code.", 400);
   }
 
+  const verifiedPending = await withPrivateUser(pending.id, () => prisma.signupVerification.findUniqueOrThrow({ where: { id: pending.id } }));
+  const userId = randomUUID();
+  return withPrivateUser(userId, async () => {
   const user = await prisma.$transaction(async (tx) => {
-    const claimed = await tx.signupVerification.deleteMany({
+    const claimed = await withPrivateUser(pending.id, () => tx.signupVerification.deleteMany({
       where: {
         id: pending.id,
         email: normalizedEmail,
@@ -384,12 +397,13 @@ export async function signup(input: unknown, context?: emailService.LoginAlertCo
         expiresAt: { gt: new Date() },
         attemptCount: { lt: SIGNUP_OTP_MAX_ATTEMPTS },
       },
-    });
+    }));
     if (claimed.count !== 1) throw httpError("Invalid or expired signup code.", 400);
 
     const created = await tx.user.create({
       data: {
-        name: pending.name || name,
+        id: userId,
+        name: verifiedPending.name || name,
         email: normalizedEmail,
         passwordHash: pending.passwordHash,
       },
@@ -411,60 +425,65 @@ export async function signup(input: unknown, context?: emailService.LoginAlertCo
   await recordSignIn(user.id, "signup", context);
   dispatchAuthEmail(() => emailService.sendWelcomeEmail(user));
   return result;
+  });
 }
 
 export async function login(input: unknown, context?: emailService.LoginAlertContext): Promise<AuthResult> {
   const { email, password } = loginSchema.parse(input);
-  const user = await findUserByEmail(email);
+  const credentials = await findUserByEmail(email);
 
-  if (!user) {
+  if (!credentials) {
     throw httpError("Invalid email or password.", 401);
   }
 
-  if (!user.passwordHash) {
+  if (!credentials.passwordHash) {
     throw httpError("Invalid email or password.", 401);
   }
 
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
+  const isMatch = await bcrypt.compare(password, credentials.passwordHash);
 
   if (!isMatch) {
     throw httpError("Invalid email or password.", 401);
   }
 
+  return withPrivateUser(credentials.id, async () => {
+  const user = await authenticatedUser(credentials.id);
   if (user.suspendedAt) {
     throw httpError("This account has been suspended. Contact support.", 403);
   }
-
   const authUser = selectAuthUser(user);
-  const deletionCancelled = await cancelPendingDeletion(user.id);
+  const deletionCancelled = await cancelPendingDeletion(credentials.id);
   const result = await buildAuthResult(authUser, { deletionCancelled });
   await acceptTrustInvitationsForUser(user.id, user.email);
   await recordSignIn(user.id, "password", context);
   dispatchAuthEmail(() => emailService.sendLoginAlertEmail(user, context));
   return result;
+  });
 }
 
 export async function loginWithPin(input: unknown, context?: emailService.LoginAlertContext): Promise<AuthResult> {
   const { email, pin } = pinLoginSchema.parse(input);
-  const user = await findUserByEmail(email);
+  const credentials = await findUserByEmail(email);
 
-  if (!user?.pinHash) {
+  if (!credentials?.pinHash) {
     throw httpError(PIN_LOGIN_MESSAGE, 401);
   }
 
-  await assertPinMatches(user, pin, PIN_LOGIN_MESSAGE);
+  await assertPinMatches(credentials, pin, PIN_LOGIN_MESSAGE);
 
+  return withPrivateUser(credentials.id, async () => {
+  const user = await authenticatedUser(credentials.id);
   if (user.suspendedAt) {
     throw httpError("This account has been suspended. Contact support.", 403);
   }
-
   const authUser = selectAuthUser(user);
-  const deletionCancelled = await cancelPendingDeletion(user.id);
+  const deletionCancelled = await cancelPendingDeletion(credentials.id);
   const result = await buildAuthResult(authUser, { deletionCancelled });
   await acceptTrustInvitationsForUser(user.id, user.email);
   await recordSignIn(user.id, "pin", context);
   dispatchAuthEmail(() => emailService.sendLoginAlertEmail(user, context));
   return result;
+  });
 }
 
 export async function setupPin(userId: string, input: unknown) {
@@ -571,72 +590,35 @@ export async function googleLogin(
   context?: emailService.LoginAlertContext,
 ): Promise<AuthResult> {
   const google = await verifyGoogleCredential(input, verifier);
-
-  let user: User | undefined;
-  let emailType: "welcome" | "login_alert" = "login_alert";
-  for (let attempt = 0; attempt < 3 && !user; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const authenticated = await prisma.$transaction(async (tx) => {
-        const existingIdentity = await tx.externalIdentity.findUnique({
-          where: {
-            provider_providerAccountId: {
-              provider: "google",
-              providerAccountId: google.subject,
-            },
-          },
-          include: { user: true },
-        });
-
-        if (existingIdentity) return { user: existingIdentity.user, emailType: "login_alert" as const };
-
-        const existingUser = await tx.user.findUnique({ where: { email: google.email } });
-        const linkedUser = existingUser ?? await tx.user.create({
-          data: {
-            email: google.email,
-            name: google.name || google.givenName || google.email.split("@")[0],
-            passwordHash: null,
-          },
-        });
-
-        await tx.externalIdentity.create({
-          data: {
-            userId: linkedUser.id,
-            provider: "google",
-            providerAccountId: google.subject,
-            avatarUrl: google.picture,
-          },
-        });
-
-        return {
-          user: linkedUser,
-          emailType: existingUser ? "login_alert" as const : "welcome" as const,
-        };
-      }, { isolationLevel: "Serializable" });
-      user = authenticated.user;
-      emailType = authenticated.emailType;
+      const identity = await withCredentialLookup(() => prisma.externalIdentity.findUnique({
+        where: { provider_providerAccountId: { provider: "google", providerAccountId: google.subject } }, select: { userId: true },
+      }));
+      const existing = identity ? { id: identity.userId } : await findUserByEmail(google.email);
+      const userId = existing?.id ?? randomUUID();
+      return await withPrivateUser(userId, async () => {
+        const user = await prisma.$transaction(async tx => {
+          const linked = existing ? await tx.user.findUniqueOrThrow({ where: { id: userId } }) : await tx.user.create({ data: {
+            id: userId, email: google.email, name: google.name || google.givenName || google.email.split("@")[0], passwordHash: null,
+          } });
+          if (!identity) await tx.externalIdentity.create({ data: { userId, provider: "google", providerAccountId: google.subject, avatarUrl: google.picture } });
+          return linked;
+        }, { isolationLevel: "Serializable" });
+        if (user.suspendedAt) {
+          throw httpError("This account has been suspended. Contact support.", 403);
+        }
+        const result = await buildAuthResult(selectAuthUser(user));
+        await acceptTrustInvitationsForUser(user.id, user.email);
+        await recordSignIn(user.id, "google", context);
+        dispatchAuthEmail(() => existing ? emailService.sendLoginAlertEmail(user, context) : emailService.sendWelcomeEmail(user));
+        return result;
+      });
     } catch (error) {
-      const retryable = error instanceof Prisma.PrismaClientKnownRequestError
-        && (error.code === "P2002" || error.code === "P2034");
-      if (!retryable || attempt === 2) throw error;
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || !["P2002", "P2034"].includes(error.code) || attempt === 2) throw error;
     }
   }
-
-  if (!user) throw new Error("Unable to authenticate with Google.");
-
-  if (user.suspendedAt) {
-    throw httpError("This account has been suspended. Contact support.", 403);
-  }
-
-  const authUser = selectAuthUser(user);
-  const result = await buildAuthResult(authUser);
-  await acceptTrustInvitationsForUser(user.id, user.email);
-  await recordSignIn(user.id, "google", context);
-  if (emailType === "welcome") {
-    dispatchAuthEmail(() => emailService.sendWelcomeEmail(user));
-  } else {
-    dispatchAuthEmail(() => emailService.sendLoginAlertEmail(user, context));
-  }
-  return result;
+  throw new Error("Unable to authenticate with Google.");
 }
 
 export async function refresh(input: unknown): Promise<AuthResult> {
@@ -651,11 +633,7 @@ export async function refresh(input: unknown): Promise<AuthResult> {
       user: {
         select: {
           id: true,
-          name: true,
-          email: true,
           authVersion: true,
-          accountTier: true,
-          pinHash: true,
         },
       },
     },
@@ -670,15 +648,17 @@ export async function refresh(input: unknown): Promise<AuthResult> {
     throw httpError("Invalid refresh token.", 401);
   }
 
+  return withPrivateUser(savedRefreshToken.userId, async () => {
   const claimed = await prisma.refreshToken.updateMany({
     where: { id: savedRefreshToken.id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
   if (claimed.count !== 1) throw httpError("Invalid refresh token.", 401);
 
-  const authUser = selectAuthUser(savedRefreshToken.user);
+  const authUser = selectAuthUser(await authenticatedUser(savedRefreshToken.userId));
   const deletionCancelled = await cancelPendingDeletion(savedRefreshToken.user.id);
   return buildAuthResult(authUser, { deletionCancelled });
+  });
 }
 
 export async function logout(input: unknown) {
@@ -763,7 +743,8 @@ export async function verifyEmailChange(userId: string, input: unknown) {
 
   const requestedEmail = saved.newEmail;
   const user = await prisma.$transaction(async (tx) => {
-    const duplicate = await tx.user.findFirst({ where: { email: requestedEmail, id: { not: userId } }, select: { id: true } });
+    const found = await withCredentialLookup(() => tx.user.findUnique({ where: { email: requestedEmail }, select: { id: true } }));
+    const duplicate = found?.id !== userId ? found : null;
     if (duplicate) throw httpError("Unable to use that email address.", 409);
     const updated = await tx.user.update({
       where: { id: userId },
@@ -862,7 +843,7 @@ export async function forgotPassword(input: unknown) {
         expiresAt: getPasswordResetExpiry(),
       },
     });
-    await emailService.sendPasswordResetEmail(user, buildPasswordResetUrl(token)).catch((error) => {
+    await emailService.sendPasswordResetEmail({ id: user.id, email: email.toLowerCase() }, buildPasswordResetUrl(token)).catch((error) => {
       console.error({
         event: "password_reset_email_failed",
         errorCode: error instanceof Error ? error.name : "unknown",
@@ -902,7 +883,7 @@ export async function requestPasswordResetOtp(input: unknown) {
       expiresAt: getPasswordResetExpiry(),
     },
   });
-  const delivery = await emailService.sendPasswordResetOtpEmail(user, otp).catch((error) => {
+  const delivery = await emailService.sendPasswordResetOtpEmail({ id: user.id, email: email.toLowerCase() }, otp).catch((error) => {
     console.error({
       event: "password_reset_otp_email_failed",
       errorCode: error instanceof Error ? error.name : "unknown",
@@ -960,6 +941,7 @@ export async function resetPasswordWithOtp(input: unknown) {
     throw httpError("Invalid or expired password reset code.", 400);
   }
 
+  return withPrivateUser(user.id, async () => {
   const passwordHash = await bcrypt.hash(password, 10);
   const updated = await prisma.$transaction(async (tx) => {
     const claimed = await tx.passwordResetToken.updateMany({
@@ -1008,6 +990,7 @@ export async function resetPasswordWithOtp(input: unknown) {
   return {
     message: "Password updated. Please sign in again.",
   };
+  });
 }
 
 export async function resetPassword(input: unknown) {
@@ -1029,6 +1012,7 @@ export async function resetPassword(input: unknown) {
     throw httpError("Invalid or expired password reset link.", 400);
   }
 
+  return withPrivateUser(savedToken.userId, async () => {
   const passwordHash = await bcrypt.hash(password, 10);
   const updated = await prisma.$transaction(async (tx) => {
     const claimed = await tx.passwordResetToken.updateMany({
@@ -1074,12 +1058,14 @@ export async function resetPassword(input: unknown) {
   return {
     message: "Password reset successfully. Please sign in with your new password.",
   };
+  });
 }
 
-export async function getUserById(id: string) {
+export async function getUserById(id: string, authVersion?: number) {
   const user = await prisma.user.findUnique({
     where: {
       id,
+      ...(authVersion === undefined ? {} : { authVersion }),
     },
     select: {
       id: true,

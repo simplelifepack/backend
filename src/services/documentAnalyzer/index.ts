@@ -17,5 +17,7 @@ export async function analyzeDocument(files: UploadedFile[], context?: AnalyzeDo
   return getDocumentAnalyzer().analyzeDocument(files, context);
 }
 
+export function setDocumentAnalyzerForTests(value: DocumentAnalyzer | null) { analyzer = value; }
+
 export { fallbackDocumentAIResult };
 export type { AnalyzeDocumentContext, DocumentAnalyzer, DocumentAIResult, UploadedFile };

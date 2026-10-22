@@ -9,4 +9,5 @@
 
 /uploads
 scripts/*
+!scripts/private-backup/
 test-results/*

@@ -2,14 +2,16 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { lockAccount } from './accountUsage.service';
 import { removePermanentFile } from './documentFileStorage';
+import { decryptCleanupLocator, encryptedCleanupLocator } from '../privacy/storageLocator';
 
 type StoredReference = { storageKey?: string | null; path?: string; encryptedSize?: number | null; size: number };
 export async function queueStorageCleanup(tx: Prisma.TransactionClient, ownerUserId: string, references: StoredReference[]) {
   for (const ref of references) {
     const storageKey = ref.storageKey || ref.path;
     if (!storageKey) continue;
-    await tx.storageCleanup.upsert({ where: { storageKey },
-      create: { storageKey, ownerUserId, sizeBytes: ref.encryptedSize ?? ref.size }, update: {},
+    const encrypted = encryptedCleanupLocator(ownerUserId, storageKey);
+    await tx.storageCleanup.upsert({ where: { storageKey: encrypted.storageKey },
+      create: { ...encrypted, ownerUserId, sizeBytes: ref.encryptedSize ?? ref.size }, update: {},
     });
   }
 }
@@ -19,7 +21,7 @@ export async function drainStorageCleanup(userId: string) {
     await lockAccount(tx, userId);
     const pending = await tx.storageCleanup.findMany({ where: { ownerUserId: userId }, take: 100 });
     for (const file of pending) {
-      try { await removePermanentFile(file.storageKey); }
+      try { await removePermanentFile(decryptCleanupLocator(file)); }
       catch { continue; }
       await tx.storageCleanup.delete({ where: { storageKey: file.storageKey } });
     }

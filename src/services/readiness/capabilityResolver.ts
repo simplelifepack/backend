@@ -1,4 +1,4 @@
-import { getDocumentDefinition } from "../ingestion/documentDefinitions";
+import { getDocumentDefinition } from "../documents/fieldValidation";
 import { normalizeDocumentType } from "./normalization";
 import type { Prisma } from "@prisma/client";
 

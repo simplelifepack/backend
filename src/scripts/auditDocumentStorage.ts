@@ -1,3 +1,4 @@
+import { withPrivateMigration } from "../privacy/access";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -87,7 +88,6 @@ async function audit(document: DocumentWithFiles) {
     for (const candidate of candidateKeys(location)) {
       checks.push({
         label: location.label,
-        candidate,
         exists: await exists(candidate),
         encryptedSize: location.encryptedSize,
         ciphertextHash: location.ciphertextHash ?? location.encryptedSha256 ?? null,
@@ -118,7 +118,7 @@ async function recover(document: DocumentWithFiles, inputPath: string, target: s
   }
   const existingKey = candidateKeys(location).find((item) => !path.isAbsolute(item));
   const key = existingKey ?? `${document.ownerProfileId}/${document.id}/v1.bin`;
-  console.log(JSON.stringify({ action: apply ? "upload" : "dry_run", target: location.label, key, bytes: bytes.length, sha256: hash }, null, 2));
+  console.log(JSON.stringify({ action: apply ? "upload" : "dry_run", target: location.label, bytes: bytes.length }, null, 2));
   if (!apply) return;
 
   const uploaded = await getStorageProvider().upload({
@@ -148,23 +148,15 @@ async function main() {
   }
   const document = await prisma.document.findUnique({ where: { id }, include: { files: true } });
   if (!document) throw new Error(`Document ${id} not found.`);
-  console.log(JSON.stringify({
-    id: document.id,
-    ownerProfileId: document.ownerProfileId,
-    sourceProvider: document.sourceProvider,
-    driveFileId: document.driveFileId,
-    storageKey: document.storageKey,
-    path: document.path,
-    files: document.files.map((file) => ({ pageIndex: file.pageIndex, storageKey: file.storageKey })),
-  }, null, 2));
+  console.log(JSON.stringify({ fileCount: document.files.length }));
   console.log(JSON.stringify(await audit(document), null, 2));
   const recoverFile = readArg("--recover-file");
   if (recoverFile) await recover(document, recoverFile, readArg("--target"), hasFlag("--apply"));
 }
 
-main()
+withPrivateMigration("offline encrypted storage audit", main)
   .catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
+    console.error("Storage audit failed.");
     process.exitCode = 1;
   })
   .finally(async () => prisma.$disconnect());

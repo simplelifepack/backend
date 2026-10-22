@@ -1,7 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { CustomPackageGenerationJob, Prisma } from "@prisma/client";
 
+import { privateLookup } from "../privacy/fieldEncryption";
+import { decryptPackageJob, encryptJobPatch } from "../privacy/packageJob";
 import { packageInputSchema } from "../ai/packageInput";
 import { AIUnavailableError, PackageGenerationRejectedError, analyzeIntent } from "../ai/analyzeIntent";
 import type { AIReadinessPackage } from "../ai/intentTypes";
@@ -39,9 +41,7 @@ function concurrencyLimit() {
 
 function dedupeKey(userId: string, packageType: string, documentLabels: string[]) {
   const normalizedLabels = [...new Set(documentLabels.map((label) => label.trim()).filter(Boolean))].sort();
-  return createHash("sha256")
-    .update(JSON.stringify({ userId, packageType: packageType.trim().toLowerCase(), documentLabels: normalizedLabels }))
-    .digest("hex");
+  return privateLookup({ packageType: packageType.trim().toLowerCase(), documentLabels: normalizedLabels }, { model: "CustomPackageGenerationJob", field: "dedupeKey", ownerId: userId });
 }
 
 function statusMessage(status: string, unverified = false) {
@@ -54,7 +54,8 @@ function statusMessage(status: string, unverified = false) {
   return "Package generation failed.";
 }
 
-function toDto(job: CustomPackageGenerationJob): CustomPackageGenerationJobDto {
+function toDto(stored: CustomPackageGenerationJob, userId: string): CustomPackageGenerationJobDto {
+  const job = decryptPackageJob(stored, userId);
   const draft = job.draft && typeof job.draft === "object" ? job.draft as unknown as AIReadinessPackage : undefined;
   return {
     id: job.id,
@@ -84,18 +85,20 @@ export async function createCustomPackageGenerationJob(userId: string, input: un
     where: { userId, dedupeKey: key, status: { notIn: TERMINAL_STATUSES } },
     orderBy: { createdAt: "desc" },
   });
-  if (existing) return toDto(existing);
+  if (existing) return toDto(existing, userId);
+  const id = randomUUID();
   const job = await prisma.customPackageGenerationJob.create({
-    data: {
+    data: encryptJobPatch({ id, userId }, {
+      id,
       userId,
       dedupeKey: key,
       packageType: parsed.packageType,
       documentLabels: parsed.documentLabels,
       status: "queued",
       statusMessage: statusMessage("queued"),
-    },
+    }),
   });
-  return toDto(job);
+  return toDto(job, userId);
 }
 
 async function claimJob(userId: string, jobId: string) {
@@ -111,7 +114,7 @@ async function claimJob(userId: string, jobId: string) {
       },
       data: {
         status: "queued",
-        statusMessage: statusMessage("queued"),
+        statusMessage: null,
         leaseExpiresAt: null,
         lockedBy: null,
       },
@@ -130,7 +133,7 @@ async function claimJob(userId: string, jobId: string) {
       where: { id: job.id },
       data: {
         status: "researching",
-        statusMessage: statusMessage("researching"),
+        statusMessage: null,
         startedAt: job.startedAt ?? now,
         lockedBy: workerId,
         leaseExpiresAt,
@@ -142,23 +145,23 @@ async function claimJob(userId: string, jobId: string) {
 export async function getAndMaybeProcessCustomPackageGenerationJob(userId: string, jobId: string) {
   const claimed = await claimJob(userId, jobId);
   if (!claimed) return null;
-  if (claimed.status !== "researching") return toDto(claimed);
-  return toDto(await processClaimedJob(claimed));
+  if (claimed.status !== "researching") return toDto(claimed, userId);
+  return toDto(await processClaimedJob(decryptPackageJob(claimed, userId)), userId);
 }
 
-async function updateJob(id: string, data: Prisma.CustomPackageGenerationJobUpdateInput) {
-  return prisma.customPackageGenerationJob.update({ where: { id }, data });
+async function updateJob(job: Pick<CustomPackageGenerationJob, "id" | "userId">, data: Prisma.CustomPackageGenerationJobUpdateInput) {
+  return prisma.customPackageGenerationJob.update({ where: { id: job.id, userId: job.userId }, data: encryptJobPatch(job, data) });
 }
 
 async function processClaimedJob(job: CustomPackageGenerationJob) {
   const started = performance.now();
   try {
-    await updateJob(job.id, { status: "generating", statusMessage: statusMessage("generating") });
+    await updateJob(job, { status: "generating", statusMessage: statusMessage("generating") });
     const aiStarted = performance.now();
     const draft = await analyzeIntent(job.userId, { packageType: job.packageType, documentLabels: job.documentLabels }, {
       allowUnverifiedGuidance: true,
       onRetry: async (event) => {
-        await updateJob(job.id, {
+        await updateJob(job, {
         retryCount: { increment: 1 },
         ...(event.status === 429 ? { provider429Count: { increment: 1 } } : {}),
         });
@@ -167,8 +170,8 @@ async function processClaimedJob(job: CustomPackageGenerationJob) {
     const aiMs = Math.round(performance.now() - aiStarted);
     const unverified = !draft.hasVerifiedOfficialSource || draft.verificationStatus === "unverified_guidance";
     const status = unverified ? "completed_with_unverified_sources" : "completed";
-    await updateJob(job.id, { status: "saving", statusMessage: statusMessage("saving"), aiMs });
-    return updateJob(job.id, {
+    await updateJob(job, { status: "saving", statusMessage: statusMessage("saving"), aiMs });
+    return updateJob(job, {
       status,
       statusMessage: statusMessage(status, unverified),
       draft: draft as unknown as Prisma.InputJsonValue,
@@ -187,11 +190,11 @@ async function processClaimedJob(job: CustomPackageGenerationJob) {
       ? "Could not generate a useful checklist for that request. Try adding a little more detail."
       : error instanceof AIUnavailableError
         ? "Package generation is temporarily unavailable. Please try again shortly."
-        : error instanceof Error ? error.message : "Package generation failed.";
-    return updateJob(job.id, {
+        : "Package generation failed. Please try again.";
+    return updateJob(job, {
       status: "failed",
       statusMessage: statusMessage("failed"),
-      errorCode: error instanceof Error ? error.name : "Error",
+      errorCode: error instanceof PackageGenerationRejectedError ? "PACKAGE_REJECTED" : error instanceof AIUnavailableError ? "AI_UNAVAILABLE" : "GENERATION_FAILED",
       errorMessage: userMessage,
       failedAt: new Date(),
       leaseExpiresAt: null,

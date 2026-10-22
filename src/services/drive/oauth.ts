@@ -1,3 +1,4 @@
+import { withPrivateUser } from "../../privacy/access";
 import { createHash, randomBytes } from "node:crypto";
 import { google } from "googleapis";
 
@@ -62,6 +63,7 @@ export async function consumeDriveOAuthState(state: string) {
 
 export async function completeDriveAuthorization(code: string, state: string) {
   const saved = await consumeDriveOAuthState(state);
+  return withPrivateUser(saved.userId, async () => {
   const client = createDriveOAuthClient();
   const { tokens } = await client.getToken(code).catch(() => { throw new DriveOAuthError("token_exchange_failed"); });
   client.setCredentials(tokens);
@@ -95,6 +97,7 @@ export async function completeDriveAuthorization(code: string, state: string) {
       grantedScopes: scopes, status: "connected", lastScanError: null,
     },
   }).catch(() => { throw new DriveOAuthError("database_error"); });
+  });
 }
 
 export async function authorizedDrive(userId: string) {

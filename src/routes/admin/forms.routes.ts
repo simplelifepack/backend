@@ -3,8 +3,11 @@ import { z } from "zod";
 
 import { requireAdminAuth, type AdminAuthenticatedRequest } from "../../middleware/adminAuth";
 import { requireCapability, requireStepUp, requireWriteGrant } from "../../middleware/adminRbac";
-import { documentDefinitions } from "../../services/ingestion/documentDefinitions.registry";
-import type { DocumentDefinition } from "../../services/ingestion/documentDefinitions";
+// Relocated 16 Oct when main's privacy/encryption rewrite deleted the whole
+// src/services/ingestion/ pipeline this used to live under — same registry
+// (60+ entries), same shape, just moved to src/services/documents/.
+import { documentDefinitions } from "../../services/documents/fieldDefinitions";
+import type { DocumentDefinition } from "../../services/documents/fieldValidation";
 import {
   AdminWealthFormError,
   createField,

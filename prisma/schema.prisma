@@ -25,6 +25,18 @@ model UserAIUsage {
 }
 
 model User {
+  // private_* shadow columns (field-level encryption migration, Ranjith, 16
+  // Oct) — merged in from main alongside the admin console's own additions
+  // below (suspendedAt/suspendedReason). See admin-web/TRACKER.md's Phase 5
+  // entry for how the admin BE's restricted user_db role is expected to
+  // relate to these.
+  private_name                 String?
+  private_email                String?
+  private_country              String?
+  private_passportCountry      String?
+  private_homeCurrency         String?
+  private_appearance           String?
+  private_aiProcessingEnabled  String?
   accountTier                 AccountTier                  @default(free)
   aiUsage                     UserAIUsage[]
   storageCleanup              StorageCleanup[]
@@ -139,6 +151,10 @@ model CustomPackageGenerationJob {
 }
 
 model PushSubscription {
+  private_endpoint String?
+  private_p256dh String?
+  private_auth String?
+  private_userAgent String?
   id        String    @id @default(cuid())
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -156,6 +172,12 @@ model PushSubscription {
 }
 
 model TrustMember {
+  private_email String?
+  private_name String?
+  private_relation String?
+  private_customRelation String?
+  private_dateOfBirth String?
+  private_bloodGroup String?
   id              String                  @id @default(cuid())
   ownerUserId     String
   owner           User                    @relation("TrustMemberOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
@@ -235,6 +257,8 @@ enum TrustPermissionModule {
 }
 
 model ExternalIdentity {
+  private_providerAccountId String?
+  private_avatarUrl String?
   id                String   @id @default(cuid())
   userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -250,6 +274,12 @@ model ExternalIdentity {
 }
 
 model UserIdentityProfile {
+  private_fullName String?
+  private_normalizedNameHash String?
+  private_dateOfBirth String?
+  private_dateOfBirthHash String?
+  private_documentNumber String?
+  private_verified String?
   id                    String   @id @default(cuid())
   userId                String   @unique
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -292,6 +322,8 @@ model PasswordResetToken {
 }
 
 model SignupVerification {
+  private_email String?
+  private_name String?
   id           String   @id @default(cuid())
   email        String   @unique
   name         String
@@ -307,6 +339,7 @@ model SignupVerification {
 }
 
 model AccountChangeOtp {
+  private_newEmail String?
   id              String   @id @default(cuid())
   userId          String
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -326,6 +359,38 @@ model AccountChangeOtp {
 }
 
 model Document {
+  private_title String?
+  private_displayName String?
+  private_uniqueIdentifier String?
+  private_uniqueIdentifierHash String?
+  private_extractedKeyFields String?
+  private_rawText String?
+  private_originalName String?
+  private_storedName String?
+  private_path String?
+  private_storageKey String?
+  private_wrappedKey String?
+  private_originalSha256 String?
+  private_documentType String?
+  private_normalizedType String?
+  private_documentTypeCode String?
+  private_category String?
+  private_confidence String?
+  private_classificationConfidence String?
+  private_classificationSignals String?
+  private_ownershipStatus String?
+  private_ownershipConfidence String?
+  private_ownershipMatchedFields String?
+  private_ownershipMismatchedFields String?
+  private_readinessEligible String?
+  private_fields String?
+  private_contentHash String?
+  private_sourceMessageId String?
+  private_sourceAttachmentId String?
+  private_driveFileId String?
+  private_sourceModifiedTime String?
+  private_sourceChecksum String?
+  storageUsageKey String?
   id                        String                   @id @default(cuid())
   title                     String?
   displayName               String?
@@ -390,6 +455,7 @@ model Document {
   healthDocuments           HealthDocument[]
   requirementAssignments    RequirementAssignment[]
 
+  @@unique([id, ownerProfileId])
   @@unique([ownerProfileId, contentHash])
   @@unique([ownerProfileId, driveFileId])
   @@index([normalizedType])
@@ -409,15 +475,26 @@ model Document {
 }
 
 model HealthMember {
-  id                    String                @id @default(cuid())
-  userId                String
-  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name                  String
-  relation              String
-  bloodGroup            String?
-  dateOfBirth           DateTime?
-  conditions            String?
-  allergies             String?
+  private_name String?
+  private_relation String?
+  private_bloodGroup String?
+  private_dateOfBirth String?
+  private_conditions String?
+  private_allergies String?
+  private_emergencyContactName String?
+  private_emergencyContactPhone String?
+  private_primaryDoctor String?
+  private_insuranceProvider String?
+  private_insurancePolicyNumber String?
+  id           String                @id @default(cuid())
+  userId       String
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  relation     String
+  bloodGroup   String?
+  dateOfBirth  DateTime?
+  conditions   String?
+  allergies    String?
   emergencyContactName  String?
   emergencyContactPhone String?
   primaryDoctor         String?
@@ -437,20 +514,29 @@ model HealthMember {
 }
 
 model HealthDocument {
-  id                 String              @id @default(cuid())
-  userId             String
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  memberId           String?
-  member             HealthMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
-  documentId         String
-  document           Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  type               String
-  documentDate       DateTime?
-  provider           String?
-  doctor             String?
-  processingStatus   String              @default("pending")
-  processingError    String?
-  patientName        String?
+  private_processingStatus String?
+  private_type String?
+  private_documentDate String?
+  private_provider String?
+  private_doctor String?
+  private_processingError String?
+  private_patientName String?
+  private_patientDateOfBirth String?
+  private_pendingExtraction String?
+  id               String              @id @default(cuid())
+  userId           String
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId         String?
+  member           HealthMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  documentId       String
+  document         Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  type             String
+  documentDate     DateTime?
+  provider         String?
+  doctor           String?
+  processingStatus String              @default("pending")
+  processingError  String?
+  patientName      String?
   patientDateOfBirth DateTime?
   pendingExtraction  Json?
   createdAt          DateTime            @default(now())
@@ -467,7 +553,19 @@ model HealthDocument {
 }
 
 model HealthMeasurement {
-  id               String          @id @default(cuid())
+  private_metricKey String?
+  private_displayName String?
+  private_originalName String?
+  private_value String?
+  private_secondaryValue String?
+  private_unit String?
+  private_context String?
+  private_bodySite String?
+  private_referenceMin String?
+  private_referenceMax String?
+  private_referenceText String?
+  private_measuredAt String?
+  id               String         @id @default(cuid())
   userId           String
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   memberId         String
@@ -494,6 +592,11 @@ model HealthMeasurement {
 }
 
 model TrackedHealthMetric {
+  private_metricKey String?
+  private_displayName String?
+  private_context String?
+  private_bodySite String?
+  private_enabled String?
   id          String       @id @default(cuid())
   userId      String
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -513,7 +616,19 @@ model TrackedHealthMetric {
 }
 
 model HealthMedication {
-  id               String          @id @default(cuid())
+  private_name String?
+  private_dose String?
+  private_frequency String?
+  private_duration String?
+  private_quantity String?
+  private_whenToTake String?
+  private_mealTiming String?
+  private_repeatRunsOut String?
+  private_status String?
+  private_repeats String?
+  private_runsOutAt String?
+  private_stoppedAt String?
+  id               String         @id @default(cuid())
   userId           String
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   memberId         String
@@ -542,6 +657,12 @@ model HealthMedication {
 }
 
 model HealthFollowUp {
+  private_title String?
+  private_explicitDate String?
+  private_recommendedAfterValue String?
+  private_recommendedAfterUnit String?
+  private_dueDate String?
+  private_sourceText String?
   id                    String           @id @default(cuid())
   userId                String
   user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -564,6 +685,12 @@ model HealthFollowUp {
 }
 
 model HealthReminder {
+  private_title String?
+  private_type String?
+  private_dueDate String?
+  private_frequency String?
+  private_recurrence String?
+  private_status String?
   id               String          @id @default(cuid())
   userId           String
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -589,6 +716,13 @@ model HealthReminder {
 }
 
 model DocumentFile {
+  private_originalName String?
+  private_storageKey String?
+  private_storedName String?
+  private_wrappedKey String?
+  private_originalSha256 String?
+  privacyOwnerId String?
+  storageUsageKey String?
   id                String   @id @default(cuid())
   documentId        String
   document          Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -622,6 +756,12 @@ model DocumentFile {
 }
 
 model TemporaryUpload {
+  private_originalName String?
+  private_contentHash String?
+  private_sourceMessageId String?
+  private_sourceAttachmentId String?
+  private_wrappedKey String?
+  private_originalSha256 String?
   id                  String    @id @default(uuid())
   ownerProfileId      String
   storagePath         String
@@ -655,6 +795,13 @@ model TemporaryUpload {
 }
 
 model DigiLockerConsentSession {
+  private_verificationId String?
+  private_referenceId String?
+  private_statusMessage String?
+  private_consentUrl String?
+  private_redirectUrl String?
+  private_requestedDocuments String?
+  private_availableDocuments String?
   id                 String    @id @default(cuid())
   userId             String
   user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -680,6 +827,12 @@ model DigiLockerConsentSession {
 }
 
 model ExternalConnection {
+  private_providerAccountId String?
+  private_providerEmail String?
+  private_encryptedRefreshToken String?
+  private_grantedScopes String?
+  private_scanPhase String?
+  private_lastScanError String?
   id                    String                      @id @default(cuid())
   userId                String
   user                  User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -719,6 +872,24 @@ model ExternalOAuthState {
 }
 
 model ExternalDocumentCandidate {
+  private_sourceKey String?
+  private_externalMessageId String?
+  private_externalAttachmentId String?
+  private_filename String?
+  private_sender String?
+  private_subject String?
+  private_receivedAt String?
+  private_suggestedCategory String?
+  private_suggestedDocumentType String?
+  private_relevanceReason String?
+  private_relevanceScore String?
+  private_legitimacyReason String?
+  private_legitimacyScore String?
+  private_reviewRequired String?
+  private_matchedSignals String?
+  private_rejectedSignals String?
+  private_ignoredReason String?
+  private_externalPartId String?
   id                    String             @id @default(cuid())
   userId                String
   user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -754,6 +925,24 @@ model ExternalDocumentCandidate {
 }
 
 model ReadinessPack {
+  legacyPrivateMetadata String?
+  cataloguePrivacyVersion Int? @default(2)
+  private_slug String?
+  private_title String?
+  private_subtitle String?
+  private_category String?
+  private_aliases String?
+  private_description String?
+  private_keywords String?
+  private_searchMetadata String?
+  private_sourceType String?
+  private_sourceName String?
+  private_sourceTitle String?
+  private_sourceUrl String?
+  private_lastCheckedAt String?
+  private_verificationSources String?
+  private_lastVerifiedAt String?
+  private_verificationStatus String?
   id                  String        @id @default(cuid())
   slug                String        @unique
   title               String
@@ -780,12 +969,23 @@ model ReadinessPack {
   deletedAt           DateTime?
 
   @@index([category])
+  @@unique([id, createdBy])
   @@index([createdBy])
   @@index([deletedAt])
 }
 
 model Requirement {
-  id                    String                  @id @default(cuid())
+  private_title String?
+  private_documentType String?
+  private_owner String?
+  private_metadata String?
+  private_description String?
+  private_required String?
+  private_group String?
+  private_acceptedDocumentTypes String?
+  private_alternativeLabels String?
+  privacyOwnerId String?
+  id                    String        @id @default(cuid())
   packId                String
   pack                  ReadinessPack           @relation(fields: [packId], references: [id], onDelete: Cascade)
   title                 String
@@ -845,6 +1045,12 @@ model RequirementAssignment {
 }
 
 model WealthRecord {
+  private_type String?
+  private_title String?
+  private_details String?
+  private_notes String?
+  private_followUpDate String?
+  private_followUpNote String?
   id           String                   @id @default(cuid())
   ownerUserId  String
   owner        User                     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
@@ -945,7 +1151,8 @@ enum WealthRecordType {
 }
 
 model StorageCleanup {
-  storageKey  String   @id
+  encryptedKey String?
+  storageKey String @id
   ownerUserId String
   owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   sizeBytes   BigInt
@@ -956,6 +1163,7 @@ model StorageCleanup {
 }
 
 model AccountExportJob {
+  private_errorMessage String?
   id           String    @id @default(cuid())
   userId       String
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -964,6 +1172,7 @@ model AccountExportJob {
   fileName     String?
   sizeBytes    Int?
   errorMessage String?
+  archiveEncryptionVersion Int?
   requestedAt  DateTime  @default(now())
   preparedAt   DateTime?
   expiresAt    DateTime?

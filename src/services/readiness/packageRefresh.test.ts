@@ -15,7 +15,7 @@ const checklist: RefreshChecklist = {
   sources: [{ url, relevance: source.relevance, evidence }],
   requirements: [{ existingId: "req-1", title: "Identity document", description: "Provide identification.", documentType: "identity_proof", owner: "self", required: true, group: "Identity", acceptedDocumentTypes: ["identity_proof"], alternativeLabels: [], condition: null, maxAgeDays: null, sourceUrl: url, evidence }],
 };
-const requirement = { id: "req-1", packId: "pack-1", title: "Identity document", description: "Provide identification.", documentType: "identity_proof", owner: "self", required: true, group: "Identity", acceptedDocumentTypes: ["identity_proof"], alternativeLabels: [], metadata: { sourceUrl: url, sourceEvidence: evidence }, sortOrder: 0, deletedAt: null } as Requirement;
+const requirement = { id: "req-1", packId: "pack-1", title: "Identity document", description: "Provide identification.", documentType: "identity_proof", owner: "self", required: true, group: "Identity", acceptedDocumentTypes: ["identity_proof"], alternativeLabels: [], metadata: { sourceUrl: url, sourceEvidence: evidence }, sortOrder: 0, deletedAt: null } as unknown as Requirement;
 const pack = {
   id: "pack-1", slug: "test-process", title: "Test process", category: "Test", aliases: [], keywords: [], description: "Test",
   sourceType: "curated", sourceName: source.organization, sourceTitle: source.title, sourceUrl: url,

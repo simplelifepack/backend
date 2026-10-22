@@ -4,10 +4,10 @@ import { provisionPackagesAdminFromEnv } from "../services/adminPackages.service
 loadBackendEnv();
 
 provisionPackagesAdminFromEnv()
-  .then((user) => {
-    console.info(`Provisioned packages admin account: ${user.email}`);
+  .then((_user) => {
+    console.info("Provisioned packages admin account.");
   })
   .catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
+    console.error("Admin provisioning failed.");
     process.exitCode = 1;
   });

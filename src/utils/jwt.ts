@@ -7,7 +7,7 @@ const JWT_EXPIRES_IN = (process.env.ACCESS_TOKEN_TTL?.trim() || "5m") as SignOpt
 
 type JwtPayload = {
   sub: string;
-  email: string;
+  email?: string;
   name?: string;
   authVersion?: number;
 };
@@ -15,7 +15,8 @@ type JwtPayload = {
 if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET?.trim()) throw new Error("JWT_SECRET is required in production.");
 
 export function signAccessToken(payload: JwtPayload) {
-  return jwt.sign(payload, JWT_SECRET, {
+  const minimal = { sub: payload.sub, authVersion: payload.authVersion ?? 0 };
+  return jwt.sign(minimal, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
   });
 }
@@ -29,8 +30,6 @@ export function isAccessTokenPayload(payload: unknown): payload is JwtPayload & 
   const candidate = payload as Partial<JwtPayload>;
   return typeof candidate.sub === "string"
     && candidate.sub.length > 0
-    && typeof candidate.email === "string"
-    && candidate.email.length > 0
     && (candidate.authVersion === undefined || typeof candidate.authVersion === "number")
     && (candidate.name === undefined || typeof candidate.name === "string");
 }

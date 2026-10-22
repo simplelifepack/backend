@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes }
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
+import { openAuthenticated, sealAuthenticated } from "./authenticatedEncryption";
 
 const STRING_PREFIX = "enc:v1";
 // Compatibility: existing encrypted metadata and development ciphertext depend on these legacy identifiers.
@@ -20,23 +21,11 @@ type EncryptedJsonEnvelope = {
   data: string;
 };
 
-let warnedAboutMissingKey = false;
-
 function getDocumentEncryptionKey() {
   const configured = process.env.DOCUMENT_ENCRYPTION_KEY?.trim();
-
-  if (!configured) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("DOCUMENT_ENCRYPTION_KEY is required in production.");
-    }
-
-    if (!warnedAboutMissingKey) {
-      warnedAboutMissingKey = true;
-      console.warn("DOCUMENT_ENCRYPTION_KEY is not configured. Using a development-only fallback key.");
-    }
-
-    return createHash("sha256").update("lifepack-development-document-encryption-key").digest();
-  }
+  // Legacy ciphertext still needs its original externally configured key.
+  // Never create new content using the historical hardcoded development key.
+  if (!configured) throw new Error("DOCUMENT_ENCRYPTION_KEY is required.");
 
   const normalized = configured.replace(/^base64:/, "").replace(/^hex:/, "");
   const decodedAsBase64 = Buffer.from(normalized, "base64");
@@ -72,26 +61,18 @@ function getDedupHmacKey() {
 }
 
 function encryptBytes(plaintext: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv(ALGORITHM, getMetadataEncryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
+  const encrypted = sealAuthenticated(Buffer.from(plaintext, "utf8"), getMetadataEncryptionKey());
 
   return {
-    iv: iv.toString("base64"),
-    tag: tag.toString("base64"),
-    data: encrypted.toString("base64"),
+    iv: encrypted.iv.toString("base64"),
+    tag: encrypted.tag.toString("base64"),
+    data: encrypted.data.toString("base64"),
   };
 }
 
 function decryptBytes(input: { iv: string; tag: string; data: string }) {
   const decryptWith = (key: Buffer) => {
-    const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(input.iv, "base64"));
-    decipher.setAuthTag(Buffer.from(input.tag, "base64"));
-    return Buffer.concat([
-      decipher.update(Buffer.from(input.data, "base64")),
-      decipher.final(),
-    ]).toString("utf8");
+    return openAuthenticated({ iv: Buffer.from(input.iv, "base64"), tag: Buffer.from(input.tag, "base64"), data: Buffer.from(input.data, "base64") }, key).toString("utf8");
   };
   try {
     return decryptWith(getMetadataEncryptionKey());
@@ -114,7 +95,7 @@ export function decryptString(value: string | null | undefined) {
   if (!value.startsWith(`${STRING_PREFIX}:`)) return value;
 
   const [, , iv, tag, data] = value.split(":");
-  if (!iv || !tag || !data) return value;
+  if (!iv || !tag || !data || value.split(":").length !== 5) throw new Error("PRIVATE_DATA_UNAVAILABLE");
 
   return decryptBytes({ iv, tag, data });
 }
@@ -145,12 +126,15 @@ export function encryptJson<T>(value: T): EncryptedJsonEnvelope {
 }
 
 export function decryptJson<T>(value: unknown, fallback: T): T {
+  if (value && typeof value === "object" && JSON_ENVELOPE_MARKER in value && !isEncryptedJsonEnvelope(value)) {
+    throw new Error("PRIVATE_DATA_UNAVAILABLE");
+  }
   if (!isEncryptedJsonEnvelope(value)) return (value ?? fallback) as T;
 
   try {
     return JSON.parse(decryptBytes(value)) as T;
   } catch {
-    return fallback;
+    throw new Error("PRIVATE_DATA_UNAVAILABLE");
   }
 }
 

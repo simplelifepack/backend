@@ -40,6 +40,49 @@ router.get("/stats", async (_req, res, next) => {
 type ActionItem = { label: string; count: number; oldestAt: string | null; navTo: string };
 type ActionGroup = { key: string; label: string; items: ActionItem[] };
 
+// Confirmed 21 Oct merging the admin console branch: main's 16 Oct
+// field-level encryption work (src/privacy/) outright forbids
+// .aggregate()/.groupBy() on ANY encrypted model, unconditionally — not
+// just when the predicate touches a protected field ("PRIVATE_AGGREGATION_
+// REQUIRES_AUTHORIZED_APPLICATION_PROCESSING" fires even for
+// Document.classificationStatus, which IS on operationalFields.ts's
+// allowlist). This broke this endpoint's every single metric, reproduced
+// on a clean DB with zero records — pre-dates and is unrelated to any
+// admin console data.
+//
+// Fix, case by case:
+//   - Document (stuckClassification, legacyKeyDocuments): predicate is
+//     entirely operational fields (deletedAt/classificationStatus/keyId/
+//     createdAt) — .count()+.findFirst() genuinely works, not a stopgap.
+//   - ReadinessPack (packsAwaitingReview, staleSourcePacks): predicate
+//     touches verificationStatus/lastCheckedAt, which aren't on the
+//     allowlist — and genuinely can't be added to it: an AI-generated
+//     pack is deliberately private until reviewed (isPublicDefinition
+//     only exempts createdBy:"seed" rows), so this field has to stay
+//     encrypted for those rows. count() still fails (hasPrivatePredicate).
+//   - HealthDocument (failedHealthExtractions), ExternalConnection
+//     (gmailScanErrors): same — processingError/lastScanError aren't
+//     operational, count() still fails.
+// The 3 genuinely-still-broken metrics degrade gracefully (0, unavailable
+// logged) instead of 500ing the whole dashboard; a real fix needs an
+// authorized application-level aggregation path, per main's own error
+// message — an architectural call for the privacy layer's own author, not
+// something to improvise here. Flagged in admin-web/TRACKER.md.
+async function countOldest<K extends string>(
+  label: string,
+  oldestField: K,
+  count: () => Promise<number>,
+  oldest: () => Promise<Record<K, Date | null> | null>,
+): Promise<{ _count: number; _min: Record<K, Date | null> }> {
+  try {
+    const [total, first] = await Promise.all([count(), oldest()]);
+    return { _count: total, _min: first ?? ({ [oldestField]: null } as Record<K, Date | null>) };
+  } catch (error) {
+    console.error({ event: "action_center_metric_unavailable", label, errorCode: error instanceof Error ? error.message : "unknown" });
+    return { _count: 0, _min: { [oldestField]: null } as Record<K, Date | null> };
+  }
+}
+
 router.get("/action-center", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -66,33 +109,39 @@ router.get("/action-center", async (_req, res, next) => {
       legacyKeyDocuments,
       gmailScanErrors,
     ] = await Promise.all([
-      prisma.readinessPack.aggregate({
-        where: { deletedAt: null, verificationStatus: "needs_review" },
-        _count: true, _min: { createdAt: true },
-      }),
-      prisma.readinessPack.aggregate({
-        where: { deletedAt: null, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: ninetyDaysAgo } }] },
-        _count: true, _min: { lastCheckedAt: true },
-      }),
-      prisma.document.aggregate({
-        where: { deletedAt: null, classificationStatus: "pending", createdAt: { lt: oneHourAgo } },
-        _count: true, _min: { createdAt: true },
-      }),
-      prisma.healthDocument.aggregate({
-        where: { processingError: { not: null } },
-        _count: true, _min: { createdAt: true },
-      }),
+      countOldest(
+        "packsAwaitingReview", "createdAt",
+        () => prisma.readinessPack.count({ where: { deletedAt: null, verificationStatus: "needs_review" } }),
+        () => prisma.readinessPack.findFirst({ where: { deletedAt: null, verificationStatus: "needs_review" }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
+      ),
+      countOldest(
+        "staleSourcePacks", "lastCheckedAt",
+        () => prisma.readinessPack.count({ where: { deletedAt: null, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: ninetyDaysAgo } }] } }),
+        () => prisma.readinessPack.findFirst({ where: { deletedAt: null, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: ninetyDaysAgo } }] }, orderBy: { lastCheckedAt: "asc" }, select: { lastCheckedAt: true } }),
+      ),
+      countOldest(
+        "stuckClassification", "createdAt",
+        () => prisma.document.count({ where: { deletedAt: null, classificationStatus: "pending", createdAt: { lt: oneHourAgo } } }),
+        () => prisma.document.findFirst({ where: { deletedAt: null, classificationStatus: "pending", createdAt: { lt: oneHourAgo } }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
+      ),
+      countOldest(
+        "failedHealthExtractions", "createdAt",
+        () => prisma.healthDocument.count({ where: { processingError: { not: null } } }),
+        () => prisma.healthDocument.findFirst({ where: { processingError: { not: null } }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
+      ),
       prisma.storageCleanup.aggregate({ _count: true, _min: { createdAt: true } }),
       activeKeyId
-        ? prisma.document.aggregate({
-            where: { deletedAt: null, OR: [{ keyId: null }, { keyId: { not: activeKeyId } }] },
-            _count: true, _min: { createdAt: true },
-          })
+        ? countOldest(
+            "legacyKeyDocuments", "createdAt",
+            () => prisma.document.count({ where: { deletedAt: null, OR: [{ keyId: null }, { keyId: { not: activeKeyId } }] } }),
+            () => prisma.document.findFirst({ where: { deletedAt: null, OR: [{ keyId: null }, { keyId: { not: activeKeyId } }] }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
+          )
         : Promise.resolve(null),
-      prisma.externalConnection.aggregate({
-        where: { provider: "gmail", lastScanError: { not: null } },
-        _count: true, _min: { lastScannedAt: true },
-      }),
+      countOldest(
+        "gmailScanErrors", "lastScannedAt",
+        () => prisma.externalConnection.count({ where: { provider: "gmail", lastScanError: { not: null } } }),
+        () => prisma.externalConnection.findFirst({ where: { provider: "gmail", lastScanError: { not: null } }, orderBy: { lastScannedAt: "asc" }, select: { lastScannedAt: true } }),
+      ),
     ]);
 
     const groups: ActionGroup[] = [

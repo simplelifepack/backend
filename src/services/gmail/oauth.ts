@@ -1,3 +1,4 @@
+import { withPrivateUser } from "../../privacy/access";
 import { createHash, randomBytes } from "node:crypto";
 import { google } from "googleapis";
 
@@ -68,6 +69,7 @@ export async function consumeOAuthState(state: string) {
 
 export async function completeAuthorization(code: string, state: string) {
   const savedState = await consumeOAuthState(state);
+  return withPrivateUser(savedState.userId, async () => {
   const client = createOAuthClient();
   const { tokens } = await client.getToken(code).catch(() => { throw new GmailOAuthError("token_exchange_failed"); });
   client.setCredentials(tokens);
@@ -101,6 +103,7 @@ export async function completeAuthorization(code: string, state: string) {
       grantedScopes: scopes, status: "connected",
     },
   }).catch(() => { throw new GmailOAuthError("database_error"); });
+  });
 }
 
 export async function authorizedGmail(userId: string) {

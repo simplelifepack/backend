@@ -16,6 +16,7 @@ import * as authService from "../services/auth.service";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../auth/refreshCookie";
 
 const router = Router();
+router.use((_req, res, next) => { res.setHeader("Cache-Control", "private, no-store"); next(); });
 
 function sendAuthResult(res: Parameters<typeof setRefreshCookie>[0], result: Awaited<ReturnType<typeof authService.login>>, status = 200) {
   setRefreshCookie(res, result.refreshToken);

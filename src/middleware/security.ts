@@ -1,6 +1,6 @@
 import type { CorsOptions } from "cors";
 import type { Request, Response, NextFunction } from "express";
-import { createHash } from "node:crypto";
+import { privateLookup } from "../privacy/fieldEncryption";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { HelmetOptions } from "helmet";
 
@@ -28,7 +28,7 @@ function normalizeEmail(value: unknown) {
 }
 
 function hashRateLimitKey(scope: string, value: string) {
-  return `${scope}:${createHash("sha256").update(value).digest("hex")}`;
+  return privateLookup(value, { model: "RateLimit", field: scope, ownerId: "server" });
 }
 
 function emailRateLimitKey(req: Request) {
@@ -208,7 +208,6 @@ export const driveScanLimiter = buildRateLimiter({
 
 export function requireAdminSeedToken(req: Request, res: Response, next: NextFunction) {
   const configuredToken = process.env.ADMIN_SEED_TOKEN?.trim();
-  if (!configuredToken && process.env.NODE_ENV !== "production") return next();
 
   const providedToken = req.header("x-admin-seed-token")?.trim();
   if (configuredToken && providedToken === configuredToken) return next();

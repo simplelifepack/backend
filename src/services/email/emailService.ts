@@ -106,9 +106,7 @@ function emailFailureDetails(error: unknown) {
   };
 
   return {
-    command: typeof detail.command === "string" ? detail.command : undefined,
     responseCode: typeof detail.responseCode === "number" ? detail.responseCode : undefined,
-    response: typeof detail.response === "string" ? detail.response.slice(0, 500) : undefined,
     rejectedCount: Array.isArray(detail.rejected) ? detail.rejected.length : undefined,
   };
 }

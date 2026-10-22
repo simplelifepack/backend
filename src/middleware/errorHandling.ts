@@ -100,32 +100,11 @@ export function buildErrorResponse(input: {
   if (validationMessage || (input.error instanceof DocumentEnvelopeError && ["IMAGE_DIMENSIONS_EXCEEDED", "PDF_PAGE_LIMIT_EXCEEDED"].includes(code ?? ""))) {
     return { status, body: { code, message: validationMessage ?? (input.error as Error).message, errorId } };
   }
-  if (input.production) {
-    return {
-      status,
-      body: {
-        ...(code ? { code } : {}),
-        ...((input.error as { metadata?: unknown })?.metadata &&
-        typeof (input.error as { metadata?: unknown }).metadata === "object"
-          ? { metadata: (input.error as { metadata: unknown }).metadata }
-          : {}),
-        message: status === 500 ? "Internal server error." : "Request failed.",
-        errorId,
-      },
-    };
-  }
-
+  // Database/provider errors may interpolate private input, even outside production.
+  // Unknown metadata is never an API contract and is not safe to echo.
   return {
     status,
-    body: {
-      ...(code ? { code } : {}),
-      ...((input.error as { metadata?: unknown })?.metadata &&
-      typeof (input.error as { metadata?: unknown }).metadata === "object"
-        ? { metadata: (input.error as { metadata: unknown }).metadata }
-        : {}),
-      message: (input.error as { name?: string })?.name === "ZodError" ? "Invalid request." : input.error instanceof Error ? input.error.message : "Internal server error.",
-      errorId,
-    },
+    body: { ...(code ? { code } : {}), message: status >= 500 ? "Internal server error." : "Request failed.", errorId },
   };
 }
 

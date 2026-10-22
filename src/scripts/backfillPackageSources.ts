@@ -252,13 +252,9 @@ function numberOption(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-function log(status: "dry-run" | "updated" | "skipped" | "failed", pack: PackageForBackfill, details: Record<string, unknown>) {
+function log(status: "dry-run" | "updated" | "skipped" | "failed", _pack: PackageForBackfill, _details: Record<string, unknown>) {
   console.info("[Readiness Package Source Backfill]", {
     status,
-    id: pack.id,
-    slug: pack.slug || slugify(pack.title),
-    title: pack.title,
-    ...details,
   });
 }
 
@@ -272,8 +268,8 @@ function log(status: "dry-run" | "updated" | "skipped" | "failed", pack: Package
 // packages:backfill-sources`), never when it's imported as a module.
 if (require.main === module) {
   void main()
-    .catch((error) => {
-      console.error("[Readiness Package Source Backfill] fatal", error);
+    .catch(() => {
+      console.error("[Readiness Package Source Backfill] failed.");
       process.exitCode = 1;
     })
     .finally(async () => {

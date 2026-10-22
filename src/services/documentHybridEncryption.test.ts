@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 
 import {
+  DocumentEnvelopeError,
   CONTENT_ALGORITHM,
   ENCRYPTION_VERSION,
   KEY_ALGORITHM,
@@ -14,6 +15,8 @@ import {
   verifyAndDecryptEnvelope,
 } from "./documentHybridEncryption";
 import { loadDocumentEncryptionKeys } from "./documentEncryptionKeyring";
+
+const invalidEnvelope = (error: unknown) => error instanceof DocumentEnvelopeError && error.code === "INVALID_ENCRYPTION_ENVELOPE";
 
 function keyPair(keyId: string, keyVersion: number) {
   const pair = crypto.generateKeyPairSync("rsa", {
@@ -96,7 +99,7 @@ async function run() {
         multipartFields(encrypted),
         encryptedFile(modifiedCiphertext),
       ),
-    /hash does not match/,
+    invalidEnvelope,
   );
 
   const forgedHashFields = {
@@ -107,7 +110,7 @@ async function run() {
     forgedHashFields,
     encryptedFile(modifiedCiphertext),
   );
-  assert.throws(() => verifyAndDecryptEnvelope(forged), /failed authentication/);
+  assert.throws(() => verifyAndDecryptEnvelope(forged), invalidEnvelope);
 
   const changedIv = {
     ...multipartFields(encrypted),
@@ -118,7 +121,7 @@ async function run() {
       verifyAndDecryptEnvelope(
         validateEncryptedDocumentEnvelope(changedIv, encryptedFile(encrypted.ciphertext)),
       ),
-    /failed authentication/,
+    invalidEnvelope,
   );
   const changedWrappedKey = {
     ...multipartFields(encrypted),
@@ -129,7 +132,7 @@ async function run() {
       verifyAndDecryptEnvelope(
         validateEncryptedDocumentEnvelope(changedWrappedKey, encryptedFile(encrypted.ciphertext)),
       ),
-    /key could not be verified/,
+    invalidEnvelope,
   );
   assert.throws(
     () =>
@@ -137,7 +140,7 @@ async function run() {
         { ...multipartFields(encrypted), iv: crypto.randomBytes(11).toString("base64url") },
         encryptedFile(encrypted.ciphertext),
       ),
-    /IV is invalid/,
+    invalidEnvelope,
   );
 
   assert.throws(
@@ -146,7 +149,7 @@ async function run() {
         { ...multipartFields(encrypted), keyVersion: "999" },
         encryptedFile(encrypted.ciphertext),
       ),
-    /key version is not supported/,
+    invalidEnvelope,
   );
 
   configureKeys([oldKey, newKey], newKey);

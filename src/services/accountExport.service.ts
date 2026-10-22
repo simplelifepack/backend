@@ -1,3 +1,5 @@
+import { decryptPrivateBytes, encryptPrivateBytes } from "../privacy/fieldEncryption";
+import { withPrivateUser } from "../privacy/access";
 import { prisma } from "../lib/prisma";
 import { createStoredZip, sanitizeArchiveName, type ArchiveFile } from "./archiveZip";
 import { readDecryptedDocumentLocation } from "./documentFileStorage";
@@ -5,6 +7,10 @@ import { getStorageProvider } from "../infrastructure/storage/createStorageProvi
 import { decryptJson, decryptString } from "../utils/documentEncryption";
 import { listFullWealthRecords } from "./wealthRecords.service";
 import { getUserPreferences } from "./userPreferences.service";
+
+function exportTrust(member: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(member).filter(([field]) => !["inviteTokenHash", "invitePinHash"].includes(field)));
+}
 
 const EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -33,7 +39,7 @@ export async function requestAccountExport(userId: string) {
   });
   if (active) return active;
   const job = await prisma.accountExportJob.create({ data: { userId, status: "REQUESTED" } });
-  setTimeout(() => { void prepareAccountExport(job.id); }, 0);
+  setTimeout(() => { void prepareAccountExport(job.id).catch(() => undefined); }, 0);
   return job;
 }
 
@@ -48,7 +54,9 @@ export async function downloadAccountExport(userId: string, jobId: string) {
   if (job.status !== "READY" || !job.storageKey || !job.fileName || !job.expiresAt || job.expiresAt <= new Date()) {
     throw Object.assign(new Error("Export is not ready."), { statusCode: 409 });
   }
-  const data = await getStorageProvider().download(job.storageKey);
+  if (job.archiveEncryptionVersion !== 2) throw Object.assign(new Error("Export must be prepared again."), { statusCode: 409 });
+  const stored = await getStorageProvider().download(job.storageKey);
+  const data = decryptPrivateBytes(stored.toString("utf8"), { model: "AccountExportJob", recordId: job.id, ownerId: userId, field: "archive" });
   await prisma.accountExportJob.update({ where: { id: job.id }, data: { downloadedAt: new Date() } });
   return { data, fileName: job.fileName };
 }
@@ -92,8 +100,9 @@ async function documentFiles(userId: string) {
 }
 
 export async function prepareAccountExport(jobId: string) {
-  const job = await prisma.accountExportJob.findUnique({ where: { id: jobId } });
+  const job = await prisma.accountExportJob.findUnique({ where: { id: jobId }, select: { id: true, userId: true, status: true } });
   if (!job || !["REQUESTED", "FAILED"].includes(job.status)) return;
+  return withPrivateUser(job.userId, async () => {
   await prisma.accountExportJob.update({ where: { id: jobId }, data: { status: "PREPARING", errorMessage: null } });
   try {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: job.userId } });
@@ -106,9 +115,9 @@ export async function prepareAccountExport(jobId: string) {
       prisma.healthFollowUp.findMany({ where: { userId: job.userId } }),
       prisma.healthReminder.findMany({ where: { userId: job.userId } }),
       prisma.trustMember.findMany({ where: { ownerUserId: job.userId }, include: { permissions: true } }),
-      prisma.trustMember.findMany({ where: { memberUserId: job.userId }, include: { permissions: true } }),
+      prisma.trustMember.findMany({ where: { memberUserId: job.userId, status: "ACTIVE" }, include: { permissions: true } }),
       getUserPreferences(job.userId),
-      listFullWealthRecords(job.userId).catch(() => []),
+      listFullWealthRecords(job.userId),
     ]);
     const metadata = documents.map((document) => ({
       id: document.id,
@@ -121,11 +130,11 @@ export async function prepareAccountExport(jobId: string) {
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
     }));
-    const zip = createStoredZip([
+    const exportFiles = [
       ...files,
       jsonFile("readiness-export/Account/profile.json", { id: user.id, name: user.name, email: user.email, accountTier: user.accountTier, createdAt: user.createdAt }),
       jsonFile("readiness-export/Account/preferences.json", preferences),
-      jsonFile("readiness-export/Account/family-members.json", { owned: trustMembers, linked: linkedTrust }),
+      jsonFile("readiness-export/Account/family-members.json", { owned: trustMembers.map(exportTrust), linked: linkedTrust.map(exportTrust) }),
       jsonFile("readiness-export/Documents/document-metadata.json", metadata),
       jsonFile("readiness-export/Health/health-data.json", { members: healthMembers, records: healthRecords, reminders }),
       csvFile("readiness-export/Health/measurements.csv", measurements),
@@ -134,18 +143,25 @@ export async function prepareAccountExport(jobId: string) {
       jsonFile("readiness-export/Wealth/wealth-records.json", wealthRecords),
       csvFile("readiness-export/Wealth/wealth-records.csv", wealthRecords),
       jsonFile("readiness-export/export-summary.json", { exportedAt: new Date().toISOString(), documentCount: documents.length, healthRecordCount: healthRecords.length, wealthRecordCount: wealthRecords.length }),
-    ]);
+    ];
+    const zip = (() => {
+      try { return createStoredZip(exportFiles); }
+      finally { exportFiles.forEach(file => file.data.fill(0)); }
+    })();
     const storageKey = `${job.userId}/exports/${job.id}/readiness-export.zip`;
-    await getStorageProvider().upload({ key: storageKey, body: zip, contentType: "application/zip" });
-    zip.fill(0);
+    try {
+      const encrypted = encryptPrivateBytes(zip, { model: "AccountExportJob", recordId: job.id, ownerId: job.userId, field: "archive" });
+      await getStorageProvider().upload({ key: storageKey, body: Buffer.from(encrypted), contentType: "application/octet-stream" });
+    } finally { zip.fill(0); }
     await prisma.accountExportJob.update({
       where: { id: jobId },
-      data: { status: "READY", storageKey, fileName: "readiness-export.zip", sizeBytes: zip.length, preparedAt: new Date(), expiresAt: new Date(Date.now() + EXPORT_TTL_MS) },
+      data: { status: "READY", storageKey, fileName: "readiness-export.zip", archiveEncryptionVersion: 2, sizeBytes: zip.length, preparedAt: new Date(), expiresAt: new Date(Date.now() + EXPORT_TTL_MS) },
     });
-  } catch (error) {
+  } catch {
     await prisma.accountExportJob.update({
       where: { id: jobId },
-      data: { status: "FAILED", errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Export failed." },
+      data: { status: "FAILED", errorMessage: "Export preparation failed." },
     }).catch(() => undefined);
   }
+  });
 }

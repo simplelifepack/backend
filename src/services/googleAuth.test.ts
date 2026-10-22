@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import type { TokenPayload } from "google-auth-library";
 
 import { prisma } from "../lib/prisma";
+import { withPrivateMigration } from "../privacy/access";
 import { googleLogin } from "./auth.service";
 import { verifyGoogleCredential, type GoogleCredentialVerifier } from "./googleIdentity.service";
 
@@ -55,7 +56,16 @@ async function run() {
 
   const linkedEmail = email("linked");
   const passwordHash = await bcrypt.hash("password123", 4);
-  const existing = await prisma.user.create({ data: { name: "Existing Name", email: linkedEmail, passwordHash } });
+  // This test predates main's field-level encryption work (16 Oct) and was
+  // never updated for it — a direct prisma.user.create() with no privacy
+  // access context throws "Private record not found." (see
+  // src/privacy/access.ts's assertPrivateOwner). withPrivateMigration is
+  // the exact pattern main's own integration tests use for synthetic
+  // fixtures (see src/privacy/modules.integration.test.ts); applying it
+  // here only, not touching the real login code path being tested.
+  const existing = await withPrivateMigration("test fixture", () =>
+    prisma.user.create({ data: { name: "Existing Name", email: linkedEmail, passwordHash } }),
+  );
   const linked = await googleLogin(
     { credential: "linked" },
     verifier(payload({ sub: `linked-${runId}`, email: linkedEmail, name: "Replacement Name" })),

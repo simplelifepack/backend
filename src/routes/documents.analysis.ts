@@ -2,7 +2,7 @@ import { z } from "zod";
 import { fallbackDocumentAIResult, type DocumentAIResult } from "../services/documentAnalyzer";
 import { normalizeDocumentType } from "../services/readiness/normalization";
 import { normalizeCategory, saveSchema } from "./documents.helpers";
-import { buildDocumentFingerprint, getDocumentDefinition, type DocumentValidationResult } from "../services/ingestion/documentDefinitions";
+import { buildDocumentFingerprint, getDocumentDefinition, type DocumentValidationResult } from "../services/documents/fieldValidation";
 
 const allowed = new Set(["Identity", "Employment", "Finance", "Insurance", "Property", "Medical", "Education", "Travel", "Vehicle", "Legal", "Photo", "Other"]);
 export function safeAnalysis(value: DocumentAIResult): DocumentAIResult { return { ...value, category: allowed.has(value.category) ? value.category : "Other", documentType: value.documentType.trim() || "Unknown" }; }
