@@ -1,8 +1,10 @@
+import { productionDomainAccess } from "./middleware/domainAccess";
 import cors from "cors";
 import express, { type Router } from "express";
 import helmet from "helmet";
 import path from "node:path";
 import authRouter from "./routes/auth.routes";
+import billingRouter from "./routes/billing.routes";
 import bootstrapRouter from "./routes/bootstrap.routes";
 import { openApiDocument } from "./docs/openapi";
 import { corsOptions, generalApiLimiter, jsonBodyLimit, securityHeadersOptions } from "./middleware/security";
@@ -39,12 +41,15 @@ app.use((req, res, next) => {
 });
 app.use(helmet(securityHeadersOptions));
 app.use(cors(corsOptions));
+app.use(productionDomainAccess);
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/") || req.path === "/packages" || req.path.startsWith("/packages/")) {
     res.setHeader("Cache-Control", "no-store");
   }
   next();
 });
+// Webhook HMAC must see the original bytes, before the global JSON parser.
+app.use("/api/billing", generalApiLimiter, billingRouter);
 app.use(express.json({ limit: jsonBodyLimit }));
 
 function lazyRouter(loader: () => Promise<Record<string, unknown>>, exportName = "default") {
@@ -155,6 +160,7 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
 });
 
 app.use(generalApiLimiter);
+app.use("/api/waitlist", lazyRouter(() => import("./routes/waitlist.routes")));
 app.use("/auth", authRouter);
 app.use("/api/bootstrap", bootstrapRouter);
 app.use("/api/search", lazyRouter(() => import("./routes/search.routes")));

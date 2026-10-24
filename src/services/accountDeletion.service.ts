@@ -1,3 +1,4 @@
+import { billingService } from "./billing/runtime";
 import { prisma } from "../lib/prisma";
 import { noteAuthVersion } from "./authRevocationCache";
 import { removePermanentFile } from "./documentFileStorage";
@@ -13,6 +14,7 @@ export async function scheduleAccountDeletion(userId: string, input: unknown) {
   const now = new Date();
   const scheduledDeletionAt = new Date(now.getTime() + DELETION_DELAY_MS);
   const updated = await prisma.$transaction(async tx => {
+    await billingService.cancelInTransaction(tx, userId);
     const user = await tx.user.update({
       where: { id: userId },
       data: { deletionRequestedAt: now, scheduledDeletionAt, authVersion: { increment: 1 } },
@@ -20,7 +22,7 @@ export async function scheduleAccountDeletion(userId: string, input: unknown) {
     });
     await tx.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } });
     return user;
-  });
+  }, { maxWait: 15000, timeout: 60000 });
   noteAuthVersion(userId, updated.authVersion);
   return { message: "Account deletion scheduled.", scheduledDeletionAt };
 }
@@ -48,6 +50,7 @@ export async function processDueAccountDeletions(now = new Date()) {
 }
 
 async function hardDeleteAccount(userId: string) {
+  await billingService.cancel(userId);
   const [documents, exports, cleanup] = await Promise.all([
     prisma.document.findMany({ where: { ownerProfileId: userId }, select: { storageKey: true, path: true, files: { select: { storageKey: true } } } }),
     prisma.accountExportJob.findMany({ where: { userId, storageKey: { not: null } } }),

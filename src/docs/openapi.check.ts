@@ -2,7 +2,16 @@ import SwaggerParser from "@apidevtools/swagger-parser";
 import { expectedOperations, openApiDocument } from "./openapi";
 
 const mountedOperations = [
+  "GET /api/waitlist/challenge",
+  "POST /api/waitlist/register",
+  "POST /api/waitlist/unsubscribe",
   "GET /health",
+  "GET /api/billing/plans",
+  "POST /api/billing/checkout",
+  "POST /api/billing/verify",
+  "GET /api/billing/subscription",
+  "POST /api/billing/cancel",
+  "POST /api/billing/webhook",
   "POST /auth/signup/request-otp",
   "POST /auth/signup",
   "POST /auth/login",

@@ -33,6 +33,8 @@ model User {
   private_appearance String?
   private_aiProcessingEnabled String?
   accountTier AccountTier @default(free)
+  billingManaged Boolean @default(false)
+  billingSubscriptions BillingSubscription[]
   aiUsage UserAIUsage[]
   storageCleanup StorageCleanup[]
   id                         String                      @id @default(cuid())
@@ -1126,4 +1128,98 @@ model AccountExportJob {
   @@index([userId, status])
   @@index([expiresAt])
   @@map("account_export_jobs")
+}
+
+
+enum BillingPlan {
+  monthly
+  annual
+}
+
+model BillingSubscription {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan BillingPlan
+  providerPlanId String
+  amountPaise Int
+  currency String @default("INR")
+  remoteId String? @unique
+  status String @default("creating")
+  periodStart DateTime?
+  periodEnd DateTime?
+  paidThrough DateTime?
+  nextChargeAt DateTime?
+  cancelAtCycleEnd Boolean @default(false)
+  lastReconciledAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  payments BillingPayment[]
+
+  @@index([userId, createdAt])
+}
+
+model BillingPayment {
+  id String @id
+  subscriptionId String
+  subscription BillingSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  invoiceId String?
+  amountPaise Int
+  currency String
+  status String
+  refundedPaise Int @default(0)
+  periodStart DateTime?
+  periodEnd DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subscriptionId, periodEnd])
+}
+
+model BillingWebhookEvent {
+  id String @id
+  payloadHash String
+  eventType String
+  processedAt DateTime @default(now())
+}
+
+enum WaitlistStatus {
+  registered
+  unsubscribed
+}
+
+enum WaitlistDeliveryStatus {
+  pending
+  sending
+  sent
+  failed
+  unknown
+}
+
+model WaitlistRegistration {
+  id                    String @id @default(uuid())
+  email                 String @unique
+  private_email         String
+  registeredAt          DateTime @default(now())
+  status                WaitlistStatus @default(registered)
+  unsubscribedAt        DateTime?
+  confirmationStatus    WaitlistDeliveryStatus @default(pending)
+  confirmationAttempts  Int @default(0)
+  confirmationSentAt    DateTime?
+  confirmationMessageId String?
+  nextAttemptAt         DateTime @default(now())
+  @@index([confirmationStatus, nextAttemptAt])
+}
+
+model WaitlistRateLimit {
+  key       String @id
+  count     Int
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model WaitlistProof {
+  id        String @id
+  expiresAt DateTime
+  @@index([expiresAt])
 }

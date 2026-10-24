@@ -352,3 +352,26 @@ export async function sendWealthHandoffEmail(input: {
     return { sent: false, reason: "delivery_failed" as const, errorCode: errorCode(error) };
   }
 }
+
+// SMTP timeouts can occur after acceptance. Only explicit rejection or a
+// pre-send configuration failure is retryable; ambiguous outcomes stay unknown.
+export async function sendWaitlistEmail(email: string, unsubscribeUrl: string): Promise<{
+  status: "sent" | "failed" | "unknown";
+  messageId?: string;
+}> {
+  let provider: EmailProvider | null;
+  try { provider = getEmailProvider(); } catch { return { status: "failed" }; }
+  if (!provider) return { status: "failed" };
+  try {
+    const result = await withTimeout(provider.sendEmail({
+      to: email,
+      subject: "You’re registered for ReadiNes early access",
+      text: `Thanks for registering for ReadiNes early access. We’ll let you know when access is available.\n\nUnsubscribe: ${unsubscribeUrl}`,
+      html: `<p>Thanks for registering for ReadiNes early access.</p><p>We’ll let you know when access is available.</p><p><a href="${unsubscribeUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}">Unsubscribe</a></p>`,
+    }));
+    return { status: "sent", messageId: result?.messageId };
+  } catch (error) {
+    const responseCode = (error as { responseCode?: number })?.responseCode;
+    return { status: responseCode && responseCode >= 400 && responseCode <= 599 ? "failed" : "unknown" };
+  }
+}

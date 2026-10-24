@@ -1,3 +1,4 @@
+import { synchronizePaidTier } from "./billing/entitlements";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
@@ -18,10 +19,10 @@ export class UsageLimitError extends Error {
 }
 
 export async function lockAccount(tx: Prisma.TransactionClient, userId: string) {
-  const rows = await tx.$queryRaw<Array<{ accountTier: "free" | "paid" }>>`
-    SELECT "accountTier" FROM "User" WHERE id = ${userId} FOR UPDATE`;
+  const rows = await tx.$queryRaw<Array<{ accountTier: "free" | "paid"; billingManaged: boolean }>>`
+    SELECT "accountTier", "billingManaged" FROM "User" WHERE id = ${userId} FOR UPDATE`;
   if (!rows[0]) throw Object.assign(new Error("Unauthorized."), { statusCode: 401 });
-  return rows[0].accountTier;
+  return synchronizePaidTier(tx, userId, rows[0].accountTier, rows[0].billingManaged);
 }
 
 // Union parent/file references by physical storage key; the parent aliases page 1.
@@ -95,7 +96,7 @@ export async function releaseUninvokedAIAction(userId: string, period: string) {
 export async function getAccountUsage(userId: string, now = new Date()) {
   const period = quotaPeriod(now ?? new Date());
   const [user, usedBytes, usage] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { accountTier: true } }),
+    prisma.$transaction(async tx => ({ accountTier: await lockAccount(tx, userId) })),
     storedBytes(userId),
     prisma.userAIUsage.findUnique({ where: { userId_period: { userId, period } } }),
   ]);

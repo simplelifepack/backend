@@ -49,7 +49,10 @@
     "test:document-ai": "node --import tsx --test src/services/documentAnalyzer/openaiDocumentAnalyzer.test.ts src/services/documentImportAnalysis.test.ts src/services/healthExtraction.service.test.ts src/services/pdfOperations.test.ts",
     "privacy:verify-local": "node --import tsx src/scripts/verifyLocalPrivateWrites.ts",
     "privacy:migrate-vercel": "node --import tsx src/scripts/runVercelPrivateMigration.ts",
-    "test:privacy-vercel": "node --import tsx --test src/privacy/vercelMigration.test.ts"
+    "test:privacy-vercel": "node --import tsx --test src/privacy/vercelMigration.test.ts",
+    "billing:setup-test-plans": "node --import tsx src/scripts/setupRazorpayPlans.ts",
+    "billing:reconcile": "node --import tsx src/scripts/reconcileBilling.ts",
+    "test:billing": "node --import tsx --test src/services/billing/*.test.ts"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^13.1.0",
