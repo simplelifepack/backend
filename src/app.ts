@@ -23,7 +23,9 @@ loadEmailConfig();
 loadStorageConfig();
 assertDocumentEncryptionConfigured();
 getActiveDocumentEncryptionKey();
-verifyEmailProviderOnStartup();
+// Serverless cold starts should open SMTP only for an actual send. The manual
+// verification command remains available without creating a competing handshake.
+if (!process.env.VERCEL) verifyEmailProviderOnStartup();
 
 const app = express();
 app.disable("x-powered-by");

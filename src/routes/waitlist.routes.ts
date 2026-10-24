@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { ipKeyGenerator } from "express-rate-limit";
@@ -39,7 +40,7 @@ router.post("/register", wrap(async (req, res) => {
   }
   const claim = await prisma.waitlistProof.createMany({ data: [proof], skipDuplicates: true });
   if (!claim.count) return res.status(400).json({ message: "Registration expired. Please try again." });
-  res.json(await registerWaitlistEmail(email));
+  res.json(await registerWaitlistEmail(email, waitUntil));
 }));
 router.post("/unsubscribe", wrap(async (req, res) => {
   const token = z.string().max(200).safeParse(req.body?.token);

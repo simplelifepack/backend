@@ -2,7 +2,7 @@ import { decryptPrivateValue } from "../privacy/fieldEncryption";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { after, beforeEach, test } from "node:test";
+import { after, afterEach, beforeEach, test } from "node:test";
 import express from "express";
 import cors from "cors";
 import { prisma } from "../lib/prisma";
@@ -20,16 +20,26 @@ process.env.PRIVATE_DATA_ACTIVE_KEY_ID = "waitlist-test";
 process.env.PRIVATE_DATA_KEYRING_JSON = JSON.stringify({ "waitlist-test": `base64:${randomBytes(32).toString("base64")}` });
 process.env.PRIVATE_DATA_LOOKUP_KEY = `base64:${randomBytes(32).toString("base64")}`;
 const sent: SendEmailInput[] = [];
+const backgroundTasks: Promise<unknown>[] = [];
+const contextKey = Symbol.for("@vercel/request-context");
+const globals = globalThis as typeof globalThis & { [contextKey]?: { get(): { waitUntil(task: Promise<unknown>): void } } };
+const previousContext = globals[contextKey];
+globals[contextKey] = { get: () => ({ waitUntil: task => { backgroundTasks.push(task); } }) };
+async function flushBackground() { await Promise.all(backgroundTasks.splice(0)); }
+afterEach(flushBackground);
 const app = express();
 app.use(cors(corsOptions), productionDomainAccess, express.json());
 app.use("/api/waitlist", router);
 app.get("/api/protected", (_req, res) => res.status(401).json({ message: "Authentication required" }));
 app.post("/auth/login", (_req, res) => res.status(401).json({ message: "Authentication required" }));
 const server = app.listen(0, "127.0.0.1");
-after(async () => { server.close(); await prisma.$disconnect(); });
+after(async () => { await flushBackground(); globals[contextKey] = previousContext; server.close(); await prisma.$disconnect(); });
 async function base() { if (!server.listening) await once(server, "listening"); return `http://127.0.0.1:${(server.address() as { port: number }).port}`; }
 async function call(path: string, body?: unknown, origin = "https://readines.com") {
-  return fetch(`${await base()}${path}`, { method: body ? "POST" : "GET", headers: { Origin: origin, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const response = await fetch(`${await base()}${path}`, { method: body ? "POST" : "GET", headers: { Origin: origin, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  // Most tests inspect completed delivery; the latency test calls HTTP directly.
+  await flushBackground();
+  return response;
 }
 function solve(token: string) {
   for (let n = 0; ; n++) { const hash = createHash("sha256").update(`${token}:${n}`).digest(); if (hash[0] === 0 && hash[1] < 16) return String(n); }
@@ -49,6 +59,9 @@ test("registers normalized email, records delivery, duplicates and concurrent su
   const bodies = await Promise.all(Array.from({ length: 4 }, () => submission(" Person@Example.com ")));
   const responses = await Promise.all(bodies.map(body => call("/api/waitlist/register", body)));
   assert.deepEqual(responses.map(response => response.status), [200, 200, 200, 200]);
+  const results = await Promise.all(responses.map(response => response.json())) as Array<{ alreadyRegistered: boolean; message: string }>;
+  assert.equal(results.filter(result => !result.alreadyRegistered).length, 1);
+  assert.equal(results.filter(result => result.alreadyRegistered && result.message.includes("already registered")).length, 3);
   assert.equal(await prisma.waitlistRegistration.count(), 1);
   assert.equal(sent.length, 1);
   const row = await prisma.waitlistRegistration.findFirstOrThrow();
@@ -57,7 +70,9 @@ test("registers normalized email, records delivery, duplicates and concurrent su
   assert(!row.private_email.includes("person@example.com")); assert.equal(row.status, "registered");
   assert.equal(row.confirmationStatus, "sent"); assert.equal(row.confirmationAttempts, 1);
   assert.equal(row.confirmationMessageId, "local-smtp-accepted"); assert.ok(row.confirmationSentAt); assert.ok(row.registeredAt);
-  assert.equal((await call("/api/waitlist/register", await submission("person@example.com"))).status, 200);
+  const duplicate = await call("/api/waitlist/register", await submission("PERSON@example.com"));
+  assert.equal(duplicate.status, 200);
+  assert.deepEqual(await duplicate.json(), { alreadyRegistered: true, message: "You’re already registered for early access. Thanks for your interest!" });
   assert.equal(sent.length, 1);
 });
 test("rejects invalid email, invalid proof, expired or replayed challenges; honeypot stores nothing", async () => {
@@ -129,4 +144,32 @@ test("production origins may use waitlist only; approved app origins retain auth
 });
 test("provider result reports acceptance and explicit rejection without swallowing outcome", async () => {
   assert.equal((await sendWaitlistEmail("person@example.com", "https://readines.com/")).status, "sent");
+});
+
+test("registration responds while slow SMTP is still pending and Vercel retains completion", async () => {
+  let release!: () => void;
+  let markStarted!: () => void;
+  const started = new Promise<void>(resolve => { markStarted = resolve; });
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  setEmailProviderForTests({ sendEmail: async input => {
+    sent.push(input); markStarted(); await blocked; return { messageId: "slow-provider-accepted" };
+  } });
+  const body = await submission("slow@example.com");
+  try {
+    const began = Date.now();
+    const response = await fetch(`${await base()}/api/waitlist/register`, {
+      method: "POST", headers: { Origin: "https://readines.com", "Content-Type": "application/json" },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(2000),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as { alreadyRegistered: boolean }).alreadyRegistered, false);
+    await started;
+    assert.equal(backgroundTasks.length, 1, "SMTP completion registered with the Vercel lifecycle");
+    const row = await prisma.waitlistRegistration.findFirstOrThrow();
+    assert.equal(row.confirmationStatus, "sending");
+    console.info({ event: "waitlist_response_latency_test", responseMs: Date.now() - began, smtpStillPending: true });
+    release(); await flushBackground();
+    assert.equal((await prisma.waitlistRegistration.findFirstOrThrow()).confirmationStatus, "sent");
+    assert.equal(sent.length, 1);
+  } finally { release(); }
 });

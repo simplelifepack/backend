@@ -90,3 +90,13 @@ The user subsequently authorized migrations, Vercel environment configuration, a
 - Full lint retains seven existing file-length errors in each repository and an existing frontend hooks warning. Focused new-file lint, type checks, builds, OpenAPI checks, and diff checks pass. The frontend pre-push hook runs this full lint baseline; its known failure is recorded for the authorized source push.
 
 No manual Vercel deployment or real payment/confirmation email was initiated. Pushing the configured Git production branch may trigger the project's normal Vercel deployment integration.
+
+
+## Confirmation latency and repeat-registration follow-up
+
+- Production aggregate evidence before this change: two confirmations averaged 6.52 seconds from registration to SMTP acceptance (maximum 6.53 seconds). This measures SMTP acceptance, not inbox delivery.
+- Registration now persists its unique encrypted database record and hands immediate delivery to Vercel's `waitUntil` lifecycle helper, so SMTP does not block the success response. The delivery task starts immediately; it is not held for a cron job. Non-HTTP callers can still await delivery. Pending/failed database records remain eligible for the existing safe operator retry script; interrupted/ambiguous sends are never automatically retried.
+- The existing SMTP provider now reuses a bounded pool of two TLS connections, with automatic transport requeues disabled and explicit connection/greeting/socket timeouts. Serverless cold starts no longer perform a separate SMTP verification handshake; explicit verification and non-serverless startup verification remain available. First SMTP connections still need TLS/authentication; reuse reduces subsequent handshake overhead.
+- Delivery completion logs report registration ID, outcome and duration only, without recipient/content/secrets.
+- Repeat normalized-email submissions now return `alreadyRegistered: true` and “You’re already registered for early access. Thanks for your interest!” without sending again. New registrations return `alreadyRegistered: false`. The existing UI displays the server's message. Unsubscribed entries remain suppressed and are never silently reactivated.
+- Local verification: nine PostgreSQL/HTTP integration tests passed, including concurrent duplicate messaging, suppression, retries, and slow-provider background completion. The latter returned in 53 ms while SMTP was deliberately blocked, then recorded completion after release. Eleven focused frontend tests passed, including the friendly duplicate message. Type checking, focused backend lint, and OpenAPI validation passed. No real email was sent for these tests; inbox-delivery improvement has not been benchmarked.
