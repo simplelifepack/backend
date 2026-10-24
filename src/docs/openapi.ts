@@ -1,4 +1,6 @@
 /* eslint-disable max-lines */
+import { latestOperations } from "./latest.openapi";
+import { waitlistOperations } from "./waitlist.openapi";
 import { billingOperations } from "./billing.openapi";
 type Schema = Record<string, unknown>;
 export type Operation = {
@@ -508,8 +510,8 @@ const schemas: Record<string, Schema> = {
   }),
   HealthMeasurement: objectSchema({
     id: { type: "string" },
-    sourceDocumentId: { type: "string" },
-    recordId: { type: "string" },
+    sourceDocumentId: nullable({ type: "string" }),
+    recordId: nullable({ type: "string" }),
     metricKey: { type: "string" },
     displayName: { type: "string" },
     originalName: { type: "string" },
@@ -804,9 +806,8 @@ const trustMemberBase = objectSchema({
 
 const ops: Operation[] = [
   ...billingOperations,
-  { method: "get", path: "/api/waitlist/challenge", tags: ["Early Access"], summary: "Prepare early access registration", operationId: "waitlistChallenge", security: [], description: "Returns a signed IP-bound challenge valid for ten minutes. Find a decimal nonce for which SHA-256(token + ':' + nonce) has twelve leading zero bits. Challenges are single use. Limited to 60 waitlist requests per IP per hour.", responses: { 200: response("Challenge", objectSchema({ token: { type: "string" }, difficulty: { type: "integer", enum: [12] } }, ["token", "difficulty"])), ...errorResponses("429", "503") } },
-  { method: "post", path: "/api/waitlist/register", tags: ["Early Access"], summary: "Register for early access", operationId: "registerWaitlist", security: [], description: "Normalizes email and atomically creates at most one registration. Duplicates return a friendly already-registered message and alreadyRegistered=true without resending confirmation. New registrations return immediately after persistence; confirmation delivery runs as a Vercel-managed background task. Requires a signed single-use challenge and proof of work; website is a honeypot and must be empty. Limited to 5 submissions per email and 60 waitlist requests per IP per hour. Confirmation delivery is recorded separately and may require a safe operator retry.", requestBody: body(objectSchema({ email: { type: "string", format: "email", maxLength: 254 }, website: { type: "string", maxLength: 500 }, challenge: { type: "string", maxLength: 300 }, solution: { type: "string", maxLength: 7 } }, ["email", "challenge", "solution"])), responses: { 200: response("Registered or already registered", objectSchema({ message: { type: "string" }, alreadyRegistered: { type: "boolean" } }, ["message"])), ...errorResponses("400", "429", "503") } },
-  { method: "post", path: "/api/waitlist/unsubscribe", tags: ["Early Access"], summary: "Unsubscribe from early access", operationId: "unsubscribeWaitlist", security: [], description: "Idempotently suppresses future early access email using the token in the confirmation email. Opening the link does not change registration; explicit confirmation is required. Limited to 60 waitlist requests per IP per hour.", requestBody: body(objectSchema({ token: { type: "string", maxLength: 200 } }, ["token"])), responses: { 200: response("Unsubscribed", objectSchema({ message: { type: "string" } }, ["message"])), ...errorResponses("400", "429", "503") } },
+  ...waitlistOperations,
+  ...latestOperations,
   { method: "get", path: "/health", tags: ["System"], summary: "Service health check", operationId: "getHealth", description: "Public liveness check for the backend service.", responses: { 200: response("Service is healthy", objectSchema({ status: { const: "ok" }, service: { const: "readiness-backend" }, timestamp: dateTime }), { status: "ok", service: "readiness-backend", timestamp: "2026-09-22T12:00:00.000Z" }) } },
 
   { method: "post", path: "/auth/signup/request-otp", tags: ["Authentication"], summary: "Request signup OTP", operationId: "requestSignupOtp", description: "Starts signup by sending a 6-digit verification code. No user account is created until /auth/signup verifies the OTP.", requestBody: body(objectSchema({ name: { type: "string", minLength: 1 }, email: { type: "string", format: "email" }, password: { type: "string", minLength: 8 } }, ["name", "email", "password"]), { name: "Example User", email: "user@example.com", password: "ExamplePassword1!" }), responses: { 200: response("Signup code sent", objectSchema({ message: { type: "string" } })), ...errorResponses("400", "409", "429", "502") } },
@@ -1047,21 +1048,25 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "Readiness API",
-    version: "1.0.0",
+    version: "1.1.0",
     summary: "Developer documentation for the Readiness backend.",
     description: [
-      "Normal authentication flow: POST /auth/signup, /auth/login, or /auth/google; copy token/accessToken; click Authorize and enter Bearer <token>; POST /auth/refresh uses the HttpOnly readiness_refresh cookie to rotate sessions; POST /auth/logout clears the current cookie; POST /auth/logout-all revokes all sessions.",
+      "Normal authentication flow: POST /auth/signup, /auth/login, or /auth/google; copy token/accessToken; click Authorize and enter the access token (without a Bearer prefix); POST /auth/refresh uses the HttpOnly readiness_refresh cookie to rotate sessions; POST /auth/logout clears the current cookie; POST /auth/logout-all revokes all sessions.",
       "Document flow: GET /documents/encryption-key, encrypt files in the browser using the hybrid envelope contract, POST /documents/analyze or /documents/upload, review the response, POST /documents to save, then GET /documents.",
       "Health flow: save a source document first, then POST /api/health/records with documentId. Include type only for manual uploads when AI processing is disabled; otherwise Health extraction classifies the type. If memberId is omitted, the backend attempts patient/profile matching and may return awaiting_profile_match.",
-      "Google flow: authorize, open authorizationUrl, callback completes the popup OAuth flow, then call status and scan/import.",
-      "Package flow: lookup existing packages or generate public requirement packages. /search-or-generate supports JSON and SSE.",
+      "Early access: GET /api/waitlist/challenge, solve its proof of work, then POST /api/waitlist/register. New email confirmations run in the background; duplicate registrations return alreadyRegistered=true without sending again. POST /api/waitlist/unsubscribe confirms the signed email link.",
+      "Browser origin policy: readines.com and www.readines.com may call only the public waitlist endpoints. The approved frontend-web-nine-amber.vercel.app origin and configured development/staging origins retain application access. Origin is not identity; protected endpoints still require authentication. Swagger on this backend uses the backend origin and normal endpoint authorization.",
+      "Billing: GET /api/billing/plans exposes server prices and optional hosted test-button availability. Recurring checkout, verification, subscription lookup and cancellation require bearer auth and complete recurring configuration. Hosted test-button payments do not activate paid entitlements. Razorpay webhooks require a signature over the exact raw body and a unique event ID.",
+      "Global search: GET /api/search?q=passport returns grouped results from the authenticated user's modules. Manual health readings use POST /api/health/members/{memberId}/measurements.",
+      "Integration availability: Gmail and Google Drive routes are not mounted. DigiLocker routes are mounted but the provider integration is disabled; inspect /api/integrations/digilocker/status and the documented 503 behavior.",
+      "Package flow: lookup existing packages or generate public requirement packages. /search-or-generate supports JSON and SSE. Private custom drafts use /custom/generation-jobs with polling; review the generated draft then save it through POST /custom. The /packs, /packages and /api/packages aliases remain mounted.",
       "Trust flow: owners manage authenticated members; invitees use public token endpoints with a 6-digit PIN and 24-hour invitation lifecycle.",
     ].join("\n\n"),
   },
   servers: [{ url: "/", description: "Current host / same-origin server" }],
   tags: [
     "System", "Early Access", "Authentication", "Bootstrap", "Documents", "Packages",
-    "Gmail Integration", "Google Drive Integration", "Trust Center", "Wealth", "Health", "Notifications", "Preferences", "Account", "Admin", "Billing",
+    "Gmail Integration", "Google Drive Integration", "Trust Center", "Wealth", "Health", "Notifications", "Preferences", "Account", "Admin", "Billing", "Search", "DigiLocker",
   ].map((name) => ({ name })),
   paths: buildPaths(),
   components: {

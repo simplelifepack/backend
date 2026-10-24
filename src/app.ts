@@ -144,6 +144,12 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
         url: "/openapi.json",
         dom_id: "#swagger-ui",
         deepLinking: true,
+        filter: true,
+        displayRequestDuration: true,
+        displayOperationId: true,
+        tagsSorter: "alpha",
+        operationsSorter: "method",
+        docExpansion: "list",
         persistAuthorization: false,
         withCredentials: true,
         presets: [
