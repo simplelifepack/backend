@@ -1,3 +1,4 @@
+import { renderWaitlistConfirmationEmail } from "./templates/waitlistConfirmationEmail";
 import { loadEmailConfig } from "../../config/email";
 import { prisma } from "../../lib/prisma";
 import { SmtpEmailProvider } from "./SmtpEmailProvider";
@@ -365,9 +366,7 @@ export async function sendWaitlistEmail(email: string, unsubscribeUrl: string): 
   try {
     const result = await withTimeout(provider.sendEmail({
       to: email,
-      subject: "You’re registered for ReadiNes early access",
-      text: `Thanks for registering for ReadiNes early access. We’ll let you know when access is available.\n\nUnsubscribe: ${unsubscribeUrl}`,
-      html: `<p>Thanks for registering for ReadiNes early access.</p><p>We’ll let you know when access is available.</p><p><a href="${unsubscribeUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}">Unsubscribe</a></p>`,
+      ...renderWaitlistConfirmationEmail({ unsubscribeUrl }),
     }));
     return { status: "sent", messageId: result?.messageId };
   } catch (error) {
