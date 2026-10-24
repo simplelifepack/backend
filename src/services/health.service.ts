@@ -619,6 +619,7 @@ export async function createHealthRecord(userId: string, input: unknown) {
       extraction = await extractHealthDocument({
         type: data.type,
         files: originalFiles,
+        userId,
       });
       const extractedType = extraction.documentType;
       const suspiciousLabExtraction = extractedType === "lab_report" && extraction.measurements.length === 0 && !extraction.provider && !extraction.doctor;
@@ -825,6 +826,7 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
     extraction = await extractHealthDocument({
       type: record.type as HealthDocumentType,
       files: originalFiles,
+      userId,
     });
     if (record.type === "lab_report" && extraction.measurements.length === 0 && !extraction.provider && !extraction.doctor) {
       throw new Error("No structured data could be extracted from this lab report.");

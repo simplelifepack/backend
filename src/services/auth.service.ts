@@ -12,6 +12,7 @@ import { verifyGoogleCredential, type GoogleCredentialVerifier } from "./googleI
 import { acceptTrustInvitationsForUser } from "./trustCenter.service";
 import { cancelPendingDeletion } from "./accountDeletion.service";
 import { noteAuthVersion } from "./authRevocationCache";
+import { recordSignIn } from "./signInEvents.service";
 
 export type AuthUser = {
   id: string;
@@ -360,7 +361,7 @@ export async function requestSignupOtp(input: unknown) {
   });
 }
 
-export async function signup(input: unknown): Promise<AuthResult> {
+export async function signup(input: unknown, context?: emailService.LoginAlertContext): Promise<AuthResult> {
   const { name, email, otp } = signupOtpSchema.parse(input);
   const normalizedEmail = email.toLowerCase();
 
@@ -421,6 +422,7 @@ export async function signup(input: unknown): Promise<AuthResult> {
   const deletionCancelled = await cancelPendingDeletion(user.id);
   const result = await buildAuthResult(user, { deletionCancelled });
   await acceptTrustInvitationsForUser(user.id, user.email);
+  await recordSignIn(user.id, "signup", context);
   dispatchAuthEmail(() => emailService.sendWelcomeEmail(user));
   return result;
   });
@@ -446,10 +448,14 @@ export async function login(input: unknown, context?: emailService.LoginAlertCon
 
   return withPrivateUser(credentials.id, async () => {
   const user = await authenticatedUser(credentials.id);
+  if (user.suspendedAt) {
+    throw httpError("This account has been suspended. Contact support.", 403);
+  }
   const authUser = selectAuthUser(user);
   const deletionCancelled = await cancelPendingDeletion(credentials.id);
   const result = await buildAuthResult(authUser, { deletionCancelled });
   await acceptTrustInvitationsForUser(user.id, user.email);
+  await recordSignIn(user.id, "password", context);
   dispatchAuthEmail(() => emailService.sendLoginAlertEmail(user, context));
   return result;
   });
@@ -467,10 +473,14 @@ export async function loginWithPin(input: unknown, context?: emailService.LoginA
 
   return withPrivateUser(credentials.id, async () => {
   const user = await authenticatedUser(credentials.id);
+  if (user.suspendedAt) {
+    throw httpError("This account has been suspended. Contact support.", 403);
+  }
   const authUser = selectAuthUser(user);
   const deletionCancelled = await cancelPendingDeletion(credentials.id);
   const result = await buildAuthResult(authUser, { deletionCancelled });
   await acceptTrustInvitationsForUser(user.id, user.email);
+  await recordSignIn(user.id, "pin", context);
   dispatchAuthEmail(() => emailService.sendLoginAlertEmail(user, context));
   return result;
   });
@@ -595,8 +605,12 @@ export async function googleLogin(
           if (!identity) await tx.externalIdentity.create({ data: { userId, provider: "google", providerAccountId: google.subject, avatarUrl: google.picture } });
           return linked;
         }, { isolationLevel: "Serializable" });
+        if (user.suspendedAt) {
+          throw httpError("This account has been suspended. Contact support.", 403);
+        }
         const result = await buildAuthResult(selectAuthUser(user));
         await acceptTrustInvitationsForUser(user.id, user.email);
+        await recordSignIn(user.id, "google", context);
         dispatchAuthEmail(() => existing ? emailService.sendLoginAlertEmail(user, context) : emailService.sendWelcomeEmail(user));
         return result;
       });

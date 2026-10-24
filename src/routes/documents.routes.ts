@@ -1,5 +1,5 @@
 import { queueStorageCleanup, drainStorageCleanup } from "../services/storageCleanup.service";
-import { enforceStorage, storedBytes, withStorageUpload, lockAccount } from "../services/accountUsage.service";
+import { enforceStorage, resolveStorageLimitBytes, storedBytes, withStorageUpload, lockAccount, FREE_STORAGE_LIMIT_BYTES } from "../services/accountUsage.service";
 /* eslint-disable max-lines */
 import crypto from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -215,7 +215,7 @@ async function analyzeEncryptedUpload(
     }
 
     const analyzePaths = async (index: number, paths: string[]): Promise<{ result: Awaited<ReturnType<typeof analyzeDocument>> | Error }> => index === plaintexts.length
-      ? analyzeDocument(paths.map((path, i) => ({ path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize }))).then((result) => ({ result })).catch((error) => ({ result: error as Error }))
+      ? analyzeDocument(paths.map((path, i) => ({ path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize })), { userId: authUser.id }).then((result) => ({ result })).catch((error) => ({ result: error as Error }))
       : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), (path) => analyzePaths(index + 1, [...paths, path]));
     const wantsAI = envelopes.some((item) => item.aiAnalysisConsent);
     let analysis: { result: Awaited<ReturnType<typeof analyzeDocument>> | Error } = { result: fallbackDocumentAIResult };
@@ -728,7 +728,8 @@ router.patch("/:id/pages/:pageId", async (req, res, next) => {
       const currentBytes = page.encryptedSize ?? page.size;
       const incomingBytes = pending.encryptedSize ?? pending.size;
       const usedBytes = await storedBytes(authUser.id, tx);
-      enforceStorage(tier, usedBytes, Math.max(0, incomingBytes - currentBytes));
+      const limitBytes = tier === "free" ? await resolveStorageLimitBytes(tx, authUser.id) : FREE_STORAGE_LIMIT_BYTES;
+      enforceStorage(tier, usedBytes, Math.max(0, incomingBytes - currentBytes), limitBytes);
       const consumed = await consumeTemporaryUpload(authUser.id, payload.tempFileId, tx);
       if (!consumed) throw Object.assign(new Error("This upload review has expired. Please select the file again."), { statusCode: 404, code: "TEMPORARY_UPLOAD_EXPIRED" });
       const newFile = await saveEncryptedPermanentFile(authUser.id, `${document.id}/page-${page.pageIndex + 1}-${crypto.randomUUID()}`, consumed, { preserveTemporaryFile: true });

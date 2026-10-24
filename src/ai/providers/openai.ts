@@ -17,6 +17,27 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_REQUEST_TIMEOUT_MS = 90_000;
 const MAX_OUTPUT_TOKENS = 8_500;
 
+// Seeds AITaskConfig's "package_intent" row the first time getTaskConfig
+// runs after this ships, and is the fallback whenever analyzeIntent.ts
+// doesn't pass an override (DB unreachable, or genuinely never configured).
+// Deliberately excludes the allowUnverifiedGuidance safety line — see
+// requestAnalysis below for why that one stays code-only.
+export const DEFAULT_PACKAGE_INTENT_INSTRUCTIONS = [
+  "Readiness is a readiness engine, not a chatbot.",
+  "Use web search to find the official source before creating the package.",
+  "Prefer government, embassy, immigration authority, official bank, university, insurance, or regulatory authority websites. Avoid blogs, forums, Reddit, Quora, and SEO pages.",
+  "Convert the user's goal into exactly one practical readiness package using only requirements supported by the sources.",
+  "Return only the required JSON schema. Never return prose, markdown, advice, or suggested steps.",
+  "List the documents required or commonly requested by the cited official sources for the user's jurisdiction and goal.",
+  "Set sourceTitle, sourceUrl, sourceOrganization, and lastChecked from the primary official source used.",
+  "Include every official source used in verificationSources with title, organization, URL, type, and retrievedAt ISO date.",
+  "Never label a package as AI generated. Never return needs_review.",
+  "Every requirement must include a stable normalized id, normalized documentType, explicit owner, title, category, required boolean, whyNeeded, sourceName, sourceUrl, sourceAuthorityTier, and lastVerifiedAt.",
+  "Use owner self for the user or buyer unless the requirement belongs to another party such as seller, spouse, employer, bank, hospital, or government.",
+  "Use concise document names and group each document by category. Never encode owner only in the title.",
+  "Return concise factual searchMetadata for discovery only: intent, subject, purpose, jurisdiction, destination when relevant, and at most 8 natural searchPhrases. Do not invent a jurisdiction or destination.",
+];
+
 export class OpenAIProvider implements AIProvider {
   readonly name = "OpenAIProvider";
 
@@ -63,35 +84,28 @@ export class OpenAIProvider implements AIProvider {
   }
 
   private async requestAnalysis(query: string, timeoutMs: number, options: ProviderRequestOptions): Promise<AIReadinessPackage> {
+    // The allowUnverifiedGuidance line is a real behavioral safety branch
+    // (whether a package without a verified source is allowed to exist at
+    // all), not prose — it stays code-level and non-admin-editable even
+    // though the rest of the instructions (options.instructionsOverride,
+    // from AITaskConfig) are. Always appended last, after whatever the
+    // configured instructions are, so it can't be edited away.
+    const configuredInstructions = options.instructionsOverride ?? DEFAULT_PACKAGE_INTENT_INSTRUCTIONS;
+    const safetyInstruction = options.allowUnverifiedGuidance
+      ? "If no official government, university, embassy, licensing authority, bank, insurer, or organization source can be identified, return a best-effort guidance checklist with verificationStatus unverified_guidance, confidence low, hasVerifiedOfficialSource false, empty verificationSources, and no fabricated URLs or authorities."
+      : "If no official government, university, embassy, licensing authority, bank, insurer, or organization source can be identified, do not create a package.";
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: this.model,
+        model: options.model ?? this.model,
         store: false,
         stream: Boolean(options.onDelta),
         reasoning: { effort: process.env.OPENAI_REQUIREMENTS_REASONING_EFFORT ?? process.env.OPENAI_REASONING_EFFORT ?? "none" },
         max_output_tokens: MAX_OUTPUT_TOKENS,
         tools: [{ type: process.env.OPENAI_WEB_SEARCH_TOOL_TYPE ?? "web_search", search_context_size: "low" }],
-        instructions: [
-          "Readiness is a readiness engine, not a chatbot.",
-          "Use web search to find the official source before creating the package.",
-          "Prefer government, embassy, immigration authority, official bank, university, insurance, or regulatory authority websites. Avoid blogs, forums, Reddit, Quora, and SEO pages.",
-          "Convert the user's goal into exactly one practical readiness package using only requirements supported by the sources.",
-          "Return only the required JSON schema. Never return prose, markdown, advice, or suggested steps.",
-          "List the documents required or commonly requested by the cited official sources for the user's jurisdiction and goal.",
-          "Set sourceTitle, sourceUrl, sourceOrganization, and lastChecked from the primary official source used.",
-          "Include every official source used in verificationSources with title, organization, URL, type, and retrievedAt ISO date.",
-          options.allowUnverifiedGuidance
-            ? "If no official government, university, embassy, licensing authority, bank, insurer, or organization source can be identified, return a best-effort guidance checklist with verificationStatus unverified_guidance, confidence low, hasVerifiedOfficialSource false, empty verificationSources, and no fabricated URLs or authorities."
-            : "If no official government, university, embassy, licensing authority, bank, insurer, or organization source can be identified, do not create a package.",
-          "Never label a package as AI generated. Never return needs_review.",
-          "Every requirement must include a stable normalized id, normalized documentType, explicit owner, title, category, required boolean, whyNeeded, sourceName, sourceUrl, sourceAuthorityTier, and lastVerifiedAt.",
-          "Use owner self for the user or buyer unless the requirement belongs to another party such as seller, spouse, employer, bank, hospital, or government.",
-          "Use concise document names and group each document by category. Never encode owner only in the title.",
-          "Return concise factual searchMetadata for discovery only: intent, subject, purpose, jurisdiction, destination when relevant, and at most 8 natural searchPhrases. Do not invent a jurisdiction or destination.",
-        ].join(" "),
+        instructions: [...configuredInstructions, safetyInstruction].join(" "),
         input: query,
         text: { format: { type: "json_schema", name: "readiness_readiness_package", strict: true, schema: {
           type: "object",

@@ -3,7 +3,22 @@
 // Clinical/financial states and their event dates are intentionally excluded.
 export const operationalFields: Record<string, readonly string[]> = {
   UserAIUsage: ["userId", "period", "actionCount", "updatedAt"],
-  User: ["id", "accountTier", "authVersion", "pinAttemptCount", "pinLockedUntil", "deletionRequestedAt", "scheduledDeletionAt", "welcomeEmailSentAt", "createdAt", "updatedAt"],
+  // suspendedAt/suspendedReason added 21 Oct merging the admin console branch
+  // (simplelifepack/backend#1) — these didn't exist when this allowlist was
+  // written, so they fell through to "private by default" and the
+  // merge-time encrypted write path tried to write a private_suspendedAt
+  // column that no migration had ever created. suspendedAt is a pure
+  // timestamp, same shape as scheduledDeletionAt/deletionRequestedAt right
+  // next to it. suspendedReason IS free text (an admin's 3-500 char reason,
+  // see adminUsers.service.ts's suspendUser) but the identical string is
+  // already written in plaintext to AdminAuditLog.reason by the same call —
+  // that's the audit trail's whole purpose, gated by the audit.read
+  // capability, not field encryption. Encrypting the User column while the
+  // same text sits in plaintext one table over would be inconsistent, not
+  // more secure. Flagged for Ranjith to confirm — this is a security-
+  // relevant judgment call made while unblocking a merge, not something
+  // this allowlist's original author signed off on.
+  User: ["id", "accountTier", "authVersion", "pinAttemptCount", "pinLockedUntil", "deletionRequestedAt", "scheduledDeletionAt", "welcomeEmailSentAt", "suspendedAt", "suspendedReason", "createdAt", "updatedAt"],
   CustomPackageGenerationJob: ["id", "userId", "dedupeKey", "status", "retryCount", "provider429Count", "hasVerifiedOfficialSource", "queuedAt", "startedAt", "completedAt", "failedAt", "leaseExpiresAt", "lockedBy", "processingMs", "aiMs", "saveMs", "createdAt", "updatedAt"],
   PushSubscription: ["id", "userId", "active", "revokedAt", "createdAt", "updatedAt"],
   TrustMember: ["id", "ownerUserId", "memberUserId", "accessType", "status", "invitedAt", "inviteExpiresAt", "rejectedAt", "pinAttemptCount", "pinLockedUntil", "acceptedAt", "revokedAt", "createdAt", "updatedAt"],

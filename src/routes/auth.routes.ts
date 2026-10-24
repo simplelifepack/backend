@@ -26,7 +26,10 @@ function sendAuthResult(res: Parameters<typeof setRefreshCookie>[0], result: Awa
 
 router.post("/signup", authLimiter, signupOtpVerifyAccountLimiter, async (req, res, next) => {
   try {
-    const result = await authService.signup(req.body);
+    const result = await authService.signup(req.body, {
+      userAgent: req.get("user-agent"),
+      ip: req.ip,
+    });
     return sendAuthResult(res, result, 201);
   } catch (error) {
     next(error);
