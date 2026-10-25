@@ -1,85 +1,41 @@
 import { Router } from "express";
 import { z } from "zod";
-
-import { isSupportedDigiLockerDocument, SUPPORTED_DIGILOCKER_DOCUMENTS } from "../config/digilocker";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
-import {
-  cancelDigiLockerSession,
-  digilockerStatus,
-  importDigiLockerDocuments,
-  listDigiLockerDocuments,
-  refreshDigiLockerSession,
-  startDigiLockerSession,
-} from "../services/digilocker/digilocker.service";
-
+import { uploadLimiter } from "../middleware/security";
+import { cleanupExpiredDigiLockerCredentials, cancelDigiLockerSession, completeDigiLockerAuthorization, digilockerStatus, importDigiLockerDocuments, listDigiLockerDocuments, refreshDigiLockerSession, startDigiLockerSession } from "../services/digilocker/digilocker.service";
 const router = Router();
+router.use(async (_req, res, next) => {
+  try { await cleanupExpiredDigiLockerCredentials(); } catch (error) { return next(error); }
+  res.setHeader("Cache-Control", "no-store"); res.setHeader("Referrer-Policy", "no-referrer"); next(); });
+// OAuth callback is public; one-time state resolves the owner before any private read.
+router.get("/callback", async (req, res) => {
+  const target = new URL("/documents", process.env.FRONTEND_URL ?? "http://localhost:5173");
+  try {
+    const query = z.object({ state: z.string().min(32).max(256), code: z.string().min(1).max(4096).optional(), error: z.string().max(256).optional() }).parse(req.query);
+    const result = await completeDigiLockerAuthorization({ state: query.state, code: query.code, denied: Boolean(query.error) });
+    target.hash = new URLSearchParams({ digilocker: result.id, result: result.status }).toString();
+  } catch { target.hash = "digilocker_error=invalid_state"; }
+  return res.redirect(303, target.toString());
+});
 router.use(requireAuth);
-
-const documentTypeSchema = z.string().refine(isSupportedDigiLockerDocument, "Unsupported DigiLocker document type.");
-const startSchema = z.object({
-  redirectUrl: z.string().url().optional(),
-  documentTypes: z.array(documentTypeSchema).min(1).max(SUPPORTED_DIGILOCKER_DOCUMENTS.length).optional(),
-}).strict();
-const importSchema = z.object({
-  documentTypes: z.array(documentTypeSchema).min(1).max(SUPPORTED_DIGILOCKER_DOCUMENTS.length),
-}).strict();
-
+const userId = (req: unknown) => (req as AuthenticatedRequest).authUser.id;
 router.get("/status", (_req, res) => res.json(digilockerStatus()));
-
-router.post("/sessions", async (req, res, next) => {
-  try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
-    const payload = startSchema.parse(req.body ?? {});
-    const redirectBaseUrl = payload.redirectUrl ?? `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/documents`;
-    return res.status(201).json(await startDigiLockerSession({
-      userId: authUser.id,
-      redirectBaseUrl,
-      documentTypes: payload.documentTypes,
-    }));
-  } catch (error) {
-    return next(error);
-  }
+router.post("/sessions", uploadLimiter, async (req, res, next) => {
+  try { z.object({}).strict().parse(req.body ?? {}); res.status(201).json(await startDigiLockerSession({ userId: userId(req) })); }
+  catch (error) { next(error); }
 });
-
 router.get("/sessions/:id/status", async (req, res, next) => {
-  try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
-    return res.json(await refreshDigiLockerSession(authUser.id, req.params.id));
-  } catch (error) {
-    return next(error);
-  }
+  try { res.json(await refreshDigiLockerSession(userId(req), z.string().parse(req.params.id))); } catch (error) { next(error); }
 });
-
 router.post("/sessions/:id/cancel", async (req, res, next) => {
-  try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
-    return res.json(await cancelDigiLockerSession(authUser.id, req.params.id));
-  } catch (error) {
-    return next(error);
-  }
+  try { res.json(await cancelDigiLockerSession(userId(req), z.string().parse(req.params.id))); } catch (error) { next(error); }
 });
-
 router.get("/sessions/:id/documents", async (req, res, next) => {
-  try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
-    return res.json(await listDigiLockerDocuments(authUser.id, req.params.id));
-  } catch (error) {
-    return next(error);
-  }
+  try { res.json(await listDigiLockerDocuments(userId(req), z.string().parse(req.params.id))); } catch (error) { next(error); }
 });
-
-router.post("/sessions/:id/import", async (req, res, next) => {
-  try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
-    const payload = importSchema.parse(req.body ?? {});
-    return res.json(await importDigiLockerDocuments({
-      userId: authUser.id,
-      sessionId: req.params.id,
-      documentTypes: payload.documentTypes,
-    }));
-  } catch (error) {
-    return next(error);
-  }
+const importSchema = z.object({ references: z.array(z.string().min(1).max(1024)).min(1).max(50), consent: z.literal(true), consentVersion: z.literal("digilocker-copy-v1") }).strict();
+router.post("/sessions/:id/import", uploadLimiter, async (req, res, next) => {
+  try { const payload = importSchema.parse(req.body); res.json(await importDigiLockerDocuments({ userId: userId(req), sessionId: z.string().parse(req.params.id), ...payload })); }
+  catch (error) { next(error); }
 });
-
 export default router;

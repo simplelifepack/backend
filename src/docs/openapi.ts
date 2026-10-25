@@ -1,6 +1,7 @@
+import { digiLockerOperations } from "./digilocker.openapi";
 /* eslint-disable max-lines */
 type Schema = Record<string, unknown>;
-type Operation = {
+export type Operation = {
   method: "get" | "post" | "patch" | "delete";
   path: string;
   tags: string[];
@@ -802,6 +803,7 @@ const trustMemberBase = objectSchema({
 }, ["name", "email", "relation", "dateOfBirth", "bloodGroup", "accessTypeCode"]);
 
 const ops: Operation[] = [
+  ...digiLockerOperations,
   { method: "get", path: "/health", tags: ["System"], summary: "Service health check", operationId: "getHealth", description: "Public liveness check for the backend service.", responses: { 200: response("Service is healthy", objectSchema({ status: { const: "ok" }, service: { const: "readiness-backend" }, timestamp: dateTime }), { status: "ok", service: "readiness-backend", timestamp: "2026-09-22T12:00:00.000Z" }) } },
 
   { method: "post", path: "/auth/signup/request-otp", tags: ["Authentication"], summary: "Request signup OTP", operationId: "requestSignupOtp", description: "Starts signup by sending a 6-digit verification code. No user account is created until /auth/signup verifies the OTP.", requestBody: body(objectSchema({ name: { type: "string", minLength: 1 }, email: { type: "string", format: "email" }, password: { type: "string", minLength: 8 } }, ["name", "email", "password"]), { name: "Example User", email: "user@example.com", password: "ExamplePassword1!" }), responses: { 200: response("Signup code sent", objectSchema({ message: { type: "string" } })), ...errorResponses("400", "409", "429", "502") } },
@@ -1055,7 +1057,7 @@ export const openApiDocument = {
   },
   servers: [{ url: "/", description: "Current host / same-origin server" }],
   tags: [
-    "System", "Authentication", "Bootstrap", "Documents", "Packages",
+    "System", "Authentication", "Bootstrap", "Documents", "Packages", "DigiLocker",
     "Gmail Integration", "Google Drive Integration", "Trust Center", "Wealth", "Health", "Notifications", "Preferences", "Account", "Admin",
   ].map((name) => ({ name })),
   paths: buildPaths(),

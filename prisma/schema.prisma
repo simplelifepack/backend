@@ -759,6 +759,8 @@ model TemporaryUpload {
 }
 
 model DigiLockerConsentSession {
+  encryptedPayload String?
+  encryptedCredentials String?
   private_verificationId String?
   private_referenceId String?
   private_statusMessage String?

@@ -1,0 +1,80 @@
+import { randomUUID, createHash } from "node:crypto";
+import { prisma } from "../../lib/prisma";
+import { createEncryptedTemporaryUpload, deleteTemporaryUploadFile, saveEncryptedPermanentFile, removePermanentFile } from "../documentFileStorage";
+import { encryptDocumentOnBackend } from "../documentHybridEncryption";
+import { validateDecryptedDocument, withIsolatedPlaintextFile } from "../documentSecurityValidation";
+import { analyzeImportedDocument } from "../documentImportAnalysis";
+import { assertAIProcessingEnabled } from "../aiProcessing.service";
+import { consumeAIAction, enforceStorage, lockAccount, storedBytes } from "../accountUsage.service";
+import { documentLookupHash, documentMetadataIntegrityHash, encryptJson, encryptString, userScopedDocumentHash } from "../../utils/documentEncryption";
+import type { LockerDocument } from "./provider";
+
+export type ImportPhase = "Importing" | "Encrypting" | "Processing with AI" | "Completed" | "Failed";
+export async function storeLockerDocument(userId: string, file: LockerDocument, content: Buffer, consent: { sessionId: string; id: string; timestamp: string; version: string }, phase: (phase: ImportPhase) => Promise<void>) {
+  const hash = userScopedDocumentHash(userId, createHash("sha256").update(content).digest("hex"))!;
+  const findExisting = (db = prisma) => db.document.findFirst({ where: { ownerProfileId: userId, deletedAt: null,
+    OR: [{ userScopedDedupHash: hash }, { sourceProvider: "DIGILOCKER", sourceMessageId: file.reference }] } });
+  const existing = await findExisting();
+  if (existing) return { documentId: existing.id, duplicate: true };
+  await phase("Encrypting");
+  const filename = `${file.name.replace(/[\\/\r\n]/g, "_").replace(/\.pdf$/i, "")}.pdf`;
+  const envelope = encryptDocumentOnBackend(content, { filename, mimeType: "application/pdf" });
+  await validateDecryptedDocument(content, envelope);
+  await prisma.$transaction(async tx => {
+    const tier = await lockAccount(tx, userId);
+    enforceStorage(tier, await storedBytes(userId, tx), envelope.ciphertext.length);
+  });
+  const temporary = await createEncryptedTemporaryUpload(userId, envelope);
+  let saved: Awaited<ReturnType<typeof saveEncryptedPermanentFile>> | undefined;
+  let committed = false;
+  try {
+    const analysis = await withIsolatedPlaintextFile(content, ".pdf", path => analyzeImportedDocument(userId,
+      { path, originalName: filename, mimeType: "application/pdf", size: content.length }, {
+        assertAIProcessingEnabled: async id => {
+          await assertAIProcessingEnabled(id);
+          await phase("Processing with AI");
+        },
+        analyzeDocument: async files => {
+          // Reuse the original-file analyzer with account usage charged before invocation.
+          const { getDocumentAnalyzer } = await import("../documentAnalyzer");
+          const analyzer = getDocumentAnalyzer();
+          await consumeAIAction(userId);
+          return analyzer.analyzeDocument(files);
+        },
+      }));
+    const id = randomUUID();
+    saved = await saveEncryptedPermanentFile(userId, `${id}/imports/${randomUUID()}`, temporary);
+    const fields = { ...analysis.extractedFields, reviewFields: analysis.reviewFields, warnings: analysis.warnings,
+      validation: analysis.validation, extraction: analysis.extraction,
+      digilocker: { reference: file.reference, issuer: file.issuer, importedAt: new Date().toISOString(), consent, processingStatus: analysis.analysisSource === "ai" ? "completed" : "manual_review" } };
+    const stored = saved;
+    const result = await prisma.$transaction(async tx => {
+      const tier = await lockAccount(tx, userId);
+      const duplicate = await findExisting(tx as typeof prisma);
+      if (duplicate) return { documentId: duplicate.id, duplicate: true };
+      enforceStorage(tier, await storedBytes(userId, tx), stored.encryptedSize);
+      const record = await tx.document.create({ data: {
+        id, ...stored, ownerProfileId: userId, targetProfileId: userId,
+        title: encryptString(analysis.analysisSource === "ai" ? analysis.title : file.name), displayName: analysis.validation.displayName,
+        originalName: encryptString(filename)!, mimeType: "application/pdf", size: content.length,
+        uniqueIdentifier: encryptString(analysis.validation.uniqueIdentifier), uniqueIdentifierHash: documentLookupHash(analysis.validation.uniqueIdentifier),
+        extractedKeyFields: encryptJson(analysis.extractedFields), rawText: encryptString(analysis.extractedText),
+        documentType: analysis.validation.normalizedType, normalizedType: analysis.validation.normalizedType,
+        documentTypeCode: analysis.validation.normalizedType, category: analysis.validation.category,
+        analysisSource: analysis.analysisSource, confidence: analysis.confidence, fields: encryptJson(fields),
+        userScopedDedupHash: hash, metadataIntegrityHash: documentMetadataIntegrityHash(fields),
+        classificationStatus: analysis.confidence >= 70 ? "detected" : "pending", classificationConfidence: analysis.confidence,
+        ownershipStatus: "unknown", readinessEligible: false, sourceProvider: "DIGILOCKER", sourceMessageId: file.reference, lastAnalyzed: new Date(),
+      } });
+      await tx.documentFile.create({ data: { ...stored, id: randomUUID(), documentId: record.id, privacyOwnerId: userId,
+        pageIndex: 0, sourceType: "DIGILOCKER", originalName: encryptString(filename)!, mimeType: "application/pdf", size: content.length } });
+      return { documentId: record.id, duplicate: false };
+    }, { maxWait: 30_000, timeout: 60_000 });
+    committed = !result.duplicate;
+    return result;
+  } finally {
+    if (saved && !committed) await removePermanentFile(saved.storageKey);
+    try { await deleteTemporaryUploadFile(temporary); }
+    finally { await prisma.temporaryUpload.delete({ where: { id: temporary.id } }); }
+  }
+}

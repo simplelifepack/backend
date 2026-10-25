@@ -91,7 +91,7 @@ export function buildErrorResponse(input: {
     : code === "AI_PROCESSING_DISABLED"
       ? "AI processing is disabled for this account."
       : code === "DIGILOCKER_NOT_CONFIGURED"
-        ? "DigiLocker integration is coming soon."
+        ? "DigiLocker is not configured. Contact support to enable the connection."
         : code === "DIGILOCKER_CONSENT_INCOMPLETE"
           ? "DigiLocker consent is not complete."
           : code === "DIGILOCKER_PROVIDER_ERROR"

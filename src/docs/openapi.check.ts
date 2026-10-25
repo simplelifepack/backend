@@ -2,6 +2,14 @@ import SwaggerParser from "@apidevtools/swagger-parser";
 import { expectedOperations, openApiDocument } from "./openapi";
 
 const mountedOperations = [
+  "GET /api/integrations/digilocker/status",
+  "POST /api/integrations/digilocker/sessions",
+  "GET /api/integrations/digilocker/callback",
+  "GET /api/integrations/digilocker/sessions/{id}/status",
+  "GET /api/integrations/digilocker/sessions/{id}/documents",
+  "POST /api/integrations/digilocker/sessions/{id}/import",
+  "POST /api/integrations/digilocker/sessions/{id}/cancel",
+
   "GET /health",
   "POST /auth/signup/request-otp",
   "POST /auth/signup",
