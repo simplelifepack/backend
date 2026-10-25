@@ -9,7 +9,7 @@ export function jsonObject(value: unknown): Record<string, unknown> {
 export function sameRefreshData(left: unknown, right: unknown): boolean {
   const stable = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(stable);
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([key]) => !["checkedAt", "retrievedAt", "lastVerifiedAt", "lastCheckedAt", "sourceEvidence"].includes(key)).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)]));
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([key]) => !["checkedAt", "retrievedAt", "lastVerifiedAt", "lastCheckedAt", "sourceEvidence", "sourceUrl"].includes(key)).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)]));
     return value;
   };
   return JSON.stringify(stable(left)) === JSON.stringify(stable(right));
@@ -23,14 +23,16 @@ export function planPackageRefresh(pack: ReadinessPack & { requirements: Require
     const key = `${documentType}:${item.owner}:${item.title.toLowerCase()}`;
     if (keys.has(key)) throw new PackageRefreshError("The researched checklist contains duplicate requirements.");
     keys.add(key);
-    const explicit = item.existingId ? pack.requirements.find(row => row.id === item.existingId) : undefined;
-    if (item.existingId && (!explicit || normalizeDocumentType(explicit.documentType) !== documentType || explicit.owner !== item.owner)) throw new PackageRefreshError("The researched requirement identity could not be verified.");
+    const requested = item.existingId ? pack.requirements.find(row => row.id === item.existingId) : undefined;
+    // A different type/owner is a new slot. Preserve the old row and its assignments.
+    const explicit = requested && normalizeDocumentType(requested.documentType) === documentType && requested.owner === item.owner ? requested : undefined;
     const matching = pack.requirements.filter(row => !used.has(row.id) && normalizeDocumentType(row.documentType) === documentType && row.owner === item.owner);
     const current = explicit ?? matching.find(row => row.title.toLowerCase() === item.title.toLowerCase()) ?? (matching.length === 1 ? matching[0] : undefined);
     if (current && used.has(current.id)) throw new PackageRefreshError("The researched checklist reused a requirement ID.");
     if (current) used.add(current.id);
     const metadata: Record<string, unknown> = { ...jsonObject(current?.metadata), sourceUrl: item.sourceUrl, sourceEvidence: item.evidence };
     delete metadata.refreshRetired;
+    if (!item.evidence) delete metadata.sourceEvidence;
     if (item.condition) metadata.condition = item.condition; else delete metadata.condition;
     if (item.maxAgeDays !== null) metadata.maxAgeDays = item.maxAgeDays; else delete metadata.maxAgeDays;
     const data = {
@@ -53,7 +55,9 @@ export function planPackageRefresh(pack: ReadinessPack & { requirements: Require
   if ("conditionalRequirements" in searchMetadata) searchMetadata.conditionalRequirements = checklist.requirements.filter(item => item.condition).map(item => ({ title: item.title, condition: item.condition }));
   for (const [key, value] of Object.entries(checklist.applicability)) if (value !== null && (!Array.isArray(value) || value.length)) searchMetadata[key] = value;
   const primary = sources[0]!;
-  const data = { searchMetadata, verificationSources, sourceName: primary.organization, sourceTitle: primary.title, sourceUrl: primary.url, verificationStatus: "verified" };
-  const previous = Object.fromEntries(Object.keys(data).map(key => [key, pack[key as keyof ReadinessPack]]));
-  return { requirements, retired, data, changed: requirements.some(item => item.changed) || retired.length > 0 || !sameRefreshData(previous, data) };
+  const data = { searchMetadata, verificationSources, sourceName: primary.organization, sourceTitle: primary.title, sourceUrl: primary.url, verificationStatus: "needs_review" };
+  const oldApplicability = Object.fromEntries(Object.keys(checklist.applicability).map(key => [key, jsonObject(pack.searchMetadata)[key]]));
+  const newApplicability = Object.fromEntries(Object.keys(checklist.applicability).map(key => [key, searchMetadata[key]]));
+  const changed = requirements.some(item => item.changed) || retired.length > 0 || !sameRefreshData(oldApplicability, newApplicability);
+  return { requirements, retired, data, changed };
 }

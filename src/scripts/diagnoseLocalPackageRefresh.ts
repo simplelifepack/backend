@@ -13,7 +13,7 @@ async function run() {
     console.log(JSON.stringify({ event: "research_started", sources: Array.isArray(pack.verificationSources) ? pack.verificationSources.length : 0 }));
     try {
       const result = await withPrivateUser(userId, () => researchPackageRefresh(userId, pack, AbortSignal.timeout(180_000)));
-      console.log(JSON.stringify({ event: "research_verified", requirements: result.checklist.requirements.length, sources: result.sources.length }));
+      console.log(JSON.stringify({ event: "research_completed", requirements: result.checklist.requirements.length, sources: result.sources.length }));
     } catch (error) {
       console.log(JSON.stringify({ event: "research_failed", name: error instanceof Error ? error.name : "Error", ...(error instanceof PackageRefreshError ? { message: error.message, feedback: error.researchFeedback } : {}) }));
       process.exitCode = 1;

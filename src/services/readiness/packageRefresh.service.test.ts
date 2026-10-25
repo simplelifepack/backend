@@ -34,7 +34,7 @@ function setup(pack = base, lockCount = 1) {
   return { lookup, researchCall, writes };
 }
 test("refresh persists changed fields and returns the latest DB detail", async () => {
-  const { writes, lookup, researchCall } = setup();
+  const { writes, lookup, researchCall } = setup({ ...base, requirements: [{ ...row, required: false }] });
   const result = await refreshPackageForUser("user-1", "test-process", researchCall);
   assert.equal(result.changed, true);
   assert.equal(result.package.slug, "test-process");
@@ -42,14 +42,16 @@ test("refresh persists changed fields and returns the latest DB detail", async (
   assert.deepEqual(lookup.mock.calls[0]!.arguments[0].where, { slug: "test-process", deletedAt: null });
   assert.deepEqual((writes[0]!.data as { version: unknown }).version, { increment: 1 });
 });
-test("no-change refresh only updates check dates, never requirements or version", async () => {
+test("no-change refresh updates references and check date without verifying sources or changing requirements/version", async () => {
   const data = planPackageRefresh(base, checklist, [source]).data;
   const { writes, researchCall } = setup({ ...base, ...data } as typeof base);
   const result = await refreshPackageForUser("user-1", "test-process", researchCall);
   assert.equal(result.changed, false);
-  assert.match(result.message, /no changes/);
+  assert.equal(result.message, "Refreshed — no changes in this package.");
+  assert.equal(result.refreshed, true);
   assert.equal(writes.length, 1);
-  assert.deepEqual(Object.keys(writes[0]!.data as object).sort(), ["lastCheckedAt", "lastVerifiedAt"]);
+  assert.equal((writes[0]!.data as Record<string, unknown>).lastVerifiedAt, null);
+  assert(!("version" in (writes[0]!.data as object)));
 });
 test("concurrent edits abort before any requirement write", async () => {
   const { writes, researchCall } = setup(base, 0);
@@ -68,13 +70,19 @@ test("research failures never stamp a successful last-checked date", async () =>
   assert.equal(writes.length, 0);
 });
 
-test("an incomplete evidence check returns an explicit unverified result and preserves checklist and check dates", async () => {
+test("invalid AI output remains a failure and never stamps check dates", async () => {
   const { writes } = setup();
   const { PackageRefreshError } = await import("../../ai/researchPackageRefresh");
-  const result = await refreshPackageForUser("user-1", "test-process", async () => { throw new PackageRefreshError("The complete checklist could not be verified."); });
-  assert.equal(result.verified, false);
-  assert.equal(result.changed, false);
-  assert.match(result.message, /retained/);
+  await assert.rejects(refreshPackageForUser("user-1", "test-process", async () => { throw new PackageRefreshError("AI returned invalid output.", 502); }), /invalid output/);
   assert.equal(writes.length, 0);
-  assert(result.package.requirements.length > 0);
+});
+test("changed AI research requests admin review without stamping admin verification", async () => {
+  const { researchCall, writes } = setup({ ...base, requirements: [{ ...row, required: false }] });
+  await refreshPackageForUser("user-1", "test-process", researchCall);
+  const data = writes[0]!.data as Record<string, unknown>;
+  assert.equal(data.verificationStatus, "needs_review");
+  assert.equal(data.lastVerifiedAt, null);
+  const requirementUpdate = writes.find(write => write.operation === "update")?.data as { data?: Record<string, unknown> } | undefined;
+  assert(requirementUpdate?.data);
+  assert(!("owner" in requirementUpdate.data));
 });

@@ -36,6 +36,14 @@ Reproduce the availability audit with `node src/scripts/checkReviewedSourceLinks
 
 ## Refresh behavior
 
-A complete, evidence-supported refresh still updates requirements and sources atomically. An incomplete verification returns HTTP 200 with `verified: false`, `changed: false`, explicit feedback, and the existing authenticated package. It does not stamp a new successful review date. Authentication, quotas, unavailable providers, and concurrency failures retain their actual error responses.
+AI returns requirements and source links for user/admin review in one web-research request. The backend does not download HTML/PDF source pages or verify verbatim evidence. It compares and atomically saves the package, preserves stable requirement IDs, and retains retired requirements with their assignments. AI reference entries remain `needs_review`; refresh clears `lastVerifiedAt` and never grants admin verification.
 
-A live local HTTP smoke test against a disposable package copy returned HTTP 200 with `verified: false`, preserving its requirements and original dates. Regression tests cover changed/no-change refreshes, incomplete evidence, concurrent edits, ownership isolation, stable requirement IDs, source-page evidence and source URL restrictions.
+A successful response returns `refreshed: true`. When requirements and applicability are unchanged, it returns `changed: false` with “Refreshed — no changes in this package.” Dates and reference-review metadata alone do not increment the version. Provider failures, malformed output, authentication, quotas, and concurrency failures remain actual errors. The prior HTTP-200 `verified: false` source-verification outcome has been removed.
+
+The changed and unchanged outcomes were exercised in local Chrome. Five additional local packages (Canada visa, New job onboarding, Renting out property, Driving license renewal, Employer medical reimbursement) each returned HTTP 200 and persisted requirements and source links. The normal three-action quota returned 429 during testing; disposable accounts were used, with no real account quota edits.
+
+## Extra package documents
+
+Every package displays “Add another document,” including zero-readiness packages. Existing vault documents can be included in the download independently of required-document readiness. The same picker offers “Upload and scan a document.” This reuses normal document analysis/save, preselects AI scanning when the account allows it, retains detected types, and defaults undetected types to Other. After review and save, the file joins the package download; a matching recognized document also participates in ordinary readiness calculation. Account-level AI settings remain enforced.
+
+Regression checks cover scanned and manual uploads, Other fallback, selection at zero readiness, source references without backend downloads, changed/no-change refresh, ownership, stable IDs, and concurrency protection.
