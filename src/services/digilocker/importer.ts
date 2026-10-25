@@ -66,8 +66,19 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
         classificationStatus: analysis.confidence >= 70 ? "detected" : "pending", classificationConfidence: analysis.confidence,
         ownershipStatus: "unknown", readinessEligible: false, sourceProvider: "DIGILOCKER", sourceMessageId: file.reference, lastAnalyzed: new Date(),
       } });
-      await tx.documentFile.create({ data: { ...stored, id: randomUUID(), documentId: record.id, privacyOwnerId: userId,
-        pageIndex: 0, sourceType: "DIGILOCKER", originalName: encryptString(filename)!, mimeType: "application/pdf", size: content.length } });
+      // The parent storage result also has path/scan fields that DocumentFile
+      // does not define. Map only supported page columns, as manual uploads do.
+      await tx.documentFile.create({ data: {
+        id: randomUUID(), documentId: record.id, privacyOwnerId: userId,
+        pageIndex: 0, sourceType: "DIGILOCKER", originalName: encryptString(filename)!, mimeType: "application/pdf", size: content.length,
+        storageKey: stored.storageKey, storedName: stored.storedName,
+        storageBucket: stored.storageBucket, storageMimeType: stored.storageMimeType,
+        encryptionVersion: stored.encryptionVersion, contentAlgorithm: stored.contentAlgorithm,
+        keyAlgorithm: stored.keyAlgorithm, keyId: stored.keyId, keyVersion: stored.keyVersion,
+        encryptionIv: stored.encryptionIv, wrappedKey: stored.wrappedKey,
+        originalSha256: stored.originalSha256, encryptedSha256: stored.encryptedSha256,
+        encryptedSize: stored.encryptedSize, ciphertextHash: stored.encryptedSha256,
+      } });
       return { documentId: record.id, duplicate: false };
     }, { maxWait: 30_000, timeout: 60_000 });
     committed = !result.duplicate;
