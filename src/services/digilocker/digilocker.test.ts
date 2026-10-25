@@ -61,6 +61,25 @@ global.__prisma__ = fake;
 
 async function suite() {
   const service = await import("./digilocker.service");
+  await test("missing migration does not crash cleanup; other database errors remain visible", async () => {
+    const execute = fake.$executeRaw;
+    const now = Date.now;
+    const warn = console.warn;
+    const warnings: unknown[] = [];
+    try {
+      console.warn = entry => { warnings.push(entry); };
+      fake.$executeRaw = async () => { throw { code: "P2010", meta: { code: "42703", message: 'column "encryptedCredentials" does not exist' } }; };
+      await assert.doesNotReject(service.cleanupExpiredDigiLockerCredentials());
+      assert.equal(warnings.length, 1);
+      await assert.doesNotReject(service.cleanupExpiredDigiLockerCredentials());
+      assert.equal(warnings.length, 1);
+      Date.now = () => now() + 61_000;
+      fake.$executeRaw = async () => { throw new Error("database unavailable"); };
+      await assert.rejects(service.cleanupExpiredDigiLockerCredentials(), /database unavailable/);
+      fake.$executeRaw = execute;
+      await assert.doesNotReject(service.cleanupExpiredDigiLockerCredentials());
+    } finally { fake.$executeRaw = execute; Date.now = now; console.warn = warn; }
+  });
   await test("configuration fails closed and authorization contains PKCE but no secret", () => {
     assert(loadDigiLockerConfig().configured);
     const url = new URL(authorizationUrl("test-state", "test-challenge"));

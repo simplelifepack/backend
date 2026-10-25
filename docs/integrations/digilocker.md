@@ -69,7 +69,7 @@ Only `/callback` is public. Every other operation requires the existing bearer a
 
 Both use the existing contextual AES-GCM privacy keyring, bound to owner, session and field. SQL constraints accept only contextual ciphertext or NULL. Generic operator projections omit both fields. No Document model change, user-data backfill, reseeding or new storage bucket is required.
 
-The migration is **written but not applied** to any database. Apply it to an isolated local development database before starting the updated backend; the normal development migration workflow is documented in the repository. No configured development database was available in this worktree, so PostgreSQL constraint/transaction behavior remains an integration-verification item.
+The migration was subsequently applied to the verified normal local development database `localhost:5434/lifepack` on 2026-10-25. Both nullable columns, both ciphertext constraints and the Prisma migration checksum were verified. The credential cleanup SQL completed successfully. No other pending migration or remote database was changed. Fresh environments still require this migration before DigiLocker use. Startup cleanup now tolerates the specific missing-column error and other cleanup failures cannot terminate backend startup.
 
 Credentials expire after at most 10 minutes while pending and at most 30 minutes after authentication, further limited by provider access-token and consent expiry. Refresh tokens and identity claims are discarded. Closing the connection removes local credentials and attempts provider revocation. The local server removes expired credential ciphertext every minute and on startup; route traffic also triggers cleanup at most once per minute. Consent audits remain encrypted. On serverless hosts without continuous execution, cleanup runs on the next route invocation; a deployment-time scheduled cleanup would be required for a strict wall-clock deletion guarantee while idle.
 
@@ -91,7 +91,7 @@ Provider contract reference: [API Setu Authorized Partner specification v2.2](ht
 
 Provider responses in automated tests are explicitly synthetic fixtures; they are not evidence of real DigiLocker connectivity. Database delegates are in memory. File encryption, content validation, isolated plaintext handling, local encrypted storage, quota policy and retry code execute normally in the import test.
 
-- `npm run test:digilocker`: 7 tests covering configuration, PKCE, actual-list normalization, restrictions, HMAC/MIME/body limits, invalid/expired/replayed state, denied authorization, backend-only exchange, encrypted credentials, ownership rejection, no fetch without consent, cancellation, safe exchange failure, partial success, duplicate-safe retry, encrypted file round trip, quota enforcement, disabled/exhausted AI and temporary cleanup.
+- `npm run test:digilocker`: 8 tests covering missing-migration cleanup regression, configuration, PKCE, actual-list normalization, restrictions, HMAC/MIME/body limits, invalid/expired/replayed state, denied authorization, backend-only exchange, encrypted credentials, ownership rejection, no fetch without consent, cancellation, safe exchange failure, partial success, duplicate-safe retry, encrypted file round trip, quota enforcement, disabled/exhausted AI and temporary cleanup.
 - Existing hybrid encryption suite: passed.
 - Existing document security validation suite: passed.
 - Existing import-analysis, privacy and error-handling suites: 18 tests passed.
@@ -100,7 +100,7 @@ Provider responses in automated tests are explicitly synthetic fixtures; they ar
 - Targeted ESLint and production frontend build: passed (the build retains its existing large-chunk advisory).
 - OpenAPI validation: the mounted operations, matching coverage and valid schemas.
 
-Remaining verification: registered live callback, real authorization/denial, actual requester scopes and HMAC download responses, isolated PostgreSQL migration/transaction checks, authenticated browser verification in light/dark themes on desktop/mobile, and hosted request duration/idle credential-cleanup behavior. No deployment was requested or performed.
+Remaining verification: registered live callback, real authorization/denial, actual requester scopes and HMAC download responses, full PostgreSQL import transaction checks, authenticated browser verification in light/dark themes on desktop/mobile, and hosted request duration/idle credential-cleanup behavior. No deployment was requested or performed.
 
 ## Modified files
 

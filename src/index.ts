@@ -13,7 +13,11 @@ async function start() {
     console.error({ event: "temporary_upload_cleanup_failed" });
   }
 
-  await cleanupExpiredDigiLockerCredentials();
+  try {
+    await cleanupExpiredDigiLockerCredentials();
+  } catch {
+    console.error({ event: "digilocker_cleanup_failed" });
+  }
   const digilockerCleanup = setInterval(() => {
     void cleanupExpiredDigiLockerCredentials().catch(() => console.error({ event: "digilocker_cleanup_failed" }));
   }, 60_000);

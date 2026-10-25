@@ -31,7 +31,18 @@ export async function cleanupExpiredDigiLockerCredentials() {
   nextCredentialCleanup = Date.now() + 60_000;
   try { await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "encryptedCredentials" = NULL
     WHERE "expiresAt" <= NOW() AND "encryptedCredentials" IS NOT NULL`;
-  } catch (error) { nextCredentialCleanup = 0; throw error; }
+  } catch (error) {
+    const candidate = error as { code?: string; meta?: { code?: string; message?: string } };
+    if (candidate.code === "P2010" && candidate.meta?.code === "42703" &&
+        /encryptedCredentials/.test(candidate.meta.message ?? "")) {
+      // Optional cleanup must not prevent the existing application from starting
+      // during the code-before-migration window. Keep the throttle on this path.
+      console.warn({ event: "digilocker_migration_required", migration: "20261025100000_digilocker_import_payload" });
+      return;
+    }
+    nextCredentialCleanup = 0;
+    throw error;
+  }
 }
 const fail = (message: string, statusCode = 409) => Object.assign(new Error(message), { statusCode });
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
