@@ -16,10 +16,15 @@ export class PackageRefreshError extends Error {
 type RefreshContext = { title: string; category: string; searchMetadata: unknown; verificationSources: unknown; requirements: unknown[] };
 type ResearchResponse = { output?: Array<{ type: string; action?: { sources?: Array<{ url: string }> }; content?: Array<{ type: string; text?: string; annotations?: Array<{ type: string; url?: string }> }> }> };
 
-export function packageRefreshResearchContext(pack: Pick<RefreshContext, "title" | "category" | "searchMetadata">) {
+export function packageRefreshResearchContext(pack: Pick<RefreshContext, "title" | "category" | "searchMetadata"> & { verificationSources?: unknown }) {
   const intent = buildPackageInput({ packageType: pack.title, documentLabels: [] });
   const metadata = pack.searchMetadata && typeof pack.searchMetadata === "object" ? pack.searchMetadata as Record<string, unknown> : {};
-  return { ...intent, category: pack.category, jurisdiction: metadata.jurisdiction, destination: metadata.destination, purpose: metadata.purpose, passportCountries: metadata.passportCountries };
+  const sourceApplicability = Array.isArray(pack.verificationSources) ? pack.verificationSources.flatMap(value => {
+    if (!value || typeof value !== "object") return [];
+    const source = value as Record<string, unknown>;
+    return source.applicability ? [{ organization: source.organization, scope: source.sourceScope ?? source.scope, currentnessStatus: source.currentnessStatus, applicability: source.applicability }] : [];
+  }) : [];
+  return { ...intent, category: pack.category, jurisdiction: metadata.jurisdiction, destination: metadata.destination, purpose: metadata.purpose, passportCountries: metadata.passportCountries, sourceApplicability };
 }
 
 async function requestResearch(apiKey: string, body: Record<string, unknown>, signal: AbortSignal): Promise<ResearchResponse> {

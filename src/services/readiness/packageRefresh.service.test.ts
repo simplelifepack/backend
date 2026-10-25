@@ -67,3 +67,14 @@ test("research failures never stamp a successful last-checked date", async () =>
   await assert.rejects(refreshPackageForUser("user-1", "test-process", async () => { throw new Error("Invalid evidence"); }), /Invalid evidence/);
   assert.equal(writes.length, 0);
 });
+
+test("an incomplete evidence check returns an explicit unverified result and preserves checklist and check dates", async () => {
+  const { writes } = setup();
+  const { PackageRefreshError } = await import("../../ai/researchPackageRefresh");
+  const result = await refreshPackageForUser("user-1", "test-process", async () => { throw new PackageRefreshError("The complete checklist could not be verified."); });
+  assert.equal(result.verified, false);
+  assert.equal(result.changed, false);
+  assert.match(result.message, /retained/);
+  assert.equal(writes.length, 0);
+  assert(result.package.requirements.length > 0);
+});

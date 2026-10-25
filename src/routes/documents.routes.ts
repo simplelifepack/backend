@@ -1,3 +1,4 @@
+import { assignDocumentsSchema, assignOwnedDocuments, documentAssignmentOptions, documentDetailsSchema, updateOwnedDocumentDetails } from "../services/documentAssignment.service";
 import { queueStorageCleanup, drainStorageCleanup } from "../services/storageCleanup.service";
 import { enforceStorage, storedBytes, withStorageUpload, lockAccount } from "../services/accountUsage.service";
 /* eslint-disable max-lines */
@@ -531,6 +532,35 @@ router.get("/", async (_req, res, next) => {
   } catch (error) {
     return next(error);
   }
+});
+router.get("/assignment-options", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.json(await documentAssignmentOptions(prisma, authUser));
+  } catch (error) { return next(error); }
+});
+router.patch("/:id/details", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const { id } = idSchema.parse(req.params);
+    const input = documentDetailsSchema.parse(req.body);
+    const document = await prisma.$transaction(async tx => {
+      await lockAccount(tx, authUser.id);
+      return updateOwnedDocumentDetails(tx, authUser, id, input);
+    });
+    return res.json({ document: toDocumentResponseDto(document) });
+  } catch (error) { return next(error); }
+});
+router.post("/bulk-assign", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const input = assignDocumentsSchema.parse(req.body);
+    const documents = await prisma.$transaction(async tx => {
+      await lockAccount(tx, authUser.id);
+      return assignOwnedDocuments(tx, authUser, input);
+    }, { maxWait: 30_000, timeout: 60_000 });
+    return res.json({ documents: documents.map(toDocumentResponseDto) });
+  } catch (error) { return next(error); }
 });
 router.post("/bulk-download", async (req, res, next) => {
   try {

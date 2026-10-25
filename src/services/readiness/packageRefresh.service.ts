@@ -17,7 +17,12 @@ export async function refreshPackageForUser(userId: string, slug: string, resear
     job = refreshPackage(userId, pack, research).finally(() => inFlight.delete(pack.id));
     inFlight.set(pack.id, job);
   }
-  const result = await job;
+  let result: { changed: boolean; message: string; verified?: boolean };
+  try { result = { ...await job, verified: true }; }
+  catch (error) {
+    if (!(error instanceof PackageRefreshError) || error.statusCode !== 422) throw error;
+    result = { changed: false, verified: false, message: `${error.message} The saved checklist and source review dates have been retained.` };
+  }
   const latest = await getReadinessPackDefinitionBySlugForUser(slug, userId);
   if (!latest) throw new PackageRefreshError("Package no longer available.", 404);
   return {

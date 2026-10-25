@@ -1,3 +1,4 @@
+import { catalogueCategories } from "./readiness/catalogueCategories";
 import { randomUUID } from "node:crypto";
 /* eslint-disable max-lines */
 import type { Prisma } from "@prisma/client";
@@ -283,21 +284,7 @@ async function getPackageCategories() {
     where: { createdBy: "seed", deletedAt: null },
     select: { category: true, searchMetadata: true },
   });
-  const byCategory = new Map<string, { order: number; title: string }>();
-  rows.forEach((row) => {
-    if (!row.category) return;
-    const metadata = row.searchMetadata && typeof row.searchMetadata === "object"
-      ? row.searchMetadata as Record<string, unknown>
-      : {};
-    if (metadata.referenceSource !== "App.tsx EVENTS") return;
-    const categoryOrder = typeof metadata.categoryOrder === "number" ? metadata.categoryOrder : Number.POSITIVE_INFINITY;
-    if (!Number.isFinite(categoryOrder)) return;
-    const existing = byCategory.get(row.category);
-    if (!existing || categoryOrder < existing.order) byCategory.set(row.category, { order: categoryOrder, title: row.category });
-  });
-  const value = [...byCategory.values()]
-    .sort((left, right) => left.order - right.order)
-    .map((item) => item.title);
+  const value = catalogueCategories(rows);
   categoriesCache = { value, expiresAt: now + STATIC_CATALOGUE_CACHE_MS };
   return value;
 }
