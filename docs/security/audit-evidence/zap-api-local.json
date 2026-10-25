@@ -117,13 +117,13 @@
 			"statistic": "1"
 		}
 	],
-	"site":[ 
+	"site":[
 		{
 			"@name": "http://host.docker.internal:4009",
 			"@host": "host.docker.internal",
 			"@port": "4009",
 			"@ssl": "false",
-			"alerts": [ 
+			"alerts": [
 				{
 					"pluginid": "100000",
 					"alertRef": "100000-2",
@@ -133,7 +133,7 @@
 					"confidence": "3",
 					"riskdesc": "Low (High)",
 					"desc": "<p>A response code of 503 was returned by the server.</p><p>This may indicate that the application is failing to handle unexpected input correctly.</p><p>Raised by the 'Alert on HTTP Response Code Error' script</p>",
-					"instances":[ 
+					"instances":[
 						{
 							"id": "12",
 							"uri": "http://host.docker.internal:4009/api/waitlist/challenge",
@@ -213,7 +213,7 @@
 					"confidence": "2",
 					"riskdesc": "Low (Medium)",
 					"desc": "<p>The response appeared to contain common error messages returned by platforms such as ASP.NET, and Web-servers such as IIS and Apache. You can configure the list of common debug messages.</p>",
-					"instances":[ 
+					"instances":[
 						{
 							"id": "178",
 							"uri": "http://host.docker.internal:4009/auth/google",
@@ -253,7 +253,7 @@
 					"confidence": "3",
 					"riskdesc": "Informational (High)",
 					"desc": "<p>A response code of 401 was returned by the server.</p><p>This may indicate that the application is failing to handle unexpected input correctly.</p><p>Raised by the 'Alert on HTTP Response Code Error' script</p>",
-					"instances":[ 
+					"instances":[
 						{
 							"id": "114",
 							"uri": "http://host.docker.internal:4009/api/admin/packages/slug",
@@ -1843,7 +1843,7 @@
 					"confidence": "1",
 					"riskdesc": "Informational (Low)",
 					"desc": "<p>The given request has been identified as an authentication request. The 'Other Info' field contains a set of key=value lines which identify any relevant fields. If the request is in a context which has an Authentication Method set to \"Auto-Detect\" then this rule will change the authentication to match the request identified.</p>",
-					"instances":[ 
+					"instances":[
 						{
 							"id": "179",
 							"uri": "http://host.docker.internal:4009/auth/account/change-email/request",
@@ -1893,7 +1893,7 @@
 					"confidence": "2",
 					"riskdesc": "Informational (Medium)",
 					"desc": "<p>The response contents are not storable by caching components such as proxy servers. If the response does not contain sensitive, personal or user-specific information, it may benefit from being stored and cached, to improve performance.</p>",
-					"instances":[ 
+					"instances":[
 						{
 							"id": "67",
 							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/callback?state=Oklahoma&code=code&error=error",
@@ -1963,7 +1963,7 @@
 					"confidence": "2",
 					"riskdesc": "Informational (Medium)",
 					"desc": "<p>The given response has been identified as containing a session management token. The 'Other Info' field contains a set of header tokens that can be used in the Header Based Session Management Method. If the request is in a context which has a Session Management Method set to \"Auto-Detect\" then this rule will change the session management to use the tokens identified.</p>",
-					"instances":[ 
+					"instances":[
 						{
 							"id": "0",
 							"uri": "http://host.docker.internal:4009/openapi.json",
