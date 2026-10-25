@@ -5,7 +5,7 @@ import type { SmtpEmailConfig } from "../../config/email";
 import type { EmailProvider, SendEmailInput, SendEmailResult } from "./EmailProvider";
 
 export class SmtpEmailProvider implements EmailProvider {
-  private readonly transporter: nodemailer.Transporter;
+  private readonly transporter: ReturnType<typeof nodemailer.createTransport>;
 
   constructor(private readonly config: SmtpEmailConfig) {
     const options: SMTPPool.Options & { maxRequeues: number } = {

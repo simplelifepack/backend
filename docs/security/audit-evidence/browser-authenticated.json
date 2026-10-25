@@ -1,0 +1,431 @@
+{
+  "notes": [
+    "Real local API and disposable account; no mock network responses",
+    "Empty account; development Vite build; external providers blocked",
+    "Forced GC after eight-route navigation cycle; five cycles",
+    "Route elapsed includes explicit 150ms settling plus networkidle; not production route latency"
+  ],
+  "routes": [
+    {
+      "cycle": 0,
+      "route": "/home",
+      "elapsedMs": 159,
+      "hasText": true
+    },
+    {
+      "cycle": 0,
+      "route": "/packages",
+      "elapsedMs": 161,
+      "hasText": true
+    },
+    {
+      "cycle": 0,
+      "route": "/documents",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 0,
+      "route": "/health",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 0,
+      "route": "/wealth",
+      "elapsedMs": 157,
+      "hasText": true
+    },
+    {
+      "cycle": 0,
+      "route": "/family",
+      "elapsedMs": 157,
+      "hasText": true
+    },
+    {
+      "cycle": 0,
+      "route": "/legacy",
+      "elapsedMs": 155,
+      "hasText": true
+    },
+    {
+      "cycle": 0,
+      "route": "/settings",
+      "elapsedMs": 156,
+      "hasText": true
+    },
+    {
+      "cycle": 1,
+      "route": "/home",
+      "elapsedMs": 158,
+      "hasText": true
+    },
+    {
+      "cycle": 1,
+      "route": "/packages",
+      "elapsedMs": 156,
+      "hasText": true
+    },
+    {
+      "cycle": 1,
+      "route": "/documents",
+      "elapsedMs": 156,
+      "hasText": true
+    },
+    {
+      "cycle": 1,
+      "route": "/health",
+      "elapsedMs": 157,
+      "hasText": true
+    },
+    {
+      "cycle": 1,
+      "route": "/wealth",
+      "elapsedMs": 164,
+      "hasText": true
+    },
+    {
+      "cycle": 1,
+      "route": "/family",
+      "elapsedMs": 155,
+      "hasText": true
+    },
+    {
+      "cycle": 1,
+      "route": "/legacy",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 1,
+      "route": "/settings",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 2,
+      "route": "/home",
+      "elapsedMs": 155,
+      "hasText": true
+    },
+    {
+      "cycle": 2,
+      "route": "/packages",
+      "elapsedMs": 183,
+      "hasText": true
+    },
+    {
+      "cycle": 2,
+      "route": "/documents",
+      "elapsedMs": 155,
+      "hasText": true
+    },
+    {
+      "cycle": 2,
+      "route": "/health",
+      "elapsedMs": 156,
+      "hasText": true
+    },
+    {
+      "cycle": 2,
+      "route": "/wealth",
+      "elapsedMs": 156,
+      "hasText": true
+    },
+    {
+      "cycle": 2,
+      "route": "/family",
+      "elapsedMs": 156,
+      "hasText": true
+    },
+    {
+      "cycle": 2,
+      "route": "/legacy",
+      "elapsedMs": 157,
+      "hasText": true
+    },
+    {
+      "cycle": 2,
+      "route": "/settings",
+      "elapsedMs": 158,
+      "hasText": true
+    },
+    {
+      "cycle": 3,
+      "route": "/home",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 3,
+      "route": "/packages",
+      "elapsedMs": 155,
+      "hasText": true
+    },
+    {
+      "cycle": 3,
+      "route": "/documents",
+      "elapsedMs": 157,
+      "hasText": true
+    },
+    {
+      "cycle": 3,
+      "route": "/health",
+      "elapsedMs": 155,
+      "hasText": true
+    },
+    {
+      "cycle": 3,
+      "route": "/wealth",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 3,
+      "route": "/family",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 3,
+      "route": "/legacy",
+      "elapsedMs": 155,
+      "hasText": true
+    },
+    {
+      "cycle": 3,
+      "route": "/settings",
+      "elapsedMs": 156,
+      "hasText": true
+    },
+    {
+      "cycle": 4,
+      "route": "/home",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 4,
+      "route": "/packages",
+      "elapsedMs": 156,
+      "hasText": true
+    },
+    {
+      "cycle": 4,
+      "route": "/documents",
+      "elapsedMs": 155,
+      "hasText": true
+    },
+    {
+      "cycle": 4,
+      "route": "/health",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 4,
+      "route": "/wealth",
+      "elapsedMs": 154,
+      "hasText": true
+    },
+    {
+      "cycle": 4,
+      "route": "/family",
+      "elapsedMs": 157,
+      "hasText": true
+    },
+    {
+      "cycle": 4,
+      "route": "/legacy",
+      "elapsedMs": 157,
+      "hasText": true
+    },
+    {
+      "cycle": 4,
+      "route": "/settings",
+      "elapsedMs": 160,
+      "hasText": true
+    }
+  ],
+  "samples": [
+    {
+      "usedSize": 29635424,
+      "totalSize": 33161216,
+      "embedderHeapUsedSize": 3782928,
+      "backingStorageSize": 19900550
+    },
+    {
+      "usedSize": 28981080,
+      "totalSize": 29753344,
+      "embedderHeapUsedSize": 4001992,
+      "backingStorageSize": 19900785
+    },
+    {
+      "usedSize": 29344744,
+      "totalSize": 31064064,
+      "embedderHeapUsedSize": 3997096,
+      "backingStorageSize": 19900807
+    },
+    {
+      "usedSize": 29061564,
+      "totalSize": 30015488,
+      "embedderHeapUsedSize": 4231816,
+      "backingStorageSize": 19900785
+    },
+    {
+      "usedSize": 29439800,
+      "totalSize": 30539776,
+      "embedderHeapUsedSize": 4399008,
+      "backingStorageSize": 19900762
+    }
+  ],
+  "errors": [],
+  "responses": [],
+  "loggedOut": true,
+  "eventTiming": [
+    {
+      "name": "pointerover",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "pointerenter",
+      "duration": 64
+    },
+    {
+      "name": "mouseover",
+      "duration": 64
+    },
+    {
+      "name": "pointerdown",
+      "duration": 64
+    },
+    {
+      "name": "mousedown",
+      "duration": 64
+    },
+    {
+      "name": "pointerup",
+      "duration": 64
+    },
+    {
+      "name": "mouseup",
+      "duration": 64
+    },
+    {
+      "name": "click",
+      "duration": 64
+    },
+    {
+      "name": "pointerover",
+      "duration": 16
+    },
+    {
+      "name": "pointerenter",
+      "duration": 16
+    },
+    {
+      "name": "pointerenter",
+      "duration": 16
+    },
+    {
+      "name": "mouseover",
+      "duration": 16
+    },
+    {
+      "name": "pointerout",
+      "duration": 32
+    },
+    {
+      "name": "pointerover",
+      "duration": 32
+    },
+    {
+      "name": "pointerenter",
+      "duration": 32
+    },
+    {
+      "name": "pointerenter",
+      "duration": 32
+    },
+    {
+      "name": "pointerenter",
+      "duration": 32
+    },
+    {
+      "name": "pointerenter",
+      "duration": 32
+    },
+    {
+      "name": "pointerenter",
+      "duration": 32
+    },
+    {
+      "name": "pointerenter",
+      "duration": 32
+    },
+    {
+      "name": "mouseout",
+      "duration": 32
+    },
+    {
+      "name": "mouseover",
+      "duration": 32
+    }
+  ]
+}

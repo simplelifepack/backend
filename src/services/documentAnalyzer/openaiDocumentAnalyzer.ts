@@ -1,3 +1,4 @@
+import { withDocumentAIAdmission } from "../../middleware/resourceLimits";
 import fs from "node:fs/promises";
 import OpenAI from "openai";
 import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
@@ -139,24 +140,29 @@ function normalizeExpiryDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
-type AIRequest = (body: ResponseCreateParamsNonStreaming) => Promise<{ output_text: string }>;
+type AIRequest = (body: ResponseCreateParamsNonStreaming, signal?: AbortSignal) => Promise<{ output_text: string }>;
 export class OpenAIDocumentAnalyzer implements DocumentAnalyzer {
   private readonly request: AIRequest;
   constructor(apiKey = process.env.OPENAI_API_KEY, private readonly model = process.env.OPENAI_ICR_MODEL ?? process.env.OPENAI_VISION_MODEL ?? "gpt-5-mini", request?: AIRequest) {
     if (!apiKey && !request) throw new Error("OPENAI_API_KEY is not configured.");
     const client = request ? null : new OpenAI({ apiKey, timeout: 90_000, maxRetries: 1 });
-    this.request = request ?? (body => client!.responses.create(body));
+    this.request = request ?? ((body, signal) => client!.responses.create(body, { signal }));
   }
-  async analyzeDocument(files: UploadedFile[]): Promise<DocumentAIResult> {
+  async analyzeDocument(files: UploadedFile[], signal?: AbortSignal): Promise<DocumentAIResult> {
+    return withDocumentAIAdmission(() => this.analyze(files, signal));
+  }
+  private async analyze(files: UploadedFile[], signal?: AbortSignal): Promise<DocumentAIResult> {
+    signal?.throwIfAborted();
     if (!files.length) throw new Error("At least one original document is required.");
     const originals = [];
     try {
-      for (const file of files) originals.push({ bytes: await fs.readFile(file.path), mimeType: file.mimeType, name: file.originalName });
+      for (const file of files) originals.push({ bytes: await fs.readFile(file.path, { signal }), mimeType: file.mimeType, name: file.originalName });
       const response = await this.request({
         store: false, model: this.model,
         input: [{ role: "user", content: [{ type: "input_text", text: prompt }, ...originals.map(originalDocumentInput)] }],
         text: { format: { type: "json_schema", name: "readiness_document_analysis", strict: true, schema: resultSchema } },
-      });
+      }, signal);
+      signal?.throwIfAborted();
       const parsed = parseJsonObject(response.output_text);
       if (!parsed || typeof parsed !== "object" || typeof parsed.documentType !== "string") throw new Error("AI_DOCUMENT_RESPONSE_INVALID");
       return validateDocumentAIResult(parsed);

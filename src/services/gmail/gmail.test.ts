@@ -1,3 +1,4 @@
+import { withPrivateMigration, withPrivateUser } from "../../privacy/access";
 import "dotenv/config";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -14,6 +15,7 @@ import { scanGmail } from "./scanner";
 import { decryptGmailToken, encryptGmailToken } from "./tokenEncryption";
 
 const runId = crypto.randomUUID();
+const fixtureUserId = crypto.randomUUID();
 process.env.GOOGLE_CLIENT_ID ||= "test.apps.googleusercontent.com";
 process.env.GOOGLE_CLIENT_SECRET ||= "test-secret";
 process.env.GOOGLE_GMAIL_REDIRECT_URI ||= "http://localhost:4000/api/integrations/gmail/callback";
@@ -132,8 +134,8 @@ async function run() {
   const actualPolicy = candidatesFromMessage(observedMessage({ id: "health-policy", filename: "Health_Insurance_Policy.pdf", sender: "service@healthinsurance.com", subject: "Your health insurance policy - exclusive offer", labels: ["CATEGORY_PROMOTIONS"] }))[0]!;
   assert.equal(actualPolicy.status, "candidate");
 
-  const user = await prisma.user.create({ data: { name: "Gmail Test", email: `gmail-${runId}@example.test`, passwordHash: null } });
-  const other = await prisma.user.create({ data: { name: "Other", email: `gmail-other-${runId}@example.test`, passwordHash: null } });
+  const user = await prisma.user.create({ data: { id: fixtureUserId, name: "Gmail Test", email: `gmail-${runId}@example.test`, passwordHash: null } });
+  const other = await withPrivateMigration("synthetic other fixture", () => prisma.user.create({ data: { name: "Other", email: `gmail-other-${runId}@example.test`, passwordHash: null } }));
   const url = new URL(await createAuthorizationUrl(user.id));
   const state = url.searchParams.get("state");
   assert.ok(state);
@@ -153,12 +155,12 @@ async function run() {
   await scanGmail(user.id, gmailMock({ scan: message("scan") }));
   assert.equal(await prisma.externalDocumentCandidate.count({ where: { connectionId: connection.id } }), 2);
 
-  const raceUser = await prisma.user.create({ data: { name: "Race", email: `gmail-race-${runId}@example.test`, passwordHash: null } });
-  const raceConnection = await prisma.externalConnection.create({ data: {
+  const raceUser = await withPrivateMigration("synthetic race fixture", () => prisma.user.create({ data: { name: "Race", email: `gmail-race-${runId}@example.test`, passwordHash: null } }));
+  const raceConnection = await withPrivateUser(raceUser.id, () => prisma.externalConnection.create({ data: {
     userId: raceUser.id, provider: "gmail", providerAccountId: `gmail-race-${runId}@example.test`,
     providerEmail: `gmail-race-${runId}@example.test`, encryptedRefreshToken: encrypted,
     grantedScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
-  } });
+  } }));
   let deletedDuringScan = false;
   const raceGmail = {
     users: { messages: {
@@ -172,7 +174,7 @@ async function run() {
       },
     } },
   } as unknown as gmail_v1.Gmail;
-  await assert.rejects(() => scanGmail(raceUser.id, raceGmail), /Gmail connection changed/);
+  await assert.rejects(() => withPrivateUser(raceUser.id, () => scanGmail(raceUser.id, raceGmail)), /Gmail connection changed/);
 
   const bodyCandidate = await prisma.externalDocumentCandidate.create({ data: {
     userId: user.id, connectionId: connection.id, provider: "gmail", sourceKey: "body-import",
@@ -182,7 +184,7 @@ async function run() {
   } });
   const imported = await importGmailCandidates(user.id, [bodyCandidate.id], gmailMock({ "body-import": message("body-import", false) }));
   assert.equal(imported[0]?.status, "ready_for_review");
-  assert.equal(imported[0]?.analysis?.analysisSource, "rules");
+  assert.equal(imported[0]?.analysis?.analysisSource, "manual");
   assert.ok(imported[0]?.analysis?.tempFileId);
   const importedUpload = await prisma.temporaryUpload.findUniqueOrThrow({ where: { id: imported[0]!.analysis!.tempFileId } });
 	  await prisma.document.create({ data: {
@@ -206,22 +208,22 @@ async function run() {
     externalAttachmentId: "bad", filename: "bad.zip", mimeType: "application/zip", size: 5, sender: "x", subject: "x",
     receivedAt: new Date(), suggestedCategory: "other", suggestedDocumentType: "Document", relevanceReason: "test", relevanceScore: 1,
   } });
-  await assert.rejects(() => importGmailCandidates(user.id, [unsupported.id], gmailMock({})), /Unsupported/);
+  assert.equal((await importGmailCandidates(user.id, [unsupported.id], gmailMock({})))[0]?.status, "failed");
   const oversized = await prisma.externalDocumentCandidate.create({ data: {
     userId: user.id, connectionId: connection.id, provider: "gmail", sourceKey: "large", externalMessageId: "large",
     externalAttachmentId: "large", filename: "large.pdf", mimeType: "application/pdf", size: 26 * 1024 * 1024,
     sender: "x", subject: "x", receivedAt: new Date(), suggestedCategory: "other", suggestedDocumentType: "Document",
     relevanceReason: "test", relevanceScore: 1,
   } });
-  await assert.rejects(() => importGmailCandidates(user.id, [oversized.id], gmailMock({})), /25 MB/);
+  assert.equal((await importGmailCandidates(user.id, [oversized.id], gmailMock({})))[0]?.status, "failed");
   console.log("Gmail integration tests passed.");
 }
 
-run().finally(async () => {
+withPrivateMigration("synthetic legacy test fixtures", () => withPrivateUser(fixtureUserId, run).finally(async () => {
   const uploads = await prisma.temporaryUpload.findMany({ where: { ownerProfileId: { in: (await prisma.user.findMany({ where: { email: { contains: runId } }, select: { id: true } })).map((user) => user.id) } } });
   for (const upload of uploads) await deleteTemporaryUploadFile(upload);
   await prisma.temporaryUpload.deleteMany({ where: { id: { in: uploads.map((upload) => upload.id) } } });
   await prisma.document.deleteMany({ where: { ownerProfileId: { in: (await prisma.user.findMany({ where: { email: { contains: runId } }, select: { id: true } })).map((user) => user.id) } } });
   await prisma.user.deleteMany({ where: { email: { contains: runId } } });
   await prisma.$disconnect();
-}).catch((error) => { console.error(error instanceof Error ? error.message : "Gmail tests failed."); process.exitCode = 1; });
+}).catch((error) => { console.error(error instanceof Error ? error.message : "Gmail tests failed."); process.exitCode = 1; }));

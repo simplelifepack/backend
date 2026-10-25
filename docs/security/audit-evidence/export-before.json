@@ -1,0 +1,15 @@
+{
+  "mode": "before",
+  "notes": "Synthetic 100 x 1 MiB archive; before reproduces buffered encrypted export creation/download; after streams through enc:v2 ciphertext file and authenticates completely before streaming download; no plaintext written to disk.",
+  "startRSS": 84377600,
+  "peakRSS": 912457728,
+  "elapsedMs": 2454.306625,
+  "sha256": "562171da881325c34e2018ef11bbf42a3c26fed440a0b3300ab15360fe0c384f",
+  "afterGC": {
+    "rss": 912457728,
+    "heapTotal": 182861824,
+    "heapUsed": 146558640,
+    "external": 561921211,
+    "arrayBuffers": 454629256
+  }
+}

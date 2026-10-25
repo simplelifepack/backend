@@ -116,3 +116,50 @@ export function createStoredZip(files: ArchiveFile[]) {
 
   return Buffer.concat([...localParts, centralDirectory, end]);
 }
+
+export async function* streamStoredZip(files: AsyncIterable<ArchiveFile>) {
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+
+  let count = 0;
+  for await (const file of files) {
+    count += 1;
+    if (count > 65535 || offset + file.data.length > 0xffffffff) throw new Error("Archive exceeds ZIP32 limits.");
+    const name = Buffer.from(file.name, "utf8");
+    const modified = dosDateTime(file.modifiedAt ?? new Date());
+    const checksum = crc32(file.data);
+    const localHeader = Buffer.concat([
+      uint32(0x04034b50),
+      uint16(20),
+      uint16(0x0800),
+      uint16(0),
+      uint16(modified.dosTime),
+      uint16(modified.dosDate),
+      uint32(checksum),
+      uint32(file.data.length),
+      uint32(file.data.length),
+      uint16(name.length),
+      uint16(0),
+      name,
+    ]);
+    yield localHeader;
+    yield file.data;
+    centralParts.push(createCentralHeader(file.data, name, modified, checksum, offset));
+    offset += localHeader.length + file.data.length;
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const end = Buffer.concat([
+    uint32(0x06054b50),
+    uint16(0),
+    uint16(0),
+    uint16(count),
+    uint16(count),
+    uint32(centralDirectory.length),
+    uint32(offset),
+    uint16(0),
+  ]);
+
+  yield centralDirectory;
+  yield end;
+}

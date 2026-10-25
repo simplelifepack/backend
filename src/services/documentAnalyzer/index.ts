@@ -13,8 +13,8 @@ export function getDocumentAnalyzer(): DocumentAnalyzer {
   return analyzer;
 }
 
-export async function analyzeDocument(files: UploadedFile[]): Promise<DocumentAIResult> {
-  return getDocumentAnalyzer().analyzeDocument(files);
+export async function analyzeDocument(files: UploadedFile[], signal?: AbortSignal): Promise<DocumentAIResult> {
+  return getDocumentAnalyzer().analyzeDocument(files, signal);
 }
 
 export function setDocumentAnalyzerForTests(value: DocumentAnalyzer | null) { analyzer = value; }

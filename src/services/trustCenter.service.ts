@@ -404,33 +404,21 @@ export async function acceptInvitation(token: string, input: unknown) {
     throw Object.assign(new Error("Invitation could not be verified. Try again later."), { statusCode: 429 });
   }
   const validPin = await bcrypt.compare(pin, member.invitePinHash);
-  if (!validPin) {
-    const nextCount = member.pinAttemptCount + 1;
-    await withPrivateUser(member.ownerUserId, () => prisma.trustMember.update({
-      where: { id: member.id },
-      data: {
-        pinAttemptCount: nextCount,
-        pinLockedUntil: nextCount >= MAX_PIN_ATTEMPTS ? new Date(Date.now() + PIN_LOCK_MINUTES * 60 * 1000) : null,
-      },
-      select: { id: true },
-    }));
-    throw Object.assign(new Error("Invitation could not be verified."), { statusCode: 400 });
-  }
-  return withPrivateUser(member.ownerUserId, async () => {
-  const verified = await prisma.trustMember.findUniqueOrThrow({ where: { id: member.id }, select: { email: true } });
-  const account = await withCredentialLookup(() => prisma.user.findUnique({ where: { email: verified.email }, select: { id: true } }));
-  await prisma.trustMember.update({
-    where: { id: member.id },
-    data: {
-      status: "ACTIVE",
-      acceptedAt: now,
-      inviteTokenHash: null,
-      inviteExpiresAt: null,
-      pinAttemptCount: 0,
-      pinLockedUntil: null,
-      memberUserId: account?.id,
-    },
-  });
+  const outcome = await withPrivateUser(member.ownerUserId, () => prisma.$transaction(async tx => {
+    const rows = await tx.$queryRaw<Array<{status: string; invitePinHash: string | null; inviteTokenHash: string | null; inviteExpiresAt: Date | null; pinAttemptCount: number; pinLockedUntil: Date | null}>>`SELECT "status", "invitePinHash", "inviteTokenHash", "inviteExpiresAt", "pinAttemptCount", "pinLockedUntil" FROM trust_members WHERE id = ${member.id} FOR UPDATE`;
+    const current = rows[0];
+    if (!current || current.status !== "INVITED" || current.inviteTokenHash !== tokenHash(token) || current.invitePinHash !== member.invitePinHash || !current.inviteExpiresAt || current.inviteExpiresAt <= new Date()) return "invalid";
+    if (current.pinLockedUntil && current.pinLockedUntil > new Date()) return "locked";
+    if (!validPin) {
+      const count = current.pinAttemptCount + 1;
+      await tx.trustMember.update({ where: { id: member.id }, data: { pinAttemptCount: count, pinLockedUntil: count >= MAX_PIN_ATTEMPTS ? new Date(Date.now() + PIN_LOCK_MINUTES * 60 * 1000) : null }, select: { id: true } });
+      return "invalid";
+    }
+    const verified = await tx.trustMember.findUniqueOrThrow({ where: { id: member.id }, select: { email: true } });
+    const account = await withCredentialLookup(() => tx.user.findUnique({ where: { email: verified.email }, select: { id: true } }));
+    await tx.trustMember.update({ where: { id: member.id }, data: { status: "ACTIVE", acceptedAt: new Date(), inviteTokenHash: null, inviteExpiresAt: null, pinAttemptCount: 0, pinLockedUntil: null, memberUserId: account?.id }, select: { id: true } });
+    return "accepted";
+  }));
+  if (outcome !== "accepted") throw Object.assign(new Error("Invitation could not be verified."), { statusCode: outcome === "locked" ? 429 : 400 });
   return { message: "Invitation accepted." };
-  });
 }

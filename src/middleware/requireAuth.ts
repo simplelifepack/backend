@@ -68,7 +68,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const revokedAuthVersion = getNotedAuthVersion(payload.sub);
     if (revokedAuthVersion !== null && (payload.authVersion ?? 0) < revokedAuthVersion) return res.status(401).json({ message: "Unauthorized." });
     // SQL checks revocation version before the facade can decrypt a profile.
-    const user = await withPrivateUser(payload.sub, () => getUserById(payload.sub, payload.authVersion ?? 0));
+    const user = await withPrivateUser(payload.sub, () => getUserById(payload.sub, payload.authVersion ?? 0, payload.sid));
     if (!user) return res.status(401).json({ message: "Unauthorized." });
     const authUser = user;
     if (authTiming) authTiming.authDbLookups = 1;
@@ -115,7 +115,7 @@ export async function requireFreshAuth(req: Request, res: Response, next: NextFu
 
     const userLookupStartMs = performance.now();
     if (authTiming) authTiming.authDbLookups = 1;
-    const user = await withPrivateUser(payload.sub, () => getUserById(payload.sub, payload.authVersion ?? 0));
+    const user = await withPrivateUser(payload.sub, () => getUserById(payload.sub, payload.authVersion ?? 0, payload.sid));
     if (authTiming) authTiming.userLookupMs = performance.now() - userLookupStartMs;
 
     if (!user || (payload.authVersion ?? 0) !== (user.authVersion ?? 0)) {

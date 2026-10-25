@@ -1,3 +1,4 @@
+import { withImportAdmission } from "../../middleware/resourceLimits";
 import { withIsolatedPlaintextFile, validateDecryptedDocument } from "../documentSecurityValidation";
 import { encryptDocumentOnBackend } from "../documentHybridEncryption";
 import crypto from "node:crypto";
@@ -64,6 +65,11 @@ function importFailureStatus(error: unknown) {
 }
 
 export async function importGmailCandidates(userId: string, candidateIds: string[], providedGmail?: import("googleapis").gmail_v1.Gmail) {
+  return withImportAdmission(() => importCandidates(userId, candidateIds, providedGmail));
+}
+
+async function importCandidates(userId: string, candidateIds: string[], providedGmail?: import("googleapis").gmail_v1.Gmail) {
+  if (candidateIds.length > 50) throw Object.assign(new Error("Select at most 50 Gmail documents."), { statusCode: 400 });
   const gmail = providedGmail ?? (await authorizedGmail(userId)).gmail;
   const candidates = await prisma.externalDocumentCandidate.findMany({
     where: { id: { in: candidateIds }, userId, provider: "gmail", status: { in: ["candidate", "needs_review", "pending_review"] } },
@@ -79,7 +85,8 @@ export async function importGmailCandidates(userId: string, candidateIds: string
       if (candidate.externalAttachmentId) {
         const attachment = await gmail.users.messages.attachments.get({
           userId: "me", messageId: candidate.externalMessageId, id: candidate.externalAttachmentId,
-        });
+        }, { timeout: 45_000, maxContentLength: Math.ceil(MAX_SIZE * 4 / 3) + 1024 * 1024 });
+        if ((attachment.data.data?.length ?? 0) > Math.ceil(MAX_SIZE * 4 / 3) + 4) throw Object.assign(new Error("Gmail attachment exceeds the 25 MB upload limit."), { statusCode: 413 });
         content = decode(attachment.data.data);
       } else if (candidate.externalPartId) {
         const selectedPart = flattenParts(message.data.payload).find((part) => part.partId === candidate.externalPartId);

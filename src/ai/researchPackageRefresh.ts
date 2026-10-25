@@ -1,6 +1,5 @@
 import type { ZodTypeAny } from "zod";
 import { assertAIProcessingEnabled } from "../services/aiProcessing.service";
-import { consumeAIAction } from "../services/accountUsage.service";
 import { buildPackageInput } from "./packageInput";
 import { rankSources } from "./sourceAuthority";
 import { refreshResearchSchema, type RefreshChecklist, type RefreshSource } from "./packageRefreshSchema";
@@ -44,12 +43,11 @@ function structuredOutput(response: ResearchResponse): unknown {
   try { return JSON.parse(text); } catch { throw new PackageRefreshError("Research returned an invalid checklist. Your package was not changed."); }
 }
 
-export async function researchPackageRefresh(userId: string, pack: RefreshContext, signal: AbortSignal, dependencies = { assertAIProcessingEnabled, consumeAIAction }) {
+export async function researchPackageRefresh(userId: string, pack: RefreshContext, signal: AbortSignal, dependencies = { assertAIProcessingEnabled }) {
   await dependencies.assertAIProcessingEnabled(userId);
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) throw new PackageRefreshError("Package refresh is unavailable. Please try again later.", 503);
   const metadata = pack.searchMetadata && typeof pack.searchMetadata === "object" ? pack.searchMetadata as Record<string, unknown> : {};
-  await dependencies.consumeAIAction(userId, undefined, signal);
   const response = await requestResearch(apiKey, {
     model: process.env.OPENAI_REQUIREMENTS_MODEL ?? process.env.OPENAI_INTENT_MODEL ?? "gpt-5.4-mini",
     store: false, max_output_tokens: 12000,

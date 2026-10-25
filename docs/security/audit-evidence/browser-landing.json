@@ -1,0 +1,243 @@
+[
+  {
+    "mode": "before",
+    "title": "Readines",
+    "bodyExcerpt": "Unable to restore your session. Please try again. Retry",
+    "buttons": [
+      "Retry"
+    ],
+    "errors": [],
+    "heap": {
+      "usedSize": 4961140,
+      "totalSize": 5636096,
+      "embedderHeapUsedSize": 859728,
+      "backingStorageSize": 1201842
+    },
+    "metrics": {
+      "lcp": 340,
+      "cls": 0.0005682033962673611,
+      "events": []
+    },
+    "navigation": [
+      {
+        "duration": 269,
+        "domContentLoaded": 268.30000000447035
+      }
+    ],
+    "resources": [
+      {
+        "name": "index-CbERobSr.js",
+        "duration": 39.29999999701977,
+        "bytes": 579476
+      },
+      {
+        "name": "rolldown-runtime-BCiCTKAo.js",
+        "duration": 31.399999998509884,
+        "bytes": 1601
+      },
+      {
+        "name": "react-dom-BLgjQN_B.js",
+        "duration": 31.69999999552965,
+        "bytes": 3883
+      },
+      {
+        "name": "api-DnniT4oi.js",
+        "duration": 39.29999999701977,
+        "bytes": 525615
+      },
+      {
+        "name": "styles-BEUSezNM.js",
+        "duration": 31.80000000447035,
+        "bytes": 2389
+      },
+      {
+        "name": "createLucideIcon-BFvrwrZK.js",
+        "duration": 32.600000001490116,
+        "bytes": 1531
+      },
+      {
+        "name": "theme-BFTK1vvE.js",
+        "duration": 41,
+        "bytes": 1913
+      },
+      {
+        "name": "dist-DwmTYTFr.js",
+        "duration": 40.80000000447035,
+        "bytes": 37477
+      },
+      {
+        "name": "Stack-Bb1Un0HC.js",
+        "duration": 40.80000000447035,
+        "bytes": 5813
+      },
+      {
+        "name": "index-Bxpj4-Ci.css",
+        "duration": 40.399999998509884,
+        "bytes": 207733
+      },
+      {
+        "name": "styles-BQrLHnFB.js",
+        "duration": 49.29999999701977,
+        "bytes": 3278
+      },
+      {
+        "name": "bootstrap-CcE3V7v4.js",
+        "duration": 49.399999998509884,
+        "bytes": 21937
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 23.399999998509884,
+        "bytes": 609
+      },
+      {
+        "name": "refresh",
+        "duration": 18.399999998509884,
+        "bytes": 0
+      },
+      {
+        "name": "client",
+        "duration": 19.19999999552965,
+        "bytes": 0
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 22.19999999552965,
+        "bytes": 609
+      },
+      {
+        "name": "bold.ttf",
+        "duration": 36.19999999552965,
+        "bytes": 150592
+      },
+      {
+        "name": "regular.ttf",
+        "duration": 11.899999998509884,
+        "bytes": 154928
+      },
+      {
+        "name": "semibold.ttf",
+        "duration": 12.399999998509884,
+        "bytes": 151816
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "title": "Readines",
+    "bodyExcerpt": "Unable to restore your session. Please try again. Retry",
+    "buttons": [
+      "Retry"
+    ],
+    "errors": [],
+    "heap": {
+      "usedSize": 4890460,
+      "totalSize": 5373952,
+      "embedderHeapUsedSize": 857096,
+      "backingStorageSize": 1098676
+    },
+    "metrics": {
+      "lcp": 204,
+      "cls": 0,
+      "events": []
+    },
+    "navigation": [
+      {
+        "duration": 144.70000000298023,
+        "domContentLoaded": 144.20000000298023
+      }
+    ],
+    "resources": [
+      {
+        "name": "index-D666E1kd.js",
+        "duration": 49.899999998509884,
+        "bytes": 510806
+      },
+      {
+        "name": "rolldown-runtime-BCiCTKAo.js",
+        "duration": 43.399999998509884,
+        "bytes": 1601
+      },
+      {
+        "name": "api-B6QTS9-h.js",
+        "duration": 50.19999999552965,
+        "bytes": 528922
+      },
+      {
+        "name": "react-dom-Bg3wAqU9.js",
+        "duration": 43.599999994039536,
+        "bytes": 3883
+      },
+      {
+        "name": "styles-zgFYeHuA.js",
+        "duration": 44.399999998509884,
+        "bytes": 2389
+      },
+      {
+        "name": "createLucideIcon-ByWjZ2jb.js",
+        "duration": 45.099999994039536,
+        "bytes": 1531
+      },
+      {
+        "name": "styles-lz-7S0e9.js",
+        "duration": 51.599999994039536,
+        "bytes": 3278
+      },
+      {
+        "name": "Stack-CzpejCdn.js",
+        "duration": 51.69999999552965,
+        "bytes": 5813
+      },
+      {
+        "name": "index-Bxpj4-Ci.css",
+        "duration": 51.30000000447035,
+        "bytes": 207733
+      },
+      {
+        "name": "bootstrap-BXzwaDWZ.js",
+        "duration": 51.70000000298023,
+        "bytes": 21937
+      },
+      {
+        "name": "usageSlice-BTLPxs-e.js",
+        "duration": 52,
+        "bytes": 1149
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 4.700000002980232,
+        "bytes": 609
+      },
+      {
+        "name": "bold.ttf",
+        "duration": 13.399999998509884,
+        "bytes": 150592
+      },
+      {
+        "name": "refresh",
+        "duration": 7.300000004470348,
+        "bytes": 0
+      },
+      {
+        "name": "client",
+        "duration": 6.800000004470348,
+        "bytes": 0
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 20.19999999552965,
+        "bytes": 609
+      },
+      {
+        "name": "semibold.ttf",
+        "duration": 13,
+        "bytes": 151816
+      },
+      {
+        "name": "regular.ttf",
+        "duration": 13.100000001490116,
+        "bytes": 154928
+      }
+    ]
+  }
+]

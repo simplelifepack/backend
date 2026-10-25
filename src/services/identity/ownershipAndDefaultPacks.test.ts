@@ -1,3 +1,4 @@
+import { withPrivateUser } from "../../privacy/access";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { prisma } from "../../lib/prisma";
@@ -5,6 +6,7 @@ import { findDefaultPackSlug, saveGeneratedDefaultPack } from "../readiness/defa
 import { searchReadinessPacks } from "../readiness/readiness.service";
 import { createIdentityProfile, detectIdentityOwnership, normalizeName } from "./ownershipDetection";
 
+const fixtureUserId = crypto.randomUUID();
 const email = `ownership-default-pack-${crypto.randomUUID()}@example.test`;
 const generatedTitle = `Telangana Farm Purchase ${crypto.randomUUID().slice(0, 8)}`;
 const checkedAt = new Date("2026-08-06T00:00:00.000Z").toISOString();
@@ -14,7 +16,7 @@ let ugandaSlug: string | null = null;
 
 async function main() {
 try {
-  const user = await prisma.user.create({ data: { name: "Ravi Kumar", email, passwordHash: "test-only" } });
+  const user = await prisma.user.create({ data: { id: fixtureUserId, name: "Ravi Kumar", email, passwordHash: "test-only" } });
   userId = user.id;
   assert.equal(normalizeName("  RÁVI   Kumar "), "ravi kumar");
 
@@ -73,13 +75,13 @@ try {
   });
   assert.equal(await prisma.readinessPack.count({ where: { slug: generatedSlug } }), 1);
   const stored = await prisma.readinessPack.findUnique({ where: { slug: generatedSlug }, include: { requirements: true } });
-  assert.equal(stored?.createdBy, "ai");
+  assert.equal(stored?.createdBy, fixtureUserId);
   assert.equal(stored?.version, 1);
   assert.ok(stored?.aliases.includes("buy uncommon farm parcel"));
   assert.ok((stored?.keywords.length ?? 0) > 0);
   assert.equal(stored?.requirements[0]?.documentType, "pan");
   assert.ok((await searchReadinessPacks("buy uncommon farm parcel")).some((pack) => pack.slug === generatedSlug));
-  assert.equal(await prisma.readinessPack.count({ where: { slug: generatedSlug, createdBy: "ai" } }), 1);
+  assert.equal(await prisma.readinessPack.count({ where: { slug: generatedSlug, createdBy: fixtureUserId } }), 1);
   ugandaSlug = await saveGeneratedDefaultPack("uganda", {
     packageName: "Tourist Visa",
     category: "Travel & Visa",
@@ -100,7 +102,10 @@ try {
     verificationStatus: "verified",
     requiredDocuments: [{ id: "passport", title: "Passport", name: "Passport", documentType: "passport", owner: "self", category: "Identity", required: true, whyNeeded: "Required for visa application.", sourceName: "Directorate of Citizenship and Immigration Control, Uganda", sourceUrl: "https://visas.immigration.go.ug/", sourceAuthorityTier: "government", lastVerifiedAt: checkedAt }],
   });
-  assert.equal(ugandaSlug, "uganda-tourist-visa");
+  const uganda = await prisma.readinessPack.findUniqueOrThrow({ where: { slug: ugandaSlug } });
+  assert.equal(uganda.createdBy, fixtureUserId);
+  assert.equal(uganda.title, "Tourist Visa");
+  assert.equal(uganda.sourceUrl, "https://visas.immigration.go.ug/");
   const genericTouristVisa = await prisma.readinessPack.findUnique({ where: { slug: "tourist-visa" }, select: { aliases: true, searchMetadata: true } });
   assert.ok(!genericTouristVisa?.aliases.includes("uganda"));
   console.log("Ownership detection and default packs tests passed.");
@@ -112,4 +117,4 @@ try {
 }
 }
 
-void main();
+void withPrivateUser(fixtureUserId, main);

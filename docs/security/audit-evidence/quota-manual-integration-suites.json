@@ -1,0 +1,22 @@
+[
+  {
+    "file": "src/services/accountUsage.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/routes/usage.http.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/routes/packageQuota.http.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/routes/documents.manual.http.integration.test.ts",
+    "status": 0,
+    "signal": null
+  }
+]

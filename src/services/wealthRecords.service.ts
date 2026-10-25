@@ -12,7 +12,7 @@ let wealthRecordsTableAvailable: boolean | null = null;
 const recordSchema = z.object({
   type: z.enum(types),
   title: z.string().trim().min(1).max(160),
-  details: z.record(z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())])).default({}),
+  details: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())])).default({}),
   notes: z.string().trim().max(4000).optional(),
   followUpDate: z.string().trim().optional().nullable(),
   followUpNote: z.string().trim().max(2000).optional(),

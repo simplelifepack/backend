@@ -1,3 +1,4 @@
+import { withPrivateMigration } from "../privacy/access";
 import { isHybridEncryptionMetadata } from "../services/documentHybridEncryption";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -221,7 +222,7 @@ async function run() {
   }
 }
 
-void run().catch(async (error) => {
+void withPrivateMigration("synthetic legacy test fixtures", run).catch(async (error) => {
   console.error(error);
   await prisma.$disconnect();
   process.exit(1);

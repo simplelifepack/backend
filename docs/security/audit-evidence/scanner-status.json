@@ -1,0 +1,19 @@
+{
+  "zap": {
+    "status": "Completed with warnings",
+    "mode": "passive API scan",
+    "target": "isolated localhost:4009",
+    "failures": 0,
+    "warnings": 2,
+    "passes": 119,
+    "triage": {
+      "serverError": "Expected disabled provider/waitlist configuration responses in isolated test environment",
+      "debugMessage": "Generic Internal server error text matched; no stack or sensitive provider data was disclosed"
+    },
+    "reports": [
+      "zap-api-local.json",
+      "zap-api-local.html"
+    ]
+  },
+  "productionScanned": false
+}

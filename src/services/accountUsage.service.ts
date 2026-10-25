@@ -13,7 +13,7 @@ export class UsageLimitError extends Error {
   ) {
     super(code === "STORAGE_LIMIT_EXCEEDED"
       ? "This upload would exceed your 50 MB cloud storage limit."
-      : "You've used your 3 AI actions for this month.");
+      : "You've used your 3 AI package searches for this month.");
   }
   readonly statusCode = 429;
 }

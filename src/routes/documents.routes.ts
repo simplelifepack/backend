@@ -2,6 +2,9 @@ import { assignDocumentsSchema, assignOwnedDocuments, documentAssignmentOptions,
 import { queueStorageCleanup, drainStorageCleanup } from "../services/storageCleanup.service";
 import { enforceStorage, storedBytes, withStorageUpload, lockAccount } from "../services/accountUsage.service";
 /* eslint-disable max-lines */
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createAdmissionLimit } from "../middleware/resourceLimits";
 import crypto from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Prisma } from "@prisma/client";
@@ -10,7 +13,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { uploadLimiter } from "../middleware/security";
 import { encryptedUpload } from "../middleware/upload";
-import { analyzeDocument } from "../services/documentAnalyzer";
+import { analyzeDocument, getDocumentAnalyzer } from "../services/documentAnalyzer";
 import {
   buildAnalyzeResponse,
   buildManualValidation,
@@ -57,7 +60,7 @@ import {
   validateDecryptedDocument,
   withIsolatedPlaintextFile,
 } from "../services/documentSecurityValidation";
-import { createStoredZip, sanitizeArchiveName } from "../services/archiveZip";
+import { streamStoredZip, sanitizeArchiveName } from "../services/archiveZip";
 import { normalizeNameForMatch } from "../services/identity/ownershipDetection";
 import { assertAIProcessingEnabled } from "../services/aiProcessing.service";
 
@@ -83,6 +86,7 @@ function extensionForMimeType(mimeType: string) {
 }
 const router = Router();
 router.use(requireAuth);
+const admitDownload = createAdmissionLimit(4);
 
 type DocumentWithFiles = Prisma.DocumentGetPayload<{ include: { files: true } }>;
 const bulkDocumentSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).strict();
@@ -193,6 +197,9 @@ async function analyzeEncryptedUpload(
   statusCode: 200 | 202,
 ) {
   const plaintexts: Buffer[] = [];
+  const controller = new AbortController();
+  const cancel = () => { if (!res.writableFinished) controller.abort(); };
+  res.once("close", cancel);
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? (req.file ? [req.file] : undefined);
@@ -216,7 +223,10 @@ async function analyzeEncryptedUpload(
     }
 
     const analyzePaths = async (index: number, paths: string[]): Promise<{ result: Awaited<ReturnType<typeof analyzeDocument>> | Error }> => index === plaintexts.length
-      ? analyzeDocument(paths.map((path, i) => ({ path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize }))).then((result) => ({ result })).catch((error) => ({ result: error as Error }))
+      ? (async () => {
+        const analyzer = getDocumentAnalyzer();
+        return analyzer.analyzeDocument(paths.map((path, i) => ({ path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize })), controller.signal);
+      })().then((result) => ({ result })).catch((error) => ({ result: error as Error }))
       : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), (path) => analyzePaths(index + 1, [...paths, path]));
     const wantsAI = envelopes.some((item) => item.aiAnalysisConsent);
     let analysis: { result: Awaited<ReturnType<typeof analyzeDocument>> | Error } = { result: fallbackDocumentAIResult };
@@ -238,6 +248,7 @@ async function analyzeEncryptedUpload(
   } catch (error) {
     return next(error);
   } finally {
+    res.removeListener("close", cancel);
     plaintexts.forEach((plaintext) => plaintext.fill(0));
   }
 }
@@ -562,7 +573,7 @@ router.post("/bulk-assign", async (req, res, next) => {
     return res.json({ documents: documents.map(toDocumentResponseDto) });
   } catch (error) { return next(error); }
 });
-router.post("/bulk-download", async (req, res, next) => {
+router.post("/bulk-download", admitDownload, async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { ids } = bulkDocumentSchema.parse(req.body);
@@ -573,25 +584,25 @@ router.post("/bulk-download", async (req, res, next) => {
     if (documents.length !== new Set(ids).size) return res.status(404).json({ message: "One or more documents were not found." });
     const byId = new Map(documents.map(document => [document.id, document]));
     const used = new Set<string>();
-    const files = (await Promise.all(ids.map(async id => {
-      const document = byId.get(id)!;
-      const pages = documentPageFiles(document);
-      if (pages.length <= 1) {
-        const data = await streamToBuffer(await createDocumentPreviewStream(document));
-        return [{ name: uniqueArchiveName(decryptString(document.originalName) ?? "document", used), data, modifiedAt: document.updatedAt }];
+    async function* files() {
+      for (const id of ids) {
+        if (res.destroyed) return;
+        const document = byId.get(id)!;
+        const pages = documentPageFiles(document);
+        if (pages.length <= 1) {
+          yield { name: uniqueArchiveName(decryptString(document.originalName) ?? "document", used), data: await streamToBuffer(await createDocumentPreviewStream(document)), modifiedAt: document.updatedAt };
+        } else for (const page of pages) {
+          if (res.destroyed) return;
+          yield { name: uniqueArchiveName(`${sanitizeArchiveName(decryptString(document.title) ?? decryptString(document.originalName) ?? document.id)}/${pageDownloadName(document, page)}`, used), data: await streamToBuffer(await createDocumentPagePreviewStream(document, page.id)), modifiedAt: page.updatedAt };
+        }
       }
-      return Promise.all(pages.map(async page => ({
-        name: uniqueArchiveName(`${sanitizeArchiveName(decryptString(document.title) ?? decryptString(document.originalName) ?? document.id)}/${pageDownloadName(document, page)}`, used),
-        data: await streamToBuffer(await createDocumentPagePreviewStream(document, page.id)),
-        modifiedAt: page.updatedAt,
-      })));
-    }))).flat();
-    const zip = createStoredZip(files);
+    }
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="readiness-documents.zip"');
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    return res.send(zip);
+    await pipeline(Readable.from(streamStoredZip(files())), res);
+    return;
   } catch (error) {
     return next(error);
   }
@@ -825,7 +836,7 @@ router.delete("/:id/pages/:pageId", async (req, res, next) => {
   }
 });
 
-router.get("/:id/pages/:pageId/download", async (req, res, next) => {
+router.get("/:id/pages/:pageId/download", admitDownload, async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { id, pageId } = pageIdSchema.parse(req.params);
@@ -838,13 +849,14 @@ router.get("/:id/pages/:pageId/download", async (req, res, next) => {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(pageDownloadName(document, page))}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    return decrypted.pipe(res);
+    await pipeline(decrypted, res);
+    return;
   } catch (error) {
     return next(error);
   }
 });
 
-router.get("/:id/pages/:pageId/preview", async (req, res, next) => {
+router.get("/:id/pages/:pageId/preview", admitDownload, async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { id, pageId } = pageIdSchema.parse(req.params);
@@ -857,7 +869,8 @@ router.get("/:id/pages/:pageId/preview", async (req, res, next) => {
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(pageDownloadName(document, page))}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    return decrypted.pipe(res);
+    await pipeline(decrypted, res);
+    return;
   } catch (error) {
     return next(error);
   }
@@ -897,7 +910,7 @@ router.delete("/:id", async (req, res, next) => {
     return next(error);
   }
 });
-router.get("/:id/download", async (req, res, next) => {
+router.get("/:id/download", admitDownload, async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { id } = idSchema.parse(req.params);
@@ -911,17 +924,18 @@ router.get("/:id/download", async (req, res, next) => {
     const pages = documentPageFiles(document);
     if (pages.length > 1) {
       const used = new Set<string>();
-      const files = await Promise.all(pages.map(async page => ({
-        name: pageDownloadName(document, page, used),
-        data: await streamToBuffer(await createDocumentPagePreviewStream(document, page.id)),
-        modifiedAt: page.updatedAt,
-      })));
-      const zip = createStoredZip(files);
+      async function* files() {
+        for (const page of pages) {
+          if (res.destroyed) return;
+          yield { name: pageDownloadName(document!, page, used), data: await streamToBuffer(await createDocumentPagePreviewStream(document!, page.id)), modifiedAt: page.updatedAt };
+        }
+      }
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(`${decryptString(document.title) ?? decryptString(document.originalName) ?? "document"}-pages.zip`)}"`);
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Cache-Control", "private, no-store");
-      return res.send(zip);
+      await pipeline(Readable.from(streamStoredZip(files())), res);
+      return;
     }
     const decrypted = await createDocumentPreviewStream(document);
     res.setHeader("Content-Type", document.mimeType || "application/octet-stream");
@@ -929,12 +943,13 @@ router.get("/:id/download", async (req, res, next) => {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeName)}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    return decrypted.pipe(res);
+    await pipeline(decrypted, res);
+    return;
   } catch (error) {
     return next(error);
   }
 });
-router.get("/:id/preview", async (req, res, next) => {
+router.get("/:id/preview", admitDownload, async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     const { id } = idSchema.parse(req.params);
@@ -954,7 +969,8 @@ router.get("/:id/preview", async (req, res, next) => {
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(safeName)}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    return decrypted.pipe(res);
+    await pipeline(decrypted, res);
+    return;
   } catch (error) {
     return next(error);
   }

@@ -1,0 +1,88 @@
+[
+  {
+    "url": "https://backend-lifepack1.vercel.app/health",
+    "status": 200,
+    "headers": {
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      "Content-Security-Policy": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
+      "Content-Type": "application/json; charset=utf-8",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN"
+    }
+  },
+  {
+    "url": "https://backend-lifepack1.vercel.app/auth/me",
+    "status": 401,
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Security-Policy": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
+      "Content-Type": "application/json; charset=utf-8",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN"
+    }
+  },
+  {
+    "url": "https://backend-lifepack1.vercel.app/documents",
+    "status": 401,
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Security-Policy": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
+      "Content-Type": "application/json; charset=utf-8",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN"
+    }
+  },
+  {
+    "url": "https://backend-lifepack1.vercel.app/api/admin/packages",
+    "status": 401,
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Security-Policy": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
+      "Content-Type": "application/json; charset=utf-8",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN"
+    }
+  },
+  {
+    "url": "https://backend-lifepack1.vercel.app/api/billing/plans",
+    "status": 200,
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Security-Policy": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
+      "Content-Type": "application/json; charset=utf-8",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN"
+    },
+    "hostedTestButtonPresent": true,
+    "catalogueAvailabilityFlag": true
+  },
+  {
+    "url": "https://readines.com/",
+    "status": 200,
+    "headers": {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://accounts.google.com/gsi/client https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://*.razorpay.com https://*.googleusercontent.com https://lh3.googleusercontent.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://accounts.google.com https://*.razorpay.com https://*.readines.com https://*.readiness.com https://*.vercel.app; frame-src https://accounts.google.com https://api.razorpay.com https://checkout.razorpay.com; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'; upgrade-insecure-requests",
+      "Content-Type": "text/html; charset=utf-8",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+      "X-Content-Type-Options": "nosniff"
+    }
+  },
+  {
+    "url": "https://frontend-web-nine-amber.vercel.app/",
+    "status": 200,
+    "headers": {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://accounts.google.com/gsi/client https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://*.razorpay.com https://*.googleusercontent.com https://lh3.googleusercontent.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://accounts.google.com https://*.razorpay.com https://*.readines.com https://*.readiness.com https://*.vercel.app; frame-src https://accounts.google.com https://api.razorpay.com https://checkout.razorpay.com; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'; upgrade-insecure-requests",
+      "Content-Type": "text/html; charset=utf-8",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+      "X-Content-Type-Options": "nosniff"
+    }
+  }
+]
