@@ -5,7 +5,7 @@ import { encryptDocumentOnBackend } from "../documentHybridEncryption";
 import { validateDecryptedDocument, withIsolatedPlaintextFile } from "../documentSecurityValidation";
 import { analyzeImportedDocument } from "../documentImportAnalysis";
 import { assertAIProcessingEnabled } from "../aiProcessing.service";
-import { consumeAIAction, enforceStorage, lockAccount, storedBytes } from "../accountUsage.service";
+import { enforceStorage, lockAccount, storedBytes } from "../accountUsage.service";
 import { documentLookupHash, documentMetadataIntegrityHash, encryptJson, encryptString, userScopedDocumentHash } from "../../utils/documentEncryption";
 import type { LockerDocument } from "./provider";
 
@@ -35,10 +35,8 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
           await phase("Processing with AI");
         },
         analyzeDocument: async files => {
-          // Reuse the original-file analyzer with account usage charged before invocation.
           const { getDocumentAnalyzer } = await import("../documentAnalyzer");
           const analyzer = getDocumentAnalyzer();
-          await consumeAIAction(userId);
           return analyzer.analyzeDocument(files);
         },
       }));

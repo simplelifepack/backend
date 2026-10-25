@@ -91,7 +91,7 @@ Provider contract reference: [API Setu Authorized Partner specification v2.2](ht
 
 Provider responses in automated tests are explicitly synthetic fixtures; they are not evidence of real DigiLocker connectivity. Database delegates are in memory. File encryption, content validation, isolated plaintext handling, local encrypted storage, quota policy and retry code execute normally in the import test.
 
-- `npm run test:digilocker`: 8 tests covering missing-migration cleanup regression, configuration, PKCE, actual-list normalization, restrictions, HMAC/MIME/body limits, invalid/expired/replayed state, denied authorization, backend-only exchange, encrypted credentials, ownership rejection, no fetch without consent, cancellation, safe exchange failure, partial success, duplicate-safe retry, encrypted file round trip, quota enforcement, disabled/exhausted AI and temporary cleanup.
+- `npm run test:digilocker`: 8 tests covering missing-migration cleanup regression, configuration, PKCE, actual-list normalization, restrictions, HMAC/MIME/body limits, invalid/expired/replayed state, denied authorization, backend-only exchange, encrypted credentials, ownership rejection, no fetch without consent, cancellation, safe exchange failure, partial success, duplicate-safe retry, encrypted file round trip, quota enforcement, AI preference opt-out/package-search allowance independence and temporary cleanup.
 - Existing hybrid encryption suite: passed.
 - Existing document security validation suite: passed.
 - Existing import-analysis, privacy and error-handling suites: 18 tests passed.
@@ -119,3 +119,7 @@ Frontend (`/Users/ranjith/code/frontend-web`):
 - `src/lib/digilocker-api.ts`.
 - `src/pages/documents/digilocker-dialog.tsx` and `digilocker-dialog.test.tsx`.
 - `src/pages/documents/documents-overview.tsx`.
+
+## AI usage policy
+
+DigiLocker document processing does not consume the AI package-search allowance. Explicit application consent and AI preferences still apply; storage quotas still apply. The import regression exercises document processing with an exhausted package-search allowance.
