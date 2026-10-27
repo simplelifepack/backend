@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
 import { pipeline } from "node:stream";
+import { AsyncResource } from "node:async_hooks";
+import type { RequestHandler } from "express";
 import { AES_GCM_TAG_BYTES, MAX_DOCUMENT_UPLOAD_BYTES } from "../services/documentUploadLimits";
 
 const defaultUploadsDir = process.env.VERCEL ? path.join("/tmp", "readiness-uploads") : path.resolve(process.cwd(), "uploads");
@@ -82,7 +84,7 @@ export const upload = multer({
   },
 });
 
-export const encryptedUpload = multer({
+const encryptedMultipart = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_DOCUMENT_UPLOAD_BYTES + AES_GCM_TAG_BYTES,
@@ -97,5 +99,15 @@ export const encryptedUpload = multer({
     return cb(null, true);
   },
 });
+
+// Incoming stream events can run outside requireAuth's AsyncLocalStorage scope.
+// Bind continuation at entry so private ownership checks retain this request's
+// verified identity, including parser failures and multi-chunk uploads.
+export const encryptedUpload = {
+  array(fieldName: string, maxCount?: number): RequestHandler {
+    const parse = encryptedMultipart.array(fieldName, maxCount);
+    return (req, res, next) => parse(req, res, AsyncResource.bind(next));
+  },
+};
 
 export { uploadsDir, temporaryUploadsDir, permanentUploadsDir };

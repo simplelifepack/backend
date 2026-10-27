@@ -1,5 +1,6 @@
 import { digiLockerOperations } from "./digilocker.openapi";
 /* eslint-disable max-lines */
+import { billingOperations } from "./billing.openapi";
 type Schema = Record<string, unknown>;
 export type Operation = {
   method: "get" | "post" | "patch" | "delete";
@@ -804,6 +805,7 @@ const trustMemberBase = objectSchema({
 
 const ops: Operation[] = [
   ...digiLockerOperations,
+  ...billingOperations,
   { method: "get", path: "/health", tags: ["System"], summary: "Service health check", operationId: "getHealth", description: "Public liveness check for the backend service.", responses: { 200: response("Service is healthy", objectSchema({ status: { const: "ok" }, service: { const: "readiness-backend" }, timestamp: dateTime }), { status: "ok", service: "readiness-backend", timestamp: "2026-09-22T12:00:00.000Z" }) } },
 
   { method: "post", path: "/auth/signup/request-otp", tags: ["Authentication"], summary: "Request signup OTP", operationId: "requestSignupOtp", description: "Starts signup by sending a 6-digit verification code. No user account is created until /auth/signup verifies the OTP.", requestBody: body(objectSchema({ name: { type: "string", minLength: 1 }, email: { type: "string", format: "email" }, password: { type: "string", minLength: 8 } }, ["name", "email", "password"]), { name: "Example User", email: "user@example.com", password: "ExamplePassword1!" }), responses: { 200: response("Signup code sent", objectSchema({ message: { type: "string" } })), ...errorResponses("400", "409", "429", "502") } },
@@ -930,7 +932,7 @@ const userPreferencesSchema = objectSchema({
   country: nullable(stringEnum(["AU", "CA", "CH", "DE", "FR", "GB", "IN", "JP", "SG", "US", "AE", "SA", "NZ", "IE", "NL", "IT", "ES", "SE", "NO", "DK", "FI", "MY", "TH", "ZA"])),
   passportCountry: nullable(stringEnum(["AU", "CA", "CH", "DE", "FR", "GB", "IN", "JP", "SG", "US", "AE", "SA", "NZ", "IE", "NL", "IT", "ES", "SE", "NO", "DK", "FI", "MY", "TH", "ZA"])),
   homeCurrency: nullable(stringEnum(["INR", "USD", "EUR", "GBP", "AED", "SGD", "CHF", "AUD", "CAD", "SAR", "JPY"])),
-  appearance: stringEnum(["dark", "light"]),
+  appearance: stringEnum(["dark", "light", "system"]),
   aiProcessingEnabled: { type: "boolean", default: true },
 }, ["country", "passportCountry", "homeCurrency", "appearance", "aiProcessingEnabled"]);
 
@@ -1058,7 +1060,7 @@ export const openApiDocument = {
   servers: [{ url: "/", description: "Current host / same-origin server" }],
   tags: [
     "System", "Authentication", "Bootstrap", "Documents", "Packages", "DigiLocker",
-    "Gmail Integration", "Google Drive Integration", "Trust Center", "Wealth", "Health", "Notifications", "Preferences", "Account", "Admin",
+    "Gmail Integration", "Google Drive Integration", "Trust Center", "Wealth", "Health", "Notifications", "Preferences", "Account", "Admin", "Billing",
   ].map((name) => ({ name })),
   paths: buildPaths(),
   components: {

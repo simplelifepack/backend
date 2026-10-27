@@ -11,6 +11,12 @@ const mountedOperations = [
   "POST /api/integrations/digilocker/sessions/{id}/cancel",
 
   "GET /health",
+  "GET /api/billing/plans",
+  "POST /api/billing/checkout",
+  "POST /api/billing/verify",
+  "GET /api/billing/subscription",
+  "POST /api/billing/cancel",
+  "POST /api/billing/webhook",
   "POST /auth/signup/request-otp",
   "POST /auth/signup",
   "POST /auth/login",

@@ -50,6 +50,9 @@
     "privacy:verify-local": "node --import tsx src/scripts/verifyLocalPrivateWrites.ts",
     "privacy:migrate-vercel": "node --import tsx src/scripts/runVercelPrivateMigration.ts",
     "test:privacy-vercel": "node --import tsx --test src/privacy/vercelMigration.test.ts",
+    "billing:setup-test-plans": "node --import tsx src/scripts/setupRazorpayPlans.ts",
+    "billing:reconcile": "node --import tsx src/scripts/reconcileBilling.ts",
+    "test:billing": "node --import tsx --test src/services/billing/*.test.ts",
     "test:digilocker": "node --import tsx src/services/digilocker/digilocker.test.ts"
   },
   "dependencies": {

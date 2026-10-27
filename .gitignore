@@ -11,3 +11,5 @@
 scripts/*
 !scripts/private-backup/
 test-results/*
+
+docs*

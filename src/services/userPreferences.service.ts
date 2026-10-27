@@ -36,7 +36,7 @@ const countryLabels: Record<string, string> = {
   ZA: "South Africa",
 };
 
-export type AppearancePreference = "dark" | "light";
+export type AppearancePreference = "dark" | "light" | "system";
 
 export type UserPreferenceResponse = {
   country: string | null;
@@ -63,7 +63,7 @@ function validateCode(value: unknown, allowed: readonly string[], label: string)
 
 function validateAppearance(value: unknown) {
   if (value === undefined) return undefined;
-  if (value !== "dark" && value !== "light") {
+  if (value !== "dark" && value !== "light" && value !== "system") {
     throw Object.assign(new Error("Appearance is not supported."), { statusCode: 400 });
   }
   return value;
@@ -80,7 +80,7 @@ function serialize(user: {
     country: user.country,
     passportCountry: user.passportCountry,
     homeCurrency: user.homeCurrency,
-    appearance: user.appearance === "light" ? "light" : "dark",
+    appearance: user.appearance === "system" ? "system" : user.appearance === "light" ? "light" : "dark",
     aiProcessingEnabled: user.aiProcessingEnabled,
   };
 }

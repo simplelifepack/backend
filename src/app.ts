@@ -3,6 +3,7 @@ import express, { type Router } from "express";
 import helmet from "helmet";
 import path from "node:path";
 import authRouter from "./routes/auth.routes";
+import billingRouter from "./routes/billing.routes";
 import bootstrapRouter from "./routes/bootstrap.routes";
 import { openApiDocument } from "./docs/openapi";
 import { corsOptions, generalApiLimiter, jsonBodyLimit, securityHeadersOptions } from "./middleware/security";
@@ -45,6 +46,8 @@ app.use((req, res, next) => {
   }
   next();
 });
+// Webhook HMAC must see the original bytes, before the global JSON parser.
+app.use("/api/billing", generalApiLimiter, billingRouter);
 app.use(express.json({ limit: jsonBodyLimit }));
 
 function lazyRouter(loader: () => Promise<Record<string, unknown>>, exportName = "default") {

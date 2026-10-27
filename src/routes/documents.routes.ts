@@ -80,8 +80,11 @@ function extensionForMimeType(mimeType: string) {
     "image/webp": ".webp",
   }[mimeType] ?? ".bin";
 }
+import documentMetadataRouter from "./documentMetadata.routes";
+
 const router = Router();
 router.use(requireAuth);
+router.use(documentMetadataRouter);
 
 type DocumentWithFiles = Prisma.DocumentGetPayload<{ include: { files: true } }>;
 const bulkDocumentSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).strict();

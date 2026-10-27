@@ -26,10 +26,13 @@ class GoogleAuthError extends Error {
   }
 }
 
-function getGoogleClientId() {
-  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
-  if (!clientId) throw new GoogleAuthError("Google sign-in is not configured.", 503);
-  return clientId;
+function getGoogleClientIds() {
+  const clients = [...new Set([
+    process.env.GOOGLE_CLIENT_ID?.trim(),
+    process.env.GOOGLE_MOBILE_CLIENT_ID?.trim(),
+  ].filter((id): id is string => Boolean(id)))];
+  if (!clients.length) throw new GoogleAuthError("Google sign-in is not configured.", 503);
+  return clients;
 }
 
 export async function verifyGoogleCredential(
@@ -39,18 +42,18 @@ export async function verifyGoogleCredential(
   const parsed = credentialSchema.safeParse(input);
   if (!parsed.success) throw new GoogleAuthError("Google credential is required.", 400);
   const { credential } = parsed.data;
-  const audience = getGoogleClientId();
+  const audience = getGoogleClientIds();
 
   let payload: TokenPayload | undefined;
   try {
     payload = verifier
       ? await verifier(credential)
-      : (await new OAuth2Client(audience).verifyIdToken({ idToken: credential, audience })).getPayload();
+      : (await new OAuth2Client().verifyIdToken({ idToken: credential, audience })).getPayload();
   } catch {
     throw new GoogleAuthError("Invalid Google credential.");
   }
 
-  if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+  if (!payload?.sub || !payload.email || payload.email_verified !== true || !audience.includes(payload.aud)) {
     throw new GoogleAuthError("Invalid Google account.");
   }
 

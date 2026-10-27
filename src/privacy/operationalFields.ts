@@ -2,8 +2,14 @@
 // PRIVATE by default. The codec and SQL constraints enforce this policy.
 // Clinical/financial states and their event dates are intentionally excluded.
 export const operationalFields: Record<string, readonly string[]> = {
+  // Billing stores canonical catalogue prices and provider linkage/lifecycle
+  // metadata only. No payer PII, card/bank data or webhook payload is persisted.
+  // Limit generic operator projections to record identity and bookkeeping.
+  BillingSubscription: ["id", "userId", "createdAt", "updatedAt"],
+  BillingPayment: ["id", "subscriptionId", "createdAt", "updatedAt"],
+  BillingWebhookEvent: ["id", "processedAt"],
   UserAIUsage: ["userId", "period", "actionCount", "updatedAt"],
-  User: ["id", "accountTier", "authVersion", "pinAttemptCount", "pinLockedUntil", "deletionRequestedAt", "scheduledDeletionAt", "welcomeEmailSentAt", "createdAt", "updatedAt"],
+  User: ["id", "accountTier", "billingManaged", "authVersion", "pinAttemptCount", "pinLockedUntil", "deletionRequestedAt", "scheduledDeletionAt", "welcomeEmailSentAt", "createdAt", "updatedAt"],
   CustomPackageGenerationJob: ["id", "userId", "dedupeKey", "status", "retryCount", "provider429Count", "hasVerifiedOfficialSource", "queuedAt", "startedAt", "completedAt", "failedAt", "leaseExpiresAt", "lockedBy", "processingMs", "aiMs", "saveMs", "createdAt", "updatedAt"],
   PushSubscription: ["id", "userId", "active", "revokedAt", "createdAt", "updatedAt"],
   TrustMember: ["id", "ownerUserId", "memberUserId", "accessType", "status", "invitedAt", "inviteExpiresAt", "rejectedAt", "pinAttemptCount", "pinLockedUntil", "acceptedAt", "revokedAt", "createdAt", "updatedAt"],
