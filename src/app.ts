@@ -1,3 +1,4 @@
+import { productionDomainAccess } from "./middleware/domainAccess";
 import cors from "cors";
 import express, { type Router } from "express";
 import helmet from "helmet";
@@ -22,7 +23,9 @@ loadEmailConfig();
 loadStorageConfig();
 assertDocumentEncryptionConfigured();
 getActiveDocumentEncryptionKey();
-verifyEmailProviderOnStartup();
+// Serverless cold starts should open SMTP only for an actual send. The manual
+// verification command remains available without creating a competing handshake.
+if (!process.env.VERCEL) verifyEmailProviderOnStartup();
 
 const app = express();
 app.disable("x-powered-by");
@@ -40,6 +43,7 @@ app.use((req, res, next) => {
 });
 app.use(helmet(securityHeadersOptions));
 app.use(cors(corsOptions));
+app.use(productionDomainAccess);
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/") || req.path === "/packages" || req.path.startsWith("/packages/")) {
     res.setHeader("Cache-Control", "no-store");
@@ -140,6 +144,12 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
         url: "/openapi.json",
         dom_id: "#swagger-ui",
         deepLinking: true,
+        filter: true,
+        displayRequestDuration: true,
+        displayOperationId: true,
+        tagsSorter: "alpha",
+        operationsSorter: "method",
+        docExpansion: "list",
         persistAuthorization: false,
         withCredentials: true,
         presets: [
@@ -158,6 +168,7 @@ app.get(["/api-docs", "/api-docs/"], (_req, res) => {
 });
 
 app.use(generalApiLimiter);
+app.use("/api/waitlist", lazyRouter(() => import("./routes/waitlist.routes")));
 app.use("/auth", authRouter);
 app.use("/api/bootstrap", bootstrapRouter);
 app.use("/api/search", lazyRouter(() => import("./routes/search.routes")));

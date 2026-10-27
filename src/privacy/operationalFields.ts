@@ -2,6 +2,11 @@
 // PRIVATE by default. The codec and SQL constraints enforce this policy.
 // Clinical/financial states and their event dates are intentionally excluded.
 export const operationalFields: Record<string, readonly string[]> = {
+  // Waitlist email and provider message IDs are never exposed in generic
+  // operational projections. Anonymous prospects have no application account.
+  WaitlistRegistration: ["id", "registeredAt", "status", "unsubscribedAt", "confirmationStatus", "confirmationAttempts", "confirmationSentAt", "nextAttemptAt"],
+  WaitlistRateLimit: ["count", "expiresAt"],
+  WaitlistProof: ["expiresAt"],
   // Billing stores canonical catalogue prices and provider linkage/lifecycle
   // metadata only. No payer PII, card/bank data or webhook payload is persisted.
   // Limit generic operator projections to record identity and bookkeeping.

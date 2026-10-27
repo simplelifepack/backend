@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type SMTPPool from "nodemailer/lib/smtp-pool";
 
 import type { SmtpEmailConfig } from "../../config/email";
 import type { EmailProvider, SendEmailInput, SendEmailResult } from "./EmailProvider";
@@ -7,7 +8,16 @@ export class SmtpEmailProvider implements EmailProvider {
   private readonly transporter: nodemailer.Transporter;
 
   constructor(private readonly config: SmtpEmailConfig) {
-    this.transporter = nodemailer.createTransport({
+    const options: SMTPPool.Options & { maxRequeues: number } = {
+      pool: true,
+      maxConnections: 2,
+      maxMessages: 100,
+      // Nodemailer 9 otherwise requeues dropped connections automatically,
+      // which would bypass the waitlist's ambiguous-delivery safeguards.
+      maxRequeues: 0,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
       host: config.smtpHost,
       port: config.smtpPort,
       secure: config.smtpSecure,
@@ -17,7 +27,8 @@ export class SmtpEmailProvider implements EmailProvider {
         user: config.smtpUser,
         pass: config.smtpPass,
       },
-    });
+    };
+    this.transporter = nodemailer.createTransport(options);
   }
 
   async sendEmail(input: SendEmailInput): Promise<SendEmailResult> {

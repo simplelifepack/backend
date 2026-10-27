@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReadinessPack, Requirement } from "@prisma/client";
 import { jsonObject, planPackageRefresh } from "./packageRefreshPlan";
-import { packageRefreshResearchContext, validateRefreshEvidence } from "../../ai/researchPackageRefresh";
+import { packageRefreshResearchContext } from "../../ai/researchPackageRefresh";
 import { packageSourceText, publicSourceAddress, readPackageSourcePage } from "../../ai/packageSourcePage";
 import type { RefreshChecklist, RefreshSource } from "../../ai/packageRefreshSchema";
 
@@ -67,17 +67,15 @@ test("retired requirements keep their rows/assignment IDs and reactivation uses 
 });
 test("new slots do not reuse another owner's ID, and duplicate slots are rejected", () => {
   const wrongOwner = structuredClone(checklist); wrongOwner.requirements[0]!.owner = "seller";
-  assert.throws(() => planPackageRefresh(pack, wrongOwner, [source]), /identity/);
+  const replacement = planPackageRefresh(pack, wrongOwner, [source]);
+  assert.equal(replacement.requirements[0].id, undefined);
+  assert.equal(replacement.retired[0].id, requirement.id);
+  const foreign = structuredClone(checklist); foreign.requirements[0].existingId = "foreign-slot";
+  const remapped = planPackageRefresh(pack, foreign, [source]);
+  assert.equal(remapped.requirements[0].id, requirement.id);
+  assert.notEqual(remapped.requirements[0].id, "foreign-slot");
   const duplicate = structuredClone(checklist); duplicate.requirements.push(duplicate.requirements[0]!);
   assert.throws(() => planPackageRefresh(pack, duplicate, [source]), /duplicate/);
-});
-test("failed/incomplete research or unsupported requirement evidence cannot update a checklist", () => {
-  const pages = new Map([[url, evidence]]);
-  assert.doesNotThrow(() => validateRefreshEvidence(checklist, pages));
-  assert.throws(() => validateRefreshEvidence({ ...checklist, completeChecklist: false }, pages), /not changed/);
-  assert.throws(() => validateRefreshEvidence(checklist, new Map()), /not changed/);
-  const unrelated = structuredClone(checklist); unrelated.requirements[0]!.sourceUrl = "https://other.example/";
-  assert.throws(() => validateRefreshEvidence(unrelated, pages), /validated source/);
 });
 test("source retrieval rejects private IPs and non-HTTPS URLs before connection", async () => {
   for (const ip of ["127.0.0.1", "10.0.0.2", "192.168.1.2", "169.254.169.254", "172.16.1.1", "100.64.0.1", "::1", "::ffff:127.0.0.1"]) assert.equal(publicSourceAddress(ip), false);
@@ -87,9 +85,8 @@ test("source retrieval rejects private IPs and non-HTTPS URLs before connection"
 test("HTML evidence is decoded text with separate blocks, not markup entities or scripts", () => {
   assert.equal(packageSourceText("<script>untrusted script text</script><p>ID &amp; address</p><p>PAN&#39;s copy&nbsp;required</p>"), "ID & address PAN's copy required");
 });
-test("short checklist labels are valid when their source also proves process context", () => {
-  const update = structuredClone(checklist); update.requirements[0]!.evidence = "Identity document";
-  assert.doesNotThrow(() => validateRefreshEvidence(update, new Map([[url, `${evidence} Identity document`]])));
-  update.requirements[0]!.evidence = "Unlisted document";
-  assert.throws(() => validateRefreshEvidence(update, new Map([[url, evidence]])), /not changed/);
+test("review metadata changes alone do not count as package changes", () => {
+  const result = planPackageRefresh({ ...pack, verificationStatus: "needs_review" }, checklist, [{ ...source, validationStatus: "needs_review", verificationMethod: "ai_research", currentnessStatus: "not_verified" }]);
+  assert.equal(result.changed, false);
+  assert.equal(result.data.verificationStatus, "needs_review");
 });

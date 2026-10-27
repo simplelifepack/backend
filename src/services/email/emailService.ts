@@ -1,3 +1,4 @@
+import { renderWaitlistConfirmationEmail } from "./templates/waitlistConfirmationEmail";
 import { loadEmailConfig } from "../../config/email";
 import { prisma } from "../../lib/prisma";
 import { SmtpEmailProvider } from "./SmtpEmailProvider";
@@ -350,5 +351,26 @@ export async function sendWealthHandoffEmail(input: {
   } catch (error) {
     logEmailFailure("wealth_handoff", input.handoffId, error);
     return { sent: false, reason: "delivery_failed" as const, errorCode: errorCode(error) };
+  }
+}
+
+// SMTP timeouts can occur after acceptance. Only explicit rejection or a
+// pre-send configuration failure is retryable; ambiguous outcomes stay unknown.
+export async function sendWaitlistEmail(email: string, unsubscribeUrl: string): Promise<{
+  status: "sent" | "failed" | "unknown";
+  messageId?: string;
+}> {
+  let provider: EmailProvider | null;
+  try { provider = getEmailProvider(); } catch { return { status: "failed" }; }
+  if (!provider) return { status: "failed" };
+  try {
+    const result = await withTimeout(provider.sendEmail({
+      to: email,
+      ...renderWaitlistConfirmationEmail({ unsubscribeUrl }),
+    }));
+    return { status: "sent", messageId: result?.messageId };
+  } catch (error) {
+    const responseCode = (error as { responseCode?: number })?.responseCode;
+    return { status: responseCode && responseCode >= 400 && responseCode <= 599 ? "failed" : "unknown" };
   }
 }

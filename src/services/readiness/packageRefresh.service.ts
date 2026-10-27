@@ -21,7 +21,7 @@ export async function refreshPackageForUser(userId: string, slug: string, resear
   const latest = await getReadinessPackDefinitionBySlugForUser(slug, userId);
   if (!latest) throw new PackageRefreshError("Package no longer available.", 404);
   return {
-    ...result,
+    ...result, refreshed: true,
     package: { ...latest, source: { name: latest.sourceName, title: latest.sourceTitle, url: latest.sourceUrl, lastCheckedAt: latest.lastCheckedAt?.toISOString() } },
   };
 }
@@ -35,17 +35,21 @@ async function refreshPackage(userId: string, pack: NonNullable<Awaited<ReturnTy
   await prisma.$transaction(async tx => {
     // Optimistic lock: do not overwrite edits or another server's newer refresh.
     const locked = await tx.readinessPack.updateMany({ where: { id: pack.id, updatedAt: pack.updatedAt }, data: {
-      ...(plan.changed ? { ...plan.data, searchMetadata: plan.data.searchMetadata as Prisma.InputJsonValue, verificationSources: plan.data.verificationSources as Prisma.InputJsonValue, version: { increment: 1 } } : {}),
-      lastCheckedAt: now, lastVerifiedAt: now,
+      ...plan.data, searchMetadata: plan.data.searchMetadata as Prisma.InputJsonValue, verificationSources: plan.data.verificationSources as Prisma.InputJsonValue,
+      ...(plan.changed ? { version: { increment: 1 } } : {}),
+      lastCheckedAt: now, lastVerifiedAt: null,
     } });
     if (locked.count !== 1) throw new PackageRefreshError("The package changed while being checked. Please refresh again.", 409);
     for (const item of plan.requirements.filter(item => item.changed)) {
       const data = { ...item.data, metadata: item.data.metadata as Prisma.InputJsonValue };
-      if (item.id) await tx.requirement.update({ where: { id: item.id }, data });
+      if (item.id) {
+        const { owner: _unchangedOwner, ...updateData } = data;
+        await tx.requirement.update({ where: { id: item.id }, data: updateData });
+      }
       else await tx.requirement.create({ data: { ...data, packId: pack.id } });
     }
     // Keep obsolete rows and their user assignments for audit/recovery, out of runtime checklists.
     for (const item of plan.retired) await tx.requirement.update({ where: { id: item.id }, data: { metadata: { ...jsonObject(item.metadata), refreshRetired: true } as Prisma.InputJsonValue } });
   });
-  return { changed: plan.changed, message: plan.changed ? "Updated with the latest requirements" : "Checked — no changes found" };
+  return { changed: plan.changed, message: plan.changed ? "Updated with the latest requirements" : "Refreshed — no changes in this package." };
 }

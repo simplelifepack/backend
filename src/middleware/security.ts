@@ -1,3 +1,4 @@
+import { allowedBrowserOrigins } from "./domainAccess";
 import type { CorsOptions } from "cors";
 import type { Request, Response, NextFunction } from "express";
 import { privateLookup } from "../privacy/fieldEncryption";
@@ -7,13 +8,6 @@ import type { HelmetOptions } from "helmet";
 function numberFromEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-function csvFromEnv(name: string) {
-  return (process.env[name] ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
 }
 
 function clientRateLimitKey(req: Request) {
@@ -59,17 +53,6 @@ function buildRateLimiter(input: {
   });
 }
 
-function isAllowedLocalhostOrigin(origin: string) {
-  try {
-    const parsed = new URL(origin);
-    return ["http:", "https:"].includes(parsed.protocol) &&
-      ["localhost", "127.0.0.1"].includes(parsed.hostname) &&
-      Boolean(parsed.port);
-  } catch {
-    return false;
-  }
-}
-
 export const securityHeadersOptions: HelmetOptions = {
   crossOriginResourcePolicy: false,
 };
@@ -80,9 +63,7 @@ export const corsOptions: CorsOptions = {
   origin(origin, callback) {
     if (!origin) return callback(null, true);
 
-    const allowedOrigins = csvFromEnv("CORS_ORIGINS");
-
-    if (allowedOrigins.includes(origin) || (process.env.NODE_ENV !== "production" && isAllowedLocalhostOrigin(origin))) return callback(null, true);
+    if (allowedBrowserOrigins().has(origin)) return callback(null, true);
 
     return callback(new Error("Origin is not allowed by CORS."));
   },

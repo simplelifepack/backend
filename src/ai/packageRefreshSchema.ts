@@ -32,6 +32,12 @@ export const refreshChecklistSchema = z.object({
 
 export type RefreshChecklist = z.infer<typeof refreshChecklistSchema>;
 export type RefreshSource = z.infer<typeof refreshSourcesSchema>["sources"][number] & {
-  relevance: string; validationStatus: "validated"; verificationMethod: string;
+  relevance: string; validationStatus: "validated" | "needs_review"; verificationMethod: string;
   checkedAt: string; retrievedAt: string; currentnessStatus: string;
 };
+
+// User refresh asks AI for requirements and references; admin owns source verification.
+export const refreshResearchSchema = refreshChecklistSchema.omit({ exactProcess: true, completeChecklist: true, sources: true, requirements: true }).extend({
+  sources: z.array(refreshSourcesSchema.shape.sources.element.extend({ relevance: text })).min(1).max(6),
+  requirements: z.array(refreshChecklistSchema.shape.requirements.element.omit({ evidence: true })).min(1).max(40),
+}).strict();

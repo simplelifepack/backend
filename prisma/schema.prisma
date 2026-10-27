@@ -1184,3 +1184,44 @@ model BillingWebhookEvent {
   eventType String
   processedAt DateTime @default(now())
 }
+
+enum WaitlistStatus {
+  registered
+  unsubscribed
+}
+
+enum WaitlistDeliveryStatus {
+  pending
+  sending
+  sent
+  failed
+  unknown
+}
+
+model WaitlistRegistration {
+  id                    String @id @default(uuid())
+  email                 String @unique
+  private_email         String
+  registeredAt          DateTime @default(now())
+  status                WaitlistStatus @default(registered)
+  unsubscribedAt        DateTime?
+  confirmationStatus    WaitlistDeliveryStatus @default(pending)
+  confirmationAttempts  Int @default(0)
+  confirmationSentAt    DateTime?
+  confirmationMessageId String?
+  nextAttemptAt         DateTime @default(now())
+  @@index([confirmationStatus, nextAttemptAt])
+}
+
+model WaitlistRateLimit {
+  key       String @id
+  count     Int
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model WaitlistProof {
+  id        String @id
+  expiresAt DateTime
+  @@index([expiresAt])
+}
