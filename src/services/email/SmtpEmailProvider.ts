@@ -1,11 +1,11 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import type SMTPPool from "nodemailer/lib/smtp-pool";
 
 import type { SmtpEmailConfig } from "../../config/email";
 import type { EmailProvider, SendEmailInput, SendEmailResult } from "./EmailProvider";
 
 export class SmtpEmailProvider implements EmailProvider {
-  private readonly transporter: nodemailer.Transporter<SMTPPool.SentMessageInfo>;
+  private readonly transporter: Transporter<SMTPPool.SentMessageInfo>;
 
   constructor(private readonly config: SmtpEmailConfig) {
     const options: SMTPPool.Options & { maxRequeues: number } = {
