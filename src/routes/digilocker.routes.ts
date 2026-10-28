@@ -36,7 +36,7 @@ router.post("/sessions", uploadLimiter, async (req, res, next) => {
   catch (error) { next(error); }
 });
 router.get("/sessions/:id/status", async (req, res, next) => {
-  try { res.json(await refreshDigiLockerSession(userId(req), z.string().parse(req.params.id))); } catch (error) { next(error); }
+  try { res.json(await refreshDigiLockerSession(userId(req), z.string().parse(req.params.id), process.env.VERCEL ? () => waitUntil(drainDigiLockerQueue().catch(() => console.error({ event: "digilocker_worker_failed" }))) : undefined)); } catch (error) { next(error); }
 });
 router.post("/sessions/:id/cancel", async (req, res, next) => {
   try { res.json(await cancelDigiLockerSession(userId(req), z.string().parse(req.params.id))); } catch (error) { next(error); }

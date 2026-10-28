@@ -150,7 +150,12 @@ export async function completeDigiLockerAuthorization(input: { state: string; co
     }
   });
 }
-export async function refreshDigiLockerSession(userId: string, id: string) { return statusResponse(await expire(await owned(userId, id))); }
+export async function refreshDigiLockerSession(userId: string, id: string, recover?: () => void) {
+  const session = await expire(await owned(userId, id));
+  if (session.status === "IMPORTING" && (!session.importLeaseUntil || session.importLeaseUntil <= new Date()) &&
+      (!session.importNextAttemptAt || session.importNextAttemptAt <= new Date())) recover?.();
+  return statusResponse(session);
+}
 export async function cancelDigiLockerSession(userId: string, id: string) {
   const session = await owned(userId, id);
   await prisma.digiLockerConsentSession.updateMany({ where: { id, userId, status: { in: ["PENDING", "AUTHENTICATED", "IMPORTING"] } },

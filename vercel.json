@@ -23,7 +23,7 @@
   "crons": [
     {
       "path": "/api/integrations/digilocker/worker",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
