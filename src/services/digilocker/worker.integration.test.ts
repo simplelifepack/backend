@@ -4,6 +4,8 @@ import { randomUUID, randomBytes, createHmac, generateKeyPairSync } from "node:c
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fork } from "node:child_process";
+import { once } from "node:events";
 import { withPrivateUser } from "../../privacy/access";
 
 const url = process.env.DIGILOCKER_TEST_DATABASE_URL;
@@ -40,7 +42,7 @@ void test("durable imports with real PostgreSQL and a synthetic DigiLocker bound
     const route = String(input);
     if (route.endsWith("/token")) return Response.json({ access_token: "synthetic-token", token_type: "Bearer", expires_in: 1800 });
     if (route.endsWith("/revoke")) { revocations++; return new Response("", { status: failRevoke ? 503 : 200 }); }
-    if (route.endsWith("/files/issued")) return Response.json({ items: ["one", "two", "three"].map(uri => ({ uri, name: uri, mime: "application/pdf" })) });
+    if (route.endsWith("/files/issued")) return Response.json({ items: ["one", "two", "three", "crash"].map(uri => ({ uri, name: uri, mime: "application/pdf" })) });
     downloads++;
     if (slowDownload) return slowDownload(init!.signal!);
     if (fail) return new Response("unavailable", { status: 503 });
@@ -78,13 +80,33 @@ void test("durable imports with real PostgreSQL and a synthetic DigiLocker bound
         staleBytes, { sessionId: id, id: "stale-consent", timestamp: new Date().toISOString(), version: service.COPY_CONSENT_VERSION }, async () => undefined,
         { token: "crashed-worker", signal: new AbortController().signal })), /lease ended/);
     });
+    await t.test("an actual worker process death retains its lease and resumes without duplicate writes", async () => {
+      const id = await connect(); await enqueue(id, ["crash"]);
+      const child = fork(path.resolve("src/services/digilocker/workerCrash.fixture.ts"), [], {
+        execArgv: ["--import", "tsx"], env: process.env, stdio: ["ignore", "ignore", "ignore", "ipc"],
+      });
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const [message] = await Promise.race([once(child, "message"), new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error("Crash fixture did not reach provider I/O")), 10_000);
+        })]);
+        assert.deepEqual(message, { event: "download-started" });
+        const exited = once(child, "exit"); child.kill("SIGKILL"); await exited;
+        const abandoned = await asOwner(() => prisma.digiLockerConsentSession.findFirstOrThrow({ where: { id, userId: owner } }));
+        assert.equal(abandoned.status, "IMPORTING"); assert(abandoned.importLeaseToken);
+        await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "importLeaseUntil" = timezone('UTC', CURRENT_TIMESTAMP) - INTERVAL '1 second' WHERE "id" = ${id}`;
+        await runDigiLockerWorker();
+        assert.equal((await status(id)).progress[0].phase, "Completed");
+        const before = downloads; await runDigiLockerWorker(); assert.equal(downloads, before);
+      } finally { clearTimeout(timeout); if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }
+    });
     await t.test("partial failure and retry timing survive a new worker invocation", async () => {
       const id = await connect(); await enqueue(id, ["three"]); fail = true;
       await runDigiLockerWorker(); const partial = await status(id);
       assert.equal(partial.status, "IMPORTING"); assert.equal(partial.progress[0].phase, "Failed");
       const before = downloads; await runDigiLockerWorker(); assert.equal(downloads, before, "honor durable retry time");
       fail = false;
-      await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "importNextAttemptAt" = timezone('UTC', CURRENT_TIMESTAMP) WHERE "id" = ${id}`;
+      await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "importNextAttemptAt" = timezone('UTC', CURRENT_TIMESTAMP) - INTERVAL '1 second' WHERE "id" = ${id}`;
       const retried = await runDigiLockerWorker();
       const retriedStatus = await status(id);
       assert.equal(retriedStatus.progress[0].phase, "Completed", JSON.stringify({ retried, status: retriedStatus }));
@@ -131,7 +153,7 @@ void test("durable imports with real PostgreSQL and a synthetic DigiLocker bound
       slowDownload = signal => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
       await runDigiLockerWorker(20); slowDownload = undefined;
       const interrupted = await status(id); assert.equal(interrupted.status, "IMPORTING");
-      await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "importNextAttemptAt" = timezone('UTC', CURRENT_TIMESTAMP) WHERE "id" = ${id}`;
+      await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "importNextAttemptAt" = timezone('UTC', CURRENT_TIMESTAMP) - INTERVAL '1 second' WHERE "id" = ${id}`;
       await runDigiLockerWorker(); assert.equal((await status(id)).progress[0].phase, "Completed");
     });
     await t.test("invalid progress ciphertext terminates the job and independently revokes credentials", async () => {

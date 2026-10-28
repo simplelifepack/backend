@@ -1,0 +1,100 @@
+{
+  "event": "digilocker_hosted_verification",
+  "checks": [
+    {
+      "name": "authenticated owner can read pending session",
+      "passed": true
+    },
+    {
+      "name": "private response disables caching",
+      "passed": true
+    },
+    {
+      "name": "cross-account status denied",
+      "passed": true
+    },
+    {
+      "name": "cross-account documents denied",
+      "passed": true
+    },
+    {
+      "name": "cross-account cancel denied",
+      "passed": true
+    },
+    {
+      "name": "cross-account import denied",
+      "passed": true
+    },
+    {
+      "name": "invalid consent or batch boundary rejected",
+      "passed": true
+    },
+    {
+      "name": "invalid consent or batch boundary rejected",
+      "passed": true
+    },
+    {
+      "name": "pending OAuth session cannot import",
+      "passed": true
+    },
+    {
+      "name": "forged access token denied",
+      "passed": true
+    },
+    {
+      "name": "scheduler endpoint rejects unauthenticated calls",
+      "passed": true
+    },
+    {
+      "name": "invalid/replayed OAuth state never authenticates",
+      "passed": true
+    },
+    {
+      "name": "invalid/replayed OAuth state never authenticates",
+      "passed": true
+    },
+    {
+      "name": "minute scheduler expires abandoned lease without browser polling",
+      "passed": true
+    },
+    {
+      "name": "bounded authenticated load has no failed responses",
+      "passed": true
+    },
+    {
+      "name": "owner cancellation succeeds",
+      "passed": true
+    },
+    {
+      "name": "cancelled session cannot replay imports",
+      "passed": true
+    }
+  ],
+  "stages": [
+    {
+      "concurrency": 1,
+      "requests": 8,
+      "p95Ms": 293.30070700000215,
+      "p99Ms": 293.30070700000215
+    },
+    {
+      "concurrency": 4,
+      "requests": 32,
+      "p95Ms": 1585.661304000001,
+      "p99Ms": 1766.167303000002
+    },
+    {
+      "concurrency": 8,
+      "requests": 64,
+      "p95Ms": 404.9789349999992,
+      "p99Ms": 1489.9477609999958
+    }
+  ],
+  "statuses": {
+    "200": 104
+  },
+  "observedConnections": 18,
+  "scope": "Current deployed API; bounded authenticated fixture load; no real provider download; not saturation testing",
+  "deployment": "dpl_F3MFTBSEZMNRGV9qGpBHGssoFaTa",
+  "verificationOnlyBuildExit": 42
+}

@@ -1,77 +1,138 @@
-# Combined PR #3/#4 integration — 2026-10-28
+# DigiLocker integration and verification — 2026-10-28
 
-Both repositories integrate the fetched PR #3 and PR #4 heads with current main on `codex/digilocker-durable-integration`. No GitHub PR has been merged. Backend upload conflict retains admission limits, authenticated AsyncLocalStorage, bounded parsing and stream draining. Callback validation and CSP are retained. The later requested removal deletes frontend hostname/early-access gates and backend early-access blocking; account authentication and authorization remain enforced.
+This report supersedes the earlier preview notes. PR #3 and PR #4 from both
+repositories are included in main. The backend upload conflict preserved the
+security fixes, admission controls and authenticated private-data context.
+Readines authentication is enabled on the main domains. Main uses the registered
+backend directly; the temporary preview callback-forwarding rules were removed.
+Razorpay was explicitly excluded from this follow-up by the user.
 
-## Implemented
+## Implemented and released
 
-- Import requests persist explicit consent and return HTTP 202. The durable batch lives on its owner-bound session; each worker invocation handles one document. PostgreSQL atomically claims leases under a short advisory transaction, caps active leases at three and recovers expired leases. Attempts, retry timestamps and encrypted progress survive process loss.
-- Provider downloads and AI calls receive AbortSignals. Five-second heartbeats fence cancelled/expired/stale workers. The document transaction locks/checks the session lease before writing. Cancellation cannot be overwritten by a late worker completion. Time comparisons and raw timestamp parameters explicitly use UTC.
-- Provider references are checked before downloading; owner-scoped hash/reference deduplication remains inside the account-locked final transaction. One process holds at most three import work slots and at most four document AI slots. A fourth import worker gets 503; error middleware includes Retry-After.
-- Stream chunks are wiped on successful and failed bounded reads. Import buffers are wiped in all exits, including validation/storage failures. Validation precedes encryption; ciphertext references are released after encrypted temporary storage, and the source plaintext buffer is wiped once its isolated analysis file exists.
-- Progress is encrypted separately from credential/consent payloads. Failed provider revocations retain encrypted terminal credentials for bounded maintenance retries until expiry. Cancelled and failed sessions cannot use retained credentials for imports.
-- Frontend polling aborts on cleanup, backs off on errors, respects Retry-After and pauses scheduling while hidden. Users can refresh status, cancel a running import or reconnect after interruption. Individual results and expiry messages retain partial-success information. Document lists render fifty rows at a time.
-- IndexedDB operations serialize clear/write ordering and resolve only after transaction commit. Cache writes check auth generation and account scope. Redux keeps at most 2,048 pending IDs for ten minutes and rejects unknown/expired completions; logout/account replacement invalidates pending work.
-- Inherited file-length lint failures were resolved by separating service modules, hooks and view components. Existing design-system components and styling are retained. SMTP pool typing is corrected. Admin bootstrap consumes its invocation secret, requires a generated 16-character minimum password (72 UTF-8 bytes maximum), and requires `--rotate-password` to change an existing admin password.
-- Preview builds skip inherited database migrations unless `PREVIEW_DATABASE_MIGRATIONS_APPROVED=1` is explicitly configured.
+- Import admission returns HTTP 202 with durable encrypted consent/progress,
+  PostgreSQL leases, retry times and bounded attempts. A short claim transaction
+  caps active leases at three across serverless instances. State transitions and
+  final document writes check owner, cancellation, expiry and lease ownership.
+- Expired leases recover after process death. Provider downloads and AI receive
+  AbortSignals. Heartbeats stop cancelled/stale work; final commits remain fenced.
+  Partial success survives retries. Timeout and corrupt-payload paths terminate
+  or retry safely instead of stranding a session.
+- Provider references are checked before download. Reference/content deduplication
+  is repeated transactionally. Provider bytes are size-bounded, HMAC verified,
+  validated, encrypted, and wiped on success/failure. Import slots also bound PDF,
+  encryption and AI operations. Progress is separate from credential payloads.
+- Failed revocations retain encrypted credentials for maintenance retries until
+  expiry; terminal sessions cannot import. Successful revocation clears stored
+  credentials. Encryption key rotation preserves old-key reads; removed keys fail
+  closed. Lookup-key replacement is a separate migration, not normal rotation.
+- Supabase runs `digilocker-recovery-every-minute` independently of browsers.
+  It wakes the protected worker only for eligible work/expiry/revocation. The
+  bearer token stays in Vault; Vercel receives only its SHA-256 verifier. Headers
+  are not stored in an asynchronous HTTP queue. The existing daily Vercel cleanup
+  remains a secondary path. Local server startup already ticks the worker every
+  two seconds. See `DIGILOCKER_RECOVERY_OPERATIONS.md` for verification and rollback.
+- Frontend polling aborts on cleanup, backs off and pauses while hidden. Initial
+  connection checks now time out after twenty seconds and offer Refresh Status
+  even before a session exists. Per-account storage keys prevent stale recovery
+  state or a late old-account cancellation erasing another account's connection.
+- UI supports cancellation/reconnect, individual results, retry/expiry messages,
+  fifty-row rendering increments and fifty-document batch selection. Imported
+  source labels and filters now identify DigiLocker rather than Manual Upload.
+  At the user’s request, header/modal/bulk action buttons use natural widths
+  and wrap only when the row runs out of space. Existing tokens are preserved.
+- IndexedDB clears/writes serialize through commit with account-generation checks;
+  Redux request IDs are capped at 2,048 and expire after ten minutes. HTTP 503
+  responses expose Retry-After; the frontend provides retry cooldown/backoff.
 
-## Verification
+## Real provider verification
 
-- All 27 backend test files changed in PR #3/#4, plus billing/worker coverage, passed against combined code and isolated PostgreSQL with synthetic provider boundaries. Added bootstrap, preview-migration, cancellation, global admission and revocation-retry checks pass.
-- Frontend: 56 files / 226 tests passed after removing obsolete hostname-gate tests, including new cache commit-order, bounded request registry, signal forwarding and Retry-After tests. Both repository lint checks and TypeScript checks pass; production builds pass. Existing bundle-size warnings remain.
-- All migrations applied to a fresh disposable PostgreSQL database. Prisma reports an empty schema diff against the merged schema.
-- Real PostgreSQL tests exercise concurrent enqueue, provider-reference retries, expired leases, stale commit fencing, partial progress, retry timing, active cancellation, cross-account denial, three-worker admission, revocation retries and expiry.
-- Disposable backup/restore: all 44 table counts and a sentinel record matched. This validates the synthetic database round trip, not current production backup recoverability or object-storage recovery.
-- Local resource profile (synthetic provider, AI disabled): queue admission p95 22.3 ms / p99 55.0 ms; small-PDF worker p95 189.9 ms / p99 221.1 ms. Three 9 MiB PDFs reached process peak RSS 236.5 MiB. RSS after GC remained about 215 MiB; Node/native allocators can retain pages. See the evidence JSON for heap/external buffers. This is neither a production baseline nor a serverless equivalence claim.
-- Local shared-key rate-limit profile at 32 one-connection pools: 33 total connections including the observer, p95 11.0 ms / p99 32.5 ms, 640 operations, zero failures. Connection totals still scale with function instances; pool size one does not globally cap database connections.
+The user completed DigiLocker sign-in and provider consent in Chrome on
+readines.com. The registered callback returned successfully and the document list
+contained the selected documents. The earlier PAN copy completed as already in
+Documents without creating a duplicate.
 
-## Hosted verification and outstanding gates
+With explicit action-time approval, a fresh Driving License PDF then imported
+successfully. The archive grew from three to four records. This exercised actual
+provider download, mandatory HMAC verification, PDF validation, encryption,
+permanent persistence and the existing AI processing path. Database checks found
+an AES-256-GCM encrypted page with ciphertext hash, encrypted parent hash, and a
+private storage reference. The import was not marked duplicate. Closing the
+connection produced CANCELLED, cleared credentials and released its lease.
+No PIN, OTP, provider token or document content was included in this report.
 
-The user authorized the connected `readiness` Supabase project (`izsujcwyuirkzkafhfnp`) as the current test environment and requested Vercel test-branch deployment. Existing records must be preserved. The additive migration adds queue metadata only.
+## Regression and fault verification
 
-A real Chrome localhost OAuth attempt returned `redirect_uri_mismatch` for `http://localhost:4000/api/integrations/digilocker/callback`, before authentication or document consent. The saved provider callback is `https://backend-three-sage-78.vercel.app/`. A preview callback cannot complete through a different deployment/database without a supported routing arrangement. Do not claim scopes, HMAC, real imports or real token revocation are verified until that flow succeeds.
+- All 30 unique combined backend test files passed using the pre-integration main as the
+  comparison baseline, with each suite routed to its required disposable DB.
+- Eleven worker integration cases passed, including a real SIGKILL of a worker
+  child during provider I/O, lease recovery, stale commit fencing, concurrent
+  admission, cancellation, partial retry, invocation timeout, corrupt progress,
+  revocation retry and expiry. Provider boundaries in these fault tests are
+  synthetic; the PostgreSQL and import pipeline are real.
+- All 56 frontend test files / 234 tests passed. Coverage includes account cache
+  ordering, request bounds, abort/retry contracts, hidden-tab polling, timeout
+  recovery, separate account session keys, fifty-row paging, fifty-item selection,
+  focus trapping, Escape and focus restoration.
+- Lint and TypeScript checks pass without disabling rules. Builds pass with the
+  existing bundle-size advisory. Privacy key rotation tests pass.
+- Merged Prisma schema/migration checks passed on disposable PostgreSQL. The
+  additive durable-import migration is applied to the connected Supabase project.
+- Final isolated backup/restore matched all 44 table counts and its sentinel.
+  This synthetic round trip is not a current production/object-storage disaster
+  recovery rehearsal. Historical full recovery evidence remains in
+  `docs/privacy/manual-production-backup.md`.
 
-Vercel metadata showed no recurring Razorpay plan IDs or webhook secret configured. Synthetic billing lifecycle tests pass; real test checkout/payment/refund/webhook verification remains pending. The bootstrap password remains a readable production-scoped Vercel configuration variable; remove it after intentional offline provisioning/rotation and keep future invocation secrets out of persistent deployment configuration. This task has not changed existing account passwords or encryption keys.
+## Authenticated hosted verification
 
-A test preview requires CRON_SECRET. Import admission starts a best-effort Vercel waitUntil drain (three workers, 270-second invocation budget); the protected GET /api/integrations/digilocker/worker endpoint provides durable scheduler recovery. Timeout retries preserve the durable job. The current Hobby plan permits daily cron only; the committed cron is daily cleanup. Status checks also restart eligible interrupted jobs. Vercel cron executes for production deployments; preview crash-recovery verification must invoke the protected worker explicitly if its best-effort invocation is interrupted. Configure a minute-level external/paid production scheduler before relying on autonomous crash recovery while the browser is closed. Key rotation still requires preserving old versioned decryption keys, separately backing up lookup keys and following the private-data recovery runbook; lookup-key rotation is not an in-place key replacement.
+A verification-only Vercel build created unique synthetic accounts and cleaned
+up its fixtures. All 17 named checks passed: owner access/no-store, cross-account
+status/list/cancel/import denial, consent/batch boundaries, pending/cancelled
+import rejection, forged tokens, unauthenticated worker denial, invalid/replayed
+OAuth state, cancellation, and autonomous expiry of an abandoned lease.
 
-Still required: successful real provider consent/scopes/callback/HMAC/imports and revocation, Razorpay credentials and real test lifecycle, authenticated hosted penetration tests, hosted load/memory/GC and before/after p95/p99/failure-rate comparisons, and real-device mobile/light/dark/focus QA. Automated synthetic checks do not satisfy these live gates. PRs should remain unmerged until the applicable gates have evidence.
+The expiry fixture was observed directly in PostgreSQL: the test did not poll its
+API status or manually invoke the worker. The minute scheduler expired it and
+released its lease without browser activity. The verification build deliberately
+exited 42 after its successful structured report, so it could not publish a
+serving deployment. Error status alone is not evidence of success.
 
-## Hosted test configuration
+Bounded authenticated load against the deployed API:
 
-The additive migration is confirmed applied to the connected Supabase project.
-The existing verified-host firewall intentionally denies new generated/branch
-hostnames. Test traffic will use the designated DigiLocker preview hosts already
-on its allowlist: `backend-git-codex-digilocker-preview-lifepack1.vercel.app` and
-`frontend-web-git-codex-digilocker-preview-lifepack1.vercel.app`. The new backend
-branch's frontend/CORS configuration and frontend branch API URL use these test
-hosts. The main frontend aliases now serve the approved auth-enabled test build. The registered provider callback has the approved forwarding rules described below.
+| Concurrency | Requests | p95 | p99 |
+|---|---:|---:|---:|
+| 1 | 8 | 293.3 ms | 293.3 ms |
+| 4 | 32 | 1,585.7 ms | 1,766.2 ms |
+| 8 | 64 | 405.0 ms | 1,489.9 ms |
 
-Hosted verification confirms the new migration is applied and the Git-connected
-builds succeed. Git-connected builds include the verified designated-host configuration. Ten real
-PostgreSQL worker tests now pass, including invocation-timeout retries and
-invalid-progress handling. The approved temporary callback routing is now published and synthetic invalid-state callbacks were verified.
+All 104 responses were HTTP 200. Maximum sampled database connections: 18.
+Samples are small, cold-start/pooling effects vary, and connection sampling can
+miss a short peak. This is targeted authenticated security/load verification,
+not an independent penetration test or a saturation/soak capacity claim.
+Evidence: `audit-evidence/digilocker-hosted-2026-10-28.json`.
 
-The user subsequently requested authentication on `readines.com` for live
-DigiLocker testing. The early-access API restriction and its environment flag have been deleted; normal authentication middleware still protects account APIs.
-Frontend domain redirects that forced application paths back to `/` are removed.
-The test backend returns OAuth users to `https://readines.com`. Two explicitly
-approved temporary project rules relay only GET root callbacks on the registered
-backend host with state+code or state+error to the designated test callback.
-Synthetic invalid-state probes return 303 to the expected frontend error
-fragment; ordinary root traffic remains 404. No firewall rule was changed.
+## PDF memory and database contention
 
+The final synthetic local profile used three 9 MiB PDFs with AI disabled. Peak
+process RSS was approximately 302.8 MiB; after settled GC, array buffers returned
+to the pre-import value of approximately 3.85 MiB. Settled external memory was
+approximately 7.72 MiB. RSS remained about 299.3 MiB because the process retained
+allocated pages; RSS is not equivalent to live plaintext buffers.
 
-## Main-domain verification update
+Queue admission p95/p99: 9.29/9.58 ms. Small-PDF worker p95/p99: 40.16/64.64 ms.
+At 32 one-connection clients, the rate-limit contention profile observed 33
+connections, 640 operations, p95/p99 9.31/21.88 ms, and zero failures.
 
-The user explicitly approved frontend build `b68b397` on both `readines.com` and `www.readines.com`. Both aliases now point to `dpl_8AQiyD4oe85qhjAW5LQ45RebwQxq`; rollback build `826a48b` remains available as `dpl_4oeKcTbviejPQxZCbijWM5DwJprS`. Git main and PR merge state are unchanged. The frontend uses the designated test backend, preserving the original registered callback host for ordinary traffic.
+Earlier source-baseline and current profile runs are preserved separately. Their
+RSS and latency vary across runs. Baseline synchronous completion and durable
+queue admission measure different boundaries, so they must not be presented as
+a like-for-like end-to-end production latency improvement. Local profiles also
+include synthetic PDF generation and do not measure hosted AI peak RSS.
 
-Chrome restored the existing account on the main domain and loaded Documents. Real status/session requests returned 200. Connect DigiLocker reached the provider's actual sign-in form with the registered callback accepted, replacing the previous redirect mismatch. Provider sign-in, consent, returned scopes, HMAC and actual document import remain pending human sign-in. No PIN or OTP was requested in chat.
+## Verification boundaries
 
-Hosted testing found an express-rate-limit false double-count warning for stacked shared stores. Each store now exposes its actual scope as its validation prefix; counters and limits remain unchanged. A real Express/PostgreSQL stacked-limiter regression and all 27 combined backend test files pass.
-
-Synthetic source-baseline measurements are saved beside current resource evidence. On the same local workflow with three 9 MiB PDFs and AI disabled, peak RSS fell from 337.42 MiB to 236.53 MiB and post-GC RSS from 335.95 MiB to 215.2 MiB. Baseline synchronous completion p95/p99 was 322.20/322.56 ms; durable admission p95/p99 was 22.29/54.99 ms. These timings measure different completion boundaries and are not a production end-to-end latency comparison.
-
-
-Live provider verification: the user completed DigiLocker authentication and selected PAN. The registered callback returned successfully, authenticated session and provider document-list requests returned 200, and the user explicitly approved copying that PAN record. The durable import reached `Completed — already in Documents`, confirming real OAuth/listing/import admission and deduplication without creating another copy. Because the record was deduplicated, this test does not establish a fresh provider PDF download/HMAC/encryption or AI operation. Those paths remain covered by synthetic integration tests pending a distinct real document.
-
-The user subsequently requested pushing all combined work, including the previous DigiLocker PRs, to main. This authorizes releasing the integrated source; outstanding external verification remains explicitly recorded above.
+Real Chrome mobile emulation at 412 × 924 showed light/dark Documents and DigiLocker
+modal fitting the viewport. Keyboard and large-provider-list behavior have the
+automated coverage above. Physical-device/browser-matrix validation, independent
+penetration testing, long-running saturation/soak tests, hosted large-PDF/AI peak
+RSS and comparable historical production before/after metrics are not established
+by these checks. Keep those distinctions when making a production-readiness claim.

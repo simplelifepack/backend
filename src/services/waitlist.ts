@@ -35,7 +35,7 @@ export async function deliverWaitlistConfirmation(id: string) {
 export async function registerWaitlistEmail(email: string, schedule?: (task: Promise<void>) => void) {
   const id = randomUUID();
   // Atomic unique insert: concurrent requests and duplicates never trigger send.
-  const inserted = await prisma.waitlistRegistration.createMany({ data: [{ id,
+  const inserted = await prisma.waitlistRegistration.createMany({ data: [{ id, nextAttemptAt: new Date(),
     email: privateLookup(email, { model: "WaitlistRegistration", field: "email", ownerId: "global-unique-index" }),
     private_email: encryptPrivateValue(email, { model: "WaitlistRegistration", recordId: id, ownerId: id, field: "email" }),
   }], skipDuplicates: true });

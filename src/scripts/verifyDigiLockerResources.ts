@@ -72,6 +72,13 @@ async function main() {
     await Promise.all(ids.map(() => runDigiLockerWorker()));
     for (const id of ids) { const result = await asOwner(() => service.refreshDigiLockerSession(owner, id)); assert.equal(result.progress[0].phase, "Completed", JSON.stringify(result.progress)); }
     const afterImports = memory(); gc?.(); const afterGc = memory();
+    // Native streams/finalizers can release buffers after the next event-loop
+    // turn. Distinguish one immediate collection from settled retained memory.
+    for (let turn = 0; turn < 3; turn++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      gc?.();
+    }
+    const afterSettledGc = memory();
     for (const clientsCount of [1, 8, 32]) {
       const clients = Array.from({ length: clientsCount }, () => new PrismaClient({ datasources: { db: { url: `${url}?connection_limit=1` } }, log: [] }));
       const stores = clients.map(client => new PostgresRateLimitStore(`resources-${owner}`, 60000, client));
@@ -86,7 +93,7 @@ async function main() {
         await stores[0].resetKey(key);
       } finally { await Promise.all(clients.map(client => client.$disconnect())); }
     }
-    console.log(JSON.stringify({ environment: "Local disposable PostgreSQL; synthetic provider; AI disabled. No production baseline or serverless equivalence claimed.", queueAdmission: stats(queueLatency), smallPdfWorker: stats(importLatency), largePdfs: { count: 3, bytesEach: 9 * 1024 * 1024, maximumDownloads, before, afterImports, afterGc }, rateLimits }, null, 2));
+    console.log(JSON.stringify({ environment: "Local disposable PostgreSQL; synthetic provider; AI disabled. No production baseline or serverless equivalence claimed.", queueAdmission: stats(queueLatency), smallPdfWorker: stats(importLatency), largePdfs: { count: 3, bytesEach: 9 * 1024 * 1024, maximumDownloads, before, afterImports, afterGc, afterSettledGc }, rateLimits }, null, 2));
   } finally {
     global.fetch = originalFetch;
     await asOwner(() => prisma.user.delete({ where: { id: owner } })); await prisma.$disconnect(); await fs.rm(directory, { recursive: true, force: true });
