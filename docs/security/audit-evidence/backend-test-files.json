@@ -1,0 +1,237 @@
+[
+  {
+    "file": "src/ai/packageProxy.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/ai/packageRefreshBundling.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/ai/providers/openai.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/ai/researchPackageRefresh.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/ai/sourceAuthority.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/auth/refreshCookie.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/config/email.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/docs/mountedOperations.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/infrastructure/storage/storage.stream.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/infrastructure/storage/storage.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/middleware/errorHandling.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/middleware/upload.security.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/privacy.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/productionTargetSummary.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/streamEncryption.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/vercelMigration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/routes/documents.analysis.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/routes/documents.security.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/scripts/reviewedPackageSources.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/adminPackages.service.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/archiveZip.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/authEmail.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/authSession.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/billing/billing.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/boundedRead.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/digilocker/digilocker.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/documentAnalyzer/openaiDocumentAnalyzer.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/documentAssignment.service.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/documentHybridEncryption.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/documentImportAnalysis.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/documentSecurityValidation.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/documentValidationMessages.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/drive/drive.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/gmail/gmail.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/googleAuth.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/healthExtraction.service.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/identity/ownershipAndDefaultPacks.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/identity/ownershipDetection.unit.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/pdfOperations.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/productAccess.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/pushNotifications.security.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/readiness/catalogueCategories.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/readiness/metadataMatcher.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/readiness/packageRefresh.service.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/readiness/packageRefresh.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/services/readiness/readinessScoring.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/utils/jwt.test.ts",
+    "status": 0,
+    "signal": null
+  }
+]

@@ -1,0 +1,96 @@
+{
+  "mode": "before",
+  "notes": "Client and server share process. Upload: 50 x 1 MiB; ZIP: 100 x 1 MiB, three rounds. Explicit GC between rounds. Before uses original upload middleware; archive bytes compared via SHA-256.",
+  "oversizedStatus": 200,
+  "samples": [
+    {
+      "cycle": 0,
+      "ms": 55.46670799999998,
+      "rss": 256081920,
+      "heapTotal": 34045952,
+      "heapUsed": 15284336,
+      "external": 25421419,
+      "arrayBuffers": 26481451
+    },
+    {
+      "cycle": 1,
+      "ms": 73.751959,
+      "rss": 269500416,
+      "heapTotal": 34045952,
+      "heapUsed": 13639520,
+      "external": 9683589,
+      "arrayBuffers": 36967211
+    },
+    {
+      "cycle": 2,
+      "ms": 53.46199999999999,
+      "rss": 273481728,
+      "heapTotal": 34045952,
+      "heapUsed": 13626184,
+      "external": 17025050,
+      "arrayBuffers": 52696776
+    },
+    {
+      "cycle": 3,
+      "ms": 57.572667000000024,
+      "rss": 273498112,
+      "heapTotal": 34045952,
+      "heapUsed": 13687176,
+      "external": 10732551,
+      "arrayBuffers": 61085056
+    },
+    {
+      "cycle": 4,
+      "ms": 56.942957999999976,
+      "rss": 277544960,
+      "heapTotal": 33783808,
+      "heapUsed": 13734040,
+      "external": 7586243,
+      "arrayBuffers": 68424508
+    }
+  ],
+  "archive": [
+    {
+      "cycle": 0,
+      "ms": 2310.8518329999997,
+      "startRSS": 277544960,
+      "peakRSS": 408207360,
+      "digest": "2a2fbaec58521d816885a0415d523a5ab3f1f0d3586edc08fb56cfccf09067e2",
+      "afterGC": {
+        "rss": 408207360,
+        "heapTotal": 34045952,
+        "heapUsed": 13832712,
+        "external": 217311228,
+        "arrayBuffers": 278149493
+      }
+    },
+    {
+      "cycle": 1,
+      "ms": 2005.6413340000004,
+      "startRSS": 408207360,
+      "peakRSS": 605880320,
+      "digest": "2a2fbaec58521d816885a0415d523a5ab3f1f0d3586edc08fb56cfccf09067e2",
+      "afterGC": {
+        "rss": 605880320,
+        "heapTotal": 34045952,
+        "heapUsed": 13835056,
+        "external": 217311228,
+        "arrayBuffers": 278149493
+      }
+    },
+    {
+      "cycle": 2,
+      "ms": 1740.4770829999998,
+      "startRSS": 605880320,
+      "peakRSS": 621576192,
+      "digest": "2a2fbaec58521d816885a0415d523a5ab3f1f0d3586edc08fb56cfccf09067e2",
+      "afterGC": {
+        "rss": 621936640,
+        "heapTotal": 34045952,
+        "heapUsed": 13837992,
+        "external": 217376764,
+        "arrayBuffers": 278215029
+      }
+    }
+  ]
+}

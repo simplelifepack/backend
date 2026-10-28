@@ -9,6 +9,10 @@ function ttlMs() {
 }
 
 export function noteAuthVersion(userId: string, authVersion: number) {
+  // The database remains authoritative; bounded eviction only removes a fast reject.
+  const now = Date.now();
+  if (entries.size >= 10_000) for (const [id, entry] of entries) if (entry.expiresAt <= now) entries.delete(id);
+  if (!entries.has(userId) && entries.size >= 10_000) entries.delete(entries.keys().next().value!);
   entries.set(userId, {
     authVersion,
     expiresAt: Date.now() + ttlMs(),

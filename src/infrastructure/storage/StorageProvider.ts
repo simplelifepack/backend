@@ -13,6 +13,8 @@ export type StoredObject = {
 
 export interface StorageProvider {
   upload(input: UploadObjectInput): Promise<StoredObject>;
+  uploadFile?(input: Omit<UploadObjectInput, "body"> & { filePath: string }): Promise<StoredObject>;
+  downloadFile?(key: string, filePath: string, signal?: AbortSignal): Promise<void>;
   download(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;

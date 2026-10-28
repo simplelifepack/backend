@@ -101,7 +101,8 @@ export async function scanGmail(userId: string, providedGmail?: GmailApi, full =
       where: { id: connection.id },
       data: { scanStartedAt: null, ...(authFailure.includes("invalid_grant") || authFailure.includes("unauthorized") ? { status: "disconnected", encryptedRefreshToken: "" } : {}) },
     }).catch(() => undefined);
-    if (isMissingConnectionError(error)) throw connectionChangedError();
+    const stillConnected = await prisma.externalConnection.findFirst({ where: { id: connection.id, userId }, select: { id: true } });
+    if (isMissingConnectionError(error) || !stillConnected) throw connectionChangedError();
     throw error;
   }
 }

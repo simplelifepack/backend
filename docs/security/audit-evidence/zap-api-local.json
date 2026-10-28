@@ -1,0 +1,1993 @@
+{
+	"@programName": "ZAP",
+	"@version": "2.17.0",
+	"@generated": "Sun, 25 Oct 2026 17:54:27",
+	"created": "2026-10-25T17:54:27.271545717Z",
+	"insights":[
+		{
+			"level": "Low",
+			"reason": "Warning",
+			"site": "",
+			"key": "insight.log.warn",
+			"description": "ZAP warnings logged - see the zap.log file for details",
+			"statistic": "3"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "",
+			"key": "insight.network.failure",
+			"description": "Percentage of network failures",
+			"statistic": "1"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.code.2xx",
+			"description": "Percentage of responses with status code 2xx",
+			"statistic": "2"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.code.3xx",
+			"description": "Percentage of responses with status code 3xx",
+			"statistic": "2"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.code.4xx",
+			"description": "Percentage of responses with status code 4xx",
+			"statistic": "92"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.code.5xx",
+			"description": "Percentage of responses with status code 5xx",
+			"statistic": "3"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.endpoint.ctype.application/json",
+			"description": "Percentage of endpoints with content type application/json",
+			"statistic": "99"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.endpoint.ctype.text/plain",
+			"description": "Percentage of endpoints with content type text/plain",
+			"statistic": "1"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.endpoint.method.DELETE",
+			"description": "Percentage of endpoints with method DELETE",
+			"statistic": "8"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "34"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.endpoint.method.PATCH",
+			"description": "Percentage of endpoints with method PATCH",
+			"statistic": "7"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.endpoint.method.POST",
+			"description": "Percentage of endpoints with method POST",
+			"statistic": "49"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "169"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://host.docker.internal:4009",
+			"key": "insight.response.slow",
+			"description": "Percentage of slow responses",
+			"statistic": "1"
+		}
+	],
+	"site":[
+		{
+			"@name": "http://host.docker.internal:4009",
+			"@host": "host.docker.internal",
+			"@port": "4009",
+			"@ssl": "false",
+			"alerts": [
+				{
+					"pluginid": "100000",
+					"alertRef": "100000-2",
+					"alert": "A Server Error response code was returned by the server",
+					"name": "A Server Error response code was returned by the server",
+					"riskcode": "1",
+					"confidence": "3",
+					"riskdesc": "Low (High)",
+					"desc": "<p>A response code of 503 was returned by the server.</p><p>This may indicate that the application is failing to handle unexpected input correctly.</p><p>Raised by the 'Alert on HTTP Response Code Error' script</p>",
+					"instances":[
+						{
+							"id": "12",
+							"uri": "http://host.docker.internal:4009/api/waitlist/challenge",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/waitlist\/challenge",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "503",
+							"otherinfo": ""
+						},
+						{
+							"id": "11",
+							"uri": "http://host.docker.internal:4009/api/billing/webhook",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/billing\/webhook ()({event,payload:{subscription:{entity:{id}},payment:{entity:{id}}}})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "503",
+							"otherinfo": ""
+						},
+						{
+							"id": "13",
+							"uri": "http://host.docker.internal:4009/api/waitlist/register",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/waitlist\/register ()({email,website,challenge,solution})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "503",
+							"otherinfo": ""
+						},
+						{
+							"id": "14",
+							"uri": "http://host.docker.internal:4009/api/waitlist/unsubscribe",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/waitlist\/unsubscribe ()({token})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "503",
+							"otherinfo": ""
+						},
+						{
+							"id": "41",
+							"uri": "http://host.docker.internal:4009/auth/google",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/google ()({credential})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "503",
+							"otherinfo": ""
+						},
+						{
+							"id": "37",
+							"uri": "http://host.docker.internal:4009/auth/signup/request-otp",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/signup\/request-otp ()({name,email,password})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "502",
+							"otherinfo": ""
+						}
+					],
+					"count": "6",
+					"systemic": false,
+					"solution": "",
+					"otherinfo": "",
+					"reference": "",
+					"cweid": "388",
+					"wascid": "20",
+					"sourceid": "22"
+				},
+				{
+					"pluginid": "10023",
+					"alertRef": "10023",
+					"alert": "Information Disclosure - Debug Error Messages",
+					"name": "Information Disclosure - Debug Error Messages",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Low (Medium)",
+					"desc": "<p>The response appeared to contain common error messages returned by platforms such as ASP.NET, and Web-servers such as IIS and Apache. You can configure the list of common debug messages.</p>",
+					"instances":[
+						{
+							"id": "178",
+							"uri": "http://host.docker.internal:4009/auth/google",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/google ()({credential})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "Internal server error",
+							"otherinfo": ""
+						},
+						{
+							"id": "170",
+							"uri": "http://host.docker.internal:4009/auth/signup/request-otp",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/signup\/request-otp ()({name,email,password})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "Internal server error",
+							"otherinfo": ""
+						}
+					],
+					"count": "2",
+					"systemic": false,
+					"solution": "<p>Disable debugging messages before pushing to production.</p>",
+					"otherinfo": "",
+					"reference": "",
+					"cweid": "1295",
+					"wascid": "13",
+					"sourceid": "70"
+				},
+				{
+					"pluginid": "100000",
+					"alertRef": "100000-1",
+					"alert": "A Client Error response code was returned by the server",
+					"name": "A Client Error response code was returned by the server",
+					"riskcode": "0",
+					"confidence": "3",
+					"riskdesc": "Informational (High)",
+					"desc": "<p>A response code of 401 was returned by the server.</p><p>This may indicate that the application is failing to handle unexpected input correctly.</p><p>Raised by the 'Alert on HTTP Response Code Error' script</p>",
+					"instances":[
+						{
+							"id": "114",
+							"uri": "http://host.docker.internal:4009/api/admin/packages/slug",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/admin\/packages\/slug",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "173",
+							"uri": "http://host.docker.internal:4009/api/health/medications/medicationId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/medications\/medicationId",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "157",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "168",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/tracked-metrics/trackedId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/tracked-metrics\/trackedId",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "163",
+							"uri": "http://host.docker.internal:4009/api/health/records/recordId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/records\/recordId",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "35",
+							"uri": "http://host.docker.internal:4009/api/packages/slug/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/slug\/custom",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "108",
+							"uri": "http://host.docker.internal:4009/api/packages/slug/requirements/requirementId/assignment",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/slug\/requirements\/requirementId\/assignment",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "138",
+							"uri": "http://host.docker.internal:4009/api/trust/members/id",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/members\/id",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "150",
+							"uri": "http://host.docker.internal:4009/api/wealth/records/recordId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/records\/recordId",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "81",
+							"uri": "http://host.docker.internal:4009/documents/id",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "74",
+							"uri": "http://host.docker.internal:4009/documents/id/pages/pageId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/pages\/pageId",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "28",
+							"uri": "http://host.docker.internal:4009/packages/slug/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/slug\/custom",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "100",
+							"uri": "http://host.docker.internal:4009/packages/slug/requirements/requirementId/assignment",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/slug\/requirements\/requirementId\/assignment",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "22",
+							"uri": "http://host.docker.internal:4009/packs/slug/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/slug\/custom",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "91",
+							"uri": "http://host.docker.internal:4009/packs/slug/requirements/requirementId/assignment",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/slug\/requirements\/requirementId\/assignment",
+							"method": "DELETE",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "126",
+							"uri": "http://host.docker.internal:4009/api/account/export/jobId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/account\/export\/jobId",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "127",
+							"uri": "http://host.docker.internal:4009/api/account/export/jobId/download",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/account\/export\/jobId\/download",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "111",
+							"uri": "http://host.docker.internal:4009/api/admin/packages?search=ZAP&category=category&page=10&limit=10",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/admin\/packages (category,limit,page,search)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "113",
+							"uri": "http://host.docker.internal:4009/api/admin/packages/slug",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/admin\/packages\/slug",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "116",
+							"uri": "http://host.docker.internal:4009/api/admin/packages/template.csv",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/admin\/packages\/template.csv",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "9",
+							"uri": "http://host.docker.internal:4009/api/billing/subscription",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/billing\/subscription",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "56",
+							"uri": "http://host.docker.internal:4009/api/bootstrap",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/bootstrap",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "57",
+							"uri": "http://host.docker.internal:4009/api/bootstrap/usage",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/bootstrap\/usage",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "154",
+							"uri": "http://host.docker.internal:4009/api/health/home-attention",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/home-attention",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "155",
+							"uri": "http://host.docker.internal:4009/api/health/members",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "169",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/available-metrics?search=ZAP",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/available-metrics (search)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "16",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/measurements?metric=metric",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/measurements (metric)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "159",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/overview",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/overview",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "160",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/records",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/records",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "171",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/timeline",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/timeline",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "166",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/tracked-metrics",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/tracked-metrics",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "162",
+							"uri": "http://host.docker.internal:4009/api/health/records/recordId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/records\/recordId",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "175",
+							"uri": "http://host.docker.internal:4009/api/health/reminders",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/reminders",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "5",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/sessions/id/documents",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/sessions\/id\/documents",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "3",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/sessions/id/status",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/sessions\/id\/status",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "1",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/status",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/status",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "120",
+							"uri": "http://host.docker.internal:4009/api/notifications/config",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/notifications\/config",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "109",
+							"uri": "http://host.docker.internal:4009/api/packages?ids=ids&category=category&limit=200&location=location&page=1&provider=provider&search=ZAP&sort=category",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages (category,ids,limit,location,page,provider,search,sort)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "33",
+							"uri": "http://host.docker.internal:4009/api/packages/custom/generation-jobs/jobId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/custom\/generation-jobs\/jobId",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "103",
+							"uri": "http://host.docker.internal:4009/api/packages/search?q=q",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/search (q)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "105",
+							"uri": "http://host.docker.internal:4009/api/packages/slug",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/slug",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "130",
+							"uri": "http://host.docker.internal:4009/api/preferences",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/preferences",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "15",
+							"uri": "http://host.docker.internal:4009/api/search?q=q&limit=5",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/search (limit,q)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "135",
+							"uri": "http://host.docker.internal:4009/api/trust",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "132",
+							"uri": "http://host.docker.internal:4009/api/trust/invitations/token",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/invitations\/token",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "143",
+							"uri": "http://host.docker.internal:4009/api/wealth/form/categories",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/form\/categories",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "144",
+							"uri": "http://host.docker.internal:4009/api/wealth/form/categories/categoryCode/subtypes",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/form\/categories\/categoryCode\/subtypes",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "145",
+							"uri": "http://host.docker.internal:4009/api/wealth/form/categories/categoryCode/subtypes/subtypeCode/schema",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/form\/categories\/categoryCode\/subtypes\/subtypeCode\/schema",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "152",
+							"uri": "http://host.docker.internal:4009/api/wealth/handoff/summary",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/handoff\/summary",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "147",
+							"uri": "http://host.docker.internal:4009/api/wealth/records",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/records",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "149",
+							"uri": "http://host.docker.internal:4009/api/wealth/records/recordId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/records\/recordId",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "55",
+							"uri": "http://host.docker.internal:4009/auth/me",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/me",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "63",
+							"uri": "http://host.docker.internal:4009/documents",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "65",
+							"uri": "http://host.docker.internal:4009/documents/assignment-options",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/assignment-options",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "59",
+							"uri": "http://host.docker.internal:4009/documents/encryption-key",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/encryption-key",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "80",
+							"uri": "http://host.docker.internal:4009/documents/id",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "82",
+							"uri": "http://host.docker.internal:4009/documents/id/download",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/download",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "77",
+							"uri": "http://host.docker.internal:4009/documents/id/pages/pageId/download",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/pages\/pageId\/download",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "78",
+							"uri": "http://host.docker.internal:4009/documents/id/pages/pageId/preview",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/pages\/pageId\/preview",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "83",
+							"uri": "http://host.docker.internal:4009/documents/id/preview",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/preview",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "101",
+							"uri": "http://host.docker.internal:4009/packages?ids=ids",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages (ids)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "26",
+							"uri": "http://host.docker.internal:4009/packages/custom/generation-jobs/jobId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/custom\/generation-jobs\/jobId",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "93",
+							"uri": "http://host.docker.internal:4009/packages/search?q=q",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/search (q)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "96",
+							"uri": "http://host.docker.internal:4009/packages/slug",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/slug",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "92",
+							"uri": "http://host.docker.internal:4009/packs?ids=ids",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs (ids)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "20",
+							"uri": "http://host.docker.internal:4009/packs/custom/generation-jobs/jobId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/custom\/generation-jobs\/jobId",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "84",
+							"uri": "http://host.docker.internal:4009/packs/search?q=q",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/search (q)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "87",
+							"uri": "http://host.docker.internal:4009/packs/slug",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/slug",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "115",
+							"uri": "http://host.docker.internal:4009/api/admin/packages/slug",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/admin\/packages\/slug ()({title,category,description,requirements:[{title,required,group,owner,acceptedDocumentTypes:[]}],sources:[]})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "174",
+							"uri": "http://host.docker.internal:4009/api/health/medications/medicationId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/medications\/medicationId ()({name,dose,whenToTake:[],mealTiming,status,stoppedAt})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "158",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId ()({primaryDoctor,allergies})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "164",
+							"uri": "http://host.docker.internal:4009/api/health/records/recordId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/records\/recordId ()({type})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "36",
+							"uri": "http://host.docker.internal:4009/api/packages/slug/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/slug\/custom ()({title,description,requirements:[],searchMetadata:{John Doe},source:{name,title,url,lastCheckedAt},verificationSources:[],verificationStatus})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "131",
+							"uri": "http://host.docker.internal:4009/api/preferences",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/preferences ()({country,passportCountry,homeCurrency,appearance,aiProcessingEnabled})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "139",
+							"uri": "http://host.docker.internal:4009/api/trust/members/id",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/members\/id ()({permissions:[{module,canView,canDownload}]})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "151",
+							"uri": "http://host.docker.internal:4009/api/wealth/records/recordId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/records\/recordId ()({type,title,details:{accessInstruction},attachmentDocumentIds:[]})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "66",
+							"uri": "http://host.docker.internal:4009/documents/id/details",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/details ()({notes,expiry})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "73",
+							"uri": "http://host.docker.internal:4009/documents/id/pages/order",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/pages\/order ()({pageIds:[]})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "76",
+							"uri": "http://host.docker.internal:4009/documents/id/pages/pageId",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/pages\/pageId ()({tempFileId})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "30",
+							"uri": "http://host.docker.internal:4009/packages/slug/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/slug\/custom ()({title,description,requirements:[],searchMetadata:{John Doe},source:{name,title,url,lastCheckedAt},verificationSources:[],verificationStatus})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "23",
+							"uri": "http://host.docker.internal:4009/packs/slug/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/slug\/custom ()({title,description,requirements:[],searchMetadata:{John Doe},source:{name,title,url,lastCheckedAt},verificationSources:[],verificationStatus})",
+							"method": "PATCH",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "129",
+							"uri": "http://host.docker.internal:4009/admin/account/deletions/process",
+							"nodeName": "http:\/\/host.docker.internal:4009\/admin\/account\/deletions\/process",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "403",
+							"otherinfo": ""
+						},
+						{
+							"id": "119",
+							"uri": "http://host.docker.internal:4009/admin/notifications/send",
+							"nodeName": "http:\/\/host.docker.internal:4009\/admin\/notifications\/send ()({email,title,body,url})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "403",
+							"otherinfo": ""
+						},
+						{
+							"id": "110",
+							"uri": "http://host.docker.internal:4009/admin/readiness/seed",
+							"nodeName": "http:\/\/host.docker.internal:4009\/admin\/readiness\/seed",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "403",
+							"otherinfo": ""
+						},
+						{
+							"id": "128",
+							"uri": "http://host.docker.internal:4009/api/account/deletion",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/account\/deletion ()({phrase})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "125",
+							"uri": "http://host.docker.internal:4009/api/account/export",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/account\/export",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "112",
+							"uri": "http://host.docker.internal:4009/api/admin/packages",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/admin\/packages ()({title,category,description,requirements:[{title,required,group,owner,acceptedDocumentTypes:[]}],sources:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "118",
+							"uri": "http://host.docker.internal:4009/api/admin/packages/import",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/admin\/packages\/import ()({csv=title,slug,...})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "117",
+							"uri": "http://host.docker.internal:4009/api/admin/packages/import/preview",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/admin\/packages\/import\/preview ()({csv})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "10",
+							"uri": "http://host.docker.internal:4009/api/billing/cancel",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/billing\/cancel",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "7",
+							"uri": "http://host.docker.internal:4009/api/billing/checkout",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/billing\/checkout ()({plan})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "8",
+							"uri": "http://host.docker.internal:4009/api/billing/verify",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/billing\/verify ()({razorpay_payment_id,razorpay_subscription_id,razorpay_signature})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "156",
+							"uri": "http://host.docker.internal:4009/api/health/members",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members ()({name,relation,bloodGroup,dateOfBirth})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "17",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/measurements",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/measurements ()({metricKey,displayName,value,unit,measuredAt})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "172",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/medications",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/medications ()({name,dose,whenToTake:[],mealTiming,repeatRunsOut})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "167",
+							"uri": "http://host.docker.internal:4009/api/health/members/memberId/tracked-metrics",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/members\/memberId\/tracked-metrics ()({metricKey,displayName,context,bodySite})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "161",
+							"uri": "http://host.docker.internal:4009/api/health/records",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/records ()({documentId,type})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "165",
+							"uri": "http://host.docker.internal:4009/api/health/records/recordId/reprocess",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/records\/recordId\/reprocess",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "177",
+							"uri": "http://host.docker.internal:4009/api/health/reminders",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/health\/reminders ()({memberId,title,type,dueDate,frequency})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "2",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/sessions",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/sessions ()({})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "4",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/sessions/id/cancel",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/sessions\/id\/cancel",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "6",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/sessions/id/import",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/sessions\/id\/import ()({references:[],consent,consentVersion})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "121",
+							"uri": "http://host.docker.internal:4009/api/notifications/status",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/notifications\/status ()({endpoint})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "122",
+							"uri": "http://host.docker.internal:4009/api/notifications/subscriptions",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/notifications\/subscriptions ()({subscription:{endpoint,keys:{p256dh,auth}}})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "123",
+							"uri": "http://host.docker.internal:4009/api/notifications/subscriptions/disable",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/notifications\/subscriptions\/disable ()({subscription:{endpoint,keys:{p256dh,auth}}})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "124",
+							"uri": "http://host.docker.internal:4009/api/notifications/test",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/notifications\/test",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "34",
+							"uri": "http://host.docker.internal:4009/api/packages/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/custom ()({title,description,requirements:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "31",
+							"uri": "http://host.docker.internal:4009/api/packages/custom/draft",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/custom\/draft ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "32",
+							"uri": "http://host.docker.internal:4009/api/packages/custom/generation-jobs",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/custom\/generation-jobs ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "104",
+							"uri": "http://host.docker.internal:4009/api/packages/search-or-generate",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/search-or-generate ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "106",
+							"uri": "http://host.docker.internal:4009/api/packages/slug/refresh",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/slug\/refresh",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "107",
+							"uri": "http://host.docker.internal:4009/api/packages/slug/requirements/requirementId/assignment",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/packages\/slug\/requirements\/requirementId\/assignment ()({documentId,assignmentSource})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "142",
+							"uri": "http://host.docker.internal:4009/api/trust/connections/id/leave",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/connections\/id\/leave",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "136",
+							"uri": "http://host.docker.internal:4009/api/trust/family-members",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/family-members ()({name,email,relation,customRelation,dateOfBirth,bloodGroup,accessTypeCode,permissions:[{module,canView,canDownload}]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "133",
+							"uri": "http://host.docker.internal:4009/api/trust/invitations/token/accept",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/invitations\/token\/accept ()({pin})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "134",
+							"uri": "http://host.docker.internal:4009/api/trust/invitations/token/reject",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/invitations\/token\/reject",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "137",
+							"uri": "http://host.docker.internal:4009/api/trust/members",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/members ()({name,email,relation,customRelation,dateOfBirth,bloodGroup,accessTypeCode,permissions:[{module,canView,canDownload}],pin})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "140",
+							"uri": "http://host.docker.internal:4009/api/trust/members/id/resend-invitation",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/members\/id\/resend-invitation",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "141",
+							"uri": "http://host.docker.internal:4009/api/trust/members/id/reset-pin",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/trust\/members\/id\/reset-pin ()({pin})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "146",
+							"uri": "http://host.docker.internal:4009/api/wealth/form/records",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/form\/records ()({categoryCode,subtypeCode,values:{principalAmount,institution}})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "153",
+							"uri": "http://host.docker.internal:4009/api/wealth/handoff/send",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/handoff\/send ()({familyRecipientIds:[],emergencyRecipientIds:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "148",
+							"uri": "http://host.docker.internal:4009/api/wealth/records",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/wealth\/records ()({type,title,details:{institution},attachmentDocumentIds:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "44",
+							"uri": "http://host.docker.internal:4009/auth/account/change-email/request",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/change-email\/request ()({newEmail,currentPassword})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "45",
+							"uri": "http://host.docker.internal:4009/auth/account/change-email/verify",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/change-email\/verify ()({otp})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "46",
+							"uri": "http://host.docker.internal:4009/auth/account/change-password/request",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/change-password\/request ()({currentPassword,newPassword})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "47",
+							"uri": "http://host.docker.internal:4009/auth/account/change-password/verify",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/change-password\/verify ()({otp})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "49",
+							"uri": "http://host.docker.internal:4009/auth/account/pin/change",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/pin\/change ()({currentPin,newPin})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "50",
+							"uri": "http://host.docker.internal:4009/auth/account/pin/reset/request",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/pin\/reset\/request",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "51",
+							"uri": "http://host.docker.internal:4009/auth/account/pin/reset/verify",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/pin\/reset\/verify ()({otp,newPin})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "48",
+							"uri": "http://host.docker.internal:4009/auth/account/pin/setup",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/pin\/setup ()({pin})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "52",
+							"uri": "http://host.docker.internal:4009/auth/forgot-password/otp",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/forgot-password\/otp ()({email=user@example.com})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "39",
+							"uri": "http://host.docker.internal:4009/auth/login",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/login ()({email,password})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "40",
+							"uri": "http://host.docker.internal:4009/auth/login/pin",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/login\/pin ()({email,pin})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "43",
+							"uri": "http://host.docker.internal:4009/auth/logout-all",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/logout-all",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "42",
+							"uri": "http://host.docker.internal:4009/auth/refresh",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/refresh",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "53",
+							"uri": "http://host.docker.internal:4009/auth/reset-password",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/reset-password ()({token,password})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "54",
+							"uri": "http://host.docker.internal:4009/auth/reset-password/otp",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/reset-password\/otp ()({email,otp,password})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "38",
+							"uri": "http://host.docker.internal:4009/auth/signup",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/signup ()({name,email,password,otp})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "64",
+							"uri": "http://host.docker.internal:4009/documents",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents ()({tempFileIds:[],category,analysisSource,duplicateAction})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "60",
+							"uri": "http://host.docker.internal:4009/documents/analyze",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/analyze ()(multipart:encryptedFiles,envelopes)",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "68",
+							"uri": "http://host.docker.internal:4009/documents/bulk-assign",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/bulk-assign ()({ids:[],assigneeId})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "70",
+							"uri": "http://host.docker.internal:4009/documents/bulk-delete",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/bulk-delete ()({ids=[document_1, document_2]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "400",
+							"otherinfo": ""
+						},
+						{
+							"id": "69",
+							"uri": "http://host.docker.internal:4009/documents/bulk-download",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/bulk-download ()({ids:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "72",
+							"uri": "http://host.docker.internal:4009/documents/id/pages",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/id\/pages ()({tempFileIds:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "62",
+							"uri": "http://host.docker.internal:4009/documents/upload",
+							"nodeName": "http:\/\/host.docker.internal:4009\/documents\/upload ()(multipart:encryptedFiles,envelopes)",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "27",
+							"uri": "http://host.docker.internal:4009/packages/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/custom ()({title,description,requirements:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "24",
+							"uri": "http://host.docker.internal:4009/packages/custom/draft",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/custom\/draft ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "25",
+							"uri": "http://host.docker.internal:4009/packages/custom/generation-jobs",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/custom\/generation-jobs ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "95",
+							"uri": "http://host.docker.internal:4009/packages/search-or-generate",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/search-or-generate ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "98",
+							"uri": "http://host.docker.internal:4009/packages/slug/refresh",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/slug\/refresh",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "99",
+							"uri": "http://host.docker.internal:4009/packages/slug/requirements/requirementId/assignment",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packages\/slug\/requirements\/requirementId\/assignment ()({documentId,assignmentSource})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "21",
+							"uri": "http://host.docker.internal:4009/packs/custom",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/custom ()({title,description,requirements:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "18",
+							"uri": "http://host.docker.internal:4009/packs/custom/draft",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/custom\/draft ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "19",
+							"uri": "http://host.docker.internal:4009/packs/custom/generation-jobs",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/custom\/generation-jobs ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "86",
+							"uri": "http://host.docker.internal:4009/packs/search-or-generate",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/search-or-generate ()({packageType,documentLabels:[]})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "88",
+							"uri": "http://host.docker.internal:4009/packs/slug/refresh",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/slug\/refresh",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						},
+						{
+							"id": "90",
+							"uri": "http://host.docker.internal:4009/packs/slug/requirements/requirementId/assignment",
+							"nodeName": "http:\/\/host.docker.internal:4009\/packs\/slug\/requirements\/requirementId\/assignment ()({documentId,assignmentSource})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "401",
+							"otherinfo": ""
+						}
+					],
+					"count": "157",
+					"systemic": false,
+					"solution": "",
+					"otherinfo": "",
+					"reference": "",
+					"cweid": "388",
+					"wascid": "20",
+					"sourceid": "156"
+				},
+				{
+					"pluginid": "10111",
+					"alertRef": "10111",
+					"alert": "Authentication Request Identified",
+					"name": "Authentication Request Identified",
+					"riskcode": "0",
+					"confidence": "1",
+					"riskdesc": "Informational (Low)",
+					"desc": "<p>The given request has been identified as an authentication request. The 'Other Info' field contains a set of key=value lines which identify any relevant fields. If the request is in a context which has an Authentication Method set to \"Auto-Detect\" then this rule will change the authentication to match the request identified.</p>",
+					"instances":[
+						{
+							"id": "179",
+							"uri": "http://host.docker.internal:4009/auth/account/change-email/request",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/account\/change-email\/request ()({newEmail,currentPassword})",
+							"method": "POST",
+							"param": "newEmail",
+							"attack": "",
+							"evidence": "currentPassword",
+							"otherinfo": "userParam=newEmail\nuserValue=new@example.com\npasswordParam=currentPassword"
+						},
+						{
+							"id": "180",
+							"uri": "http://host.docker.internal:4009/auth/reset-password/otp",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/reset-password\/otp ()({email,otp,password})",
+							"method": "POST",
+							"param": "email",
+							"attack": "",
+							"evidence": "password",
+							"otherinfo": "userParam=email\nuserValue=user@example.com\npasswordParam=password"
+						},
+						{
+							"id": "176",
+							"uri": "http://host.docker.internal:4009/auth/login",
+							"nodeName": "http:\/\/host.docker.internal:4009\/auth\/login ()({email,password})",
+							"method": "POST",
+							"param": "email",
+							"attack": "",
+							"evidence": "password",
+							"otherinfo": "userParam=email\nuserValue=user@example.com\npasswordParam=password"
+						}
+					],
+					"count": "3",
+					"systemic": false,
+					"solution": "<p>This is an informational alert rather than a vulnerability and so there is nothing to fix.</p>",
+					"otherinfo": "<p>userParam=newEmail</p><p>userValue=new@example.com</p><p>passwordParam=currentPassword</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/auth-req-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "74"
+				},
+				{
+					"pluginid": "10049",
+					"alertRef": "10049-1",
+					"alert": "Non-Storable Content",
+					"name": "Non-Storable Content",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informational (Medium)",
+					"desc": "<p>The response contents are not storable by caching components such as proxy servers. If the response does not contain sensitive, personal or user-specific information, it may benefit from being stored and cached, to improve performance.</p>",
+					"instances":[
+						{
+							"id": "67",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/callback?state=Oklahoma&code=code&error=error",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/callback (code,error,state)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "no-store",
+							"otherinfo": ""
+						},
+						{
+							"id": "71",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/sessions/id/status",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/sessions\/id\/status",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "no-store",
+							"otherinfo": ""
+						},
+						{
+							"id": "58",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/status",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/status",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "no-store",
+							"otherinfo": ""
+						},
+						{
+							"id": "29",
+							"uri": "http://host.docker.internal:4009/openapi.json",
+							"nodeName": "http:\/\/host.docker.internal:4009\/openapi.json",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "no-store",
+							"otherinfo": ""
+						},
+						{
+							"id": "61",
+							"uri": "http://host.docker.internal:4009/api/integrations/digilocker/sessions",
+							"nodeName": "http:\/\/host.docker.internal:4009\/api\/integrations\/digilocker\/sessions ()({})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "no-store",
+							"otherinfo": ""
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>The content may be marked as storable by ensuring that the following conditions are satisfied:</p><p>The request method must be understood by the cache and defined as being cacheable (\"GET\", \"HEAD\", and \"POST\" are currently defined as cacheable)</p><p>The response status code must be understood by the cache (one of the 1XX, 2XX, 3XX, 4XX, or 5XX response classes are generally understood)</p><p>The \"no-store\" cache directive must not appear in the request or response header fields</p><p>For caching by \"shared\" caches such as \"proxy\" caches, the \"private\" response directive must not appear in the response</p><p>For caching by \"shared\" caches such as \"proxy\" caches, the \"Authorization\" header field must not appear in the request, unless the response explicitly allows it (using one of the \"must-revalidate\", \"public\", or \"s-maxage\" Cache-Control response directives)</p><p>In addition to the conditions above, at least one of the following conditions must also be satisfied by the response:</p><p>It must contain an \"Expires\" header field</p><p>It must contain a \"max-age\" response directive</p><p>For \"shared\" caches such as \"proxy\" caches, it must contain a \"s-maxage\" response directive</p><p>It must contain a \"Cache Control Extension\" that allows it to be cached</p><p>It must have a status code that is defined as cacheable by default (200, 203, 204, 206, 300, 301, 404, 405, 410, 414, 501).</p>",
+					"otherinfo": "",
+					"reference": "<p>https://datatracker.ietf.org/doc/html/rfc7234</p><p>https://datatracker.ietf.org/doc/html/rfc7231</p><p>https://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html</p>",
+					"cweid": "524",
+					"wascid": "13",
+					"sourceid": "8"
+				},
+				{
+					"pluginid": "10112",
+					"alertRef": "10112",
+					"alert": "Session Management Response Identified",
+					"name": "Session Management Response Identified",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informational (Medium)",
+					"desc": "<p>The given response has been identified as containing a session management token. The 'Other Info' field contains a set of header tokens that can be used in the Header Based Session Management Method. If the request is in a context which has a Session Management Method set to \"Auto-Detect\" then this rule will change the session management to use the tokens identified.</p>",
+					"instances":[
+						{
+							"id": "0",
+							"uri": "http://host.docker.internal:4009/openapi.json",
+							"nodeName": "http:\/\/host.docker.internal:4009\/openapi.json",
+							"method": "GET",
+							"param": "paths./auth/refresh.post.responses.200.content.application/json.example.token",
+							"attack": "",
+							"evidence": "paths./auth/refresh.post.responses.200.content.application/json.example.token",
+							"otherinfo": "json:paths./auth/refresh.post.responses.200.content.application/json.example.token\njson:paths./auth/login/pin.post.responses.200.content.application/json.example.accessToken\njson:paths./auth/signup.post.responses.201.content.application/json.example.token\njson:paths./auth/signup.post.responses.201.content.application/json.example.accessToken\njson:components.schemas.AuthResult.example.token\njson:paths./api/waitlist/challenge.get.responses.200.content.application/json.examples.challenge.value.token\njson:paths./auth/google.post.responses.200.content.application/json.example.token\njson:paths./auth/login.post.responses.200.content.application/json.example.token\njson:paths./auth/login.post.responses.200.content.application/json.example.accessToken\njson:components.schemas.AuthResult.example.accessToken\njson:paths./api/waitlist/unsubscribe.post.requestBody.content.application/json.example.token\njson:paths./auth/reset-password.post.requestBody.content.application/json.example.token\njson:paths./auth/refresh.post.responses.200.content.application/json.example.accessToken\njson:paths./auth/google.post.responses.200.content.application/json.example.accessToken\njson:paths./auth/login/pin.post.responses.200.content.application/json.example.token"
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>This is an informational alert rather than a vulnerability and so there is nothing to fix.</p>",
+					"otherinfo": "<p>json:paths./auth/refresh.post.responses.200.content.application/json.example.token</p><p>json:paths./auth/login/pin.post.responses.200.content.application/json.example.accessToken</p><p>json:paths./auth/signup.post.responses.201.content.application/json.example.token</p><p>json:paths./auth/signup.post.responses.201.content.application/json.example.accessToken</p><p>json:components.schemas.AuthResult.example.token</p><p>json:paths./api/waitlist/challenge.get.responses.200.content.application/json.examples.challenge.value.token</p><p>json:paths./auth/google.post.responses.200.content.application/json.example.token</p><p>json:paths./auth/login.post.responses.200.content.application/json.example.token</p><p>json:paths./auth/login.post.responses.200.content.application/json.example.accessToken</p><p>json:components.schemas.AuthResult.example.accessToken</p><p>json:paths./api/waitlist/unsubscribe.post.requestBody.content.application/json.example.token</p><p>json:paths./auth/reset-password.post.requestBody.content.application/json.example.token</p><p>json:paths./auth/refresh.post.responses.200.content.application/json.example.accessToken</p><p>json:paths./auth/google.post.responses.200.content.application/json.example.accessToken</p><p>json:paths./auth/login/pin.post.responses.200.content.application/json.example.token</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/session-mgmt-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "1"
+				}
+			]
+		}
+	],
+	"sequences":[
+	]
+
+}

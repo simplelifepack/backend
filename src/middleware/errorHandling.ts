@@ -109,6 +109,7 @@ export function buildErrorResponse(input: {
 }
 
 export function errorHandler(error: unknown, req: Request, res: Response, _next: NextFunction) {
+  if (res.headersSent || res.destroyed) { res.destroy(); return; }
   const errorId = crypto.randomUUID();
   const response = buildErrorResponse({
     error,

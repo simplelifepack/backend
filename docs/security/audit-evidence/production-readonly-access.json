@@ -1,0 +1,34 @@
+{
+  "project": "readiness",
+  "databaseChecks": {
+    "tables_without_rls": 0,
+    "directly_accessible_tables": 0,
+    "callable_security_definers": 0,
+    "public_storage_buckets": 0,
+    "unvalidated_private_constraints": 0,
+    "storage_buckets": 1,
+    "browser_storage_policies": 0,
+    "users_missing_private_profile_ciphertext": 0,
+    "documents_missing_private_filename_ciphertext": 0
+  },
+  "customStagingEnvironment": {
+    "backend": "not found (404)",
+    "frontend": "not found (404)"
+  },
+  "configurationMetadataOnly": {
+    "missingProductionRecurringBillingKeys": [
+      "RAZORPAY_MONTHLY_PLAN_ID",
+      "RAZORPAY_ANNUAL_PLAN_ID",
+      "RAZORPAY_WEBHOOK_SECRET"
+    ],
+    "readableSecretFlag": [
+      "PACKAGES_ADMIN_INITIAL_PASSWORD"
+    ],
+    "valuesDecrypted": false
+  },
+  "productionRevisions": {
+    "backend": "be7e104011bc76d310379339c56e1a56a5c2dbc6",
+    "frontend": "66f99b7368877d3deb45ddd46dbd6529e97c9d29"
+  },
+  "mutationsPerformed": false
+}

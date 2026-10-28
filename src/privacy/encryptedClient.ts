@@ -181,6 +181,16 @@ function readArgs(model: string, args: Row): Row {
   return { where: sqlWhere(model, args.where), ...(Object.keys(include).length ? { include } : {}) };
 }
 
+// Operational predicates/order can be evaluated by PostgreSQL exactly. Push
+// their page window down so bounded list/lookup APIs do not load every row.
+// Private filtering/sorting still runs after authorized decryption, unchanged.
+function canPageInSql(model: string, args: Row) {
+  return !hasPrivatePredicate(model, args.where) && !args.cursor && !args.distinct &&
+    (args.take === undefined || args.take >= 0) &&
+    list(args.orderBy ?? []).every(clause => Object.entries(clause).every(([field, direction]) =>
+      !protectedField(model, field) && !relation(model, field) && ["asc", "desc"].includes(direction as string)));
+}
+
 function project(model: string, row: Row, args: Row): Row {
   const result: Row = {};
   for (const [field, value] of Object.entries(row)) {
@@ -334,7 +344,14 @@ export function encryptedClient(raw: any, inTransaction = false): PrismaClient {
             if (["findMany", "findFirst", "findUnique", "findFirstOrThrow", "findUniqueOrThrow", "count"].includes(operation)) {
               if (isCredentialLookup()) return credentialRead(model, original, operation, args);
               if (operation === "count" && !hasPrivatePredicate(model, args.where)) return original.count(args);
-              const rows = finishRows(model, await original.findMany(readArgs(model, args)), args);
+              const sqlPage = canPageInSql(model, args);
+              const query = readArgs(model, args);
+              if (sqlPage) Object.assign(query, {
+                ...(args.orderBy ? { orderBy: args.orderBy } : {}),
+                ...(args.skip !== undefined ? { skip: args.skip } : {}),
+                ...(args.take !== undefined ? { take: args.take } : operation !== "findMany" && operation !== "count" ? { take: 1 } : {}),
+              });
+              const rows = finishRows(model, await original.findMany(query), sqlPage ? { ...args, skip: undefined, take: undefined } : args);
               if (operation === "count") return rows.length;
               if (operation === "findMany") return rows;
               return rows[0] ?? (operation.endsWith("OrThrow") ? notFound() : null);

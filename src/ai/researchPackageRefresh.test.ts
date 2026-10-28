@@ -9,7 +9,7 @@ const result = {
   sources: [{ title: "Official application guidance", organization: "Authority", url: "https://authority.example/blocked.pdf", type: "official", scope: "national", relevance: "Application documents" }],
   requirements: [{ existingId: "req-1", title: "Identity", description: "Identity document", documentType: "identity_proof", owner: "self", required: true, group: "Identity", acceptedDocumentTypes: ["identity_proof"], alternativeLabels: [], condition: null, maxAgeDays: null, sourceUrl: "https://authority.example/blocked.pdf" }],
 };
-const dependencies = { assertAIProcessingEnabled: async () => undefined, consumeAIAction: async () => undefined };
+const dependencies = { assertAIProcessingEnabled: async () => undefined, consumeAIAction: async () => { throw new Error("Only package search consumes allowance"); } };
 test("AI returns checklist and reference links without any backend source download or verification", async () => {
   process.env.OPENAI_API_KEY = "synthetic-test-key";
   const calls: string[] = [];

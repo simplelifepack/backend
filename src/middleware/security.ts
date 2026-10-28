@@ -1,3 +1,4 @@
+import { PostgresRateLimitStore } from "./postgresRateLimitStore";
 import { allowedBrowserOrigins } from "./domainAccess";
 import type { CorsOptions } from "cors";
 import type { Request, Response, NextFunction } from "express";
@@ -34,6 +35,7 @@ function authenticatedAccountRateLimitKey(req: Request) {
 }
 
 function buildRateLimiter(input: {
+  scope: string;
   windowMinutes: number;
   max: number;
   message: string;
@@ -46,7 +48,10 @@ function buildRateLimiter(input: {
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: input.keyGenerator ?? clientRateLimitKey,
-    skipSuccessfulRequests: input.skipSuccessfulRequests,
+    // Shared security counters include successes; late responses cannot decrement
+    // a newer window and weaken brute-force protection.
+    skipSuccessfulRequests: false,
+    store: new PostgresRateLimitStore(input.scope, input.windowMinutes * 60 * 1000),
     message: {
       message: input.message,
     },
@@ -72,18 +77,21 @@ export const corsOptions: CorsOptions = {
 export const jsonBodyLimit = process.env.JSON_BODY_LIMIT ?? "1mb";
 
 export const generalApiLimiter = buildRateLimiter({
+  scope: "generalApiLimiter",
   windowMinutes: numberFromEnv("RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("RATE_LIMIT_MAX", 300),
   message: "Too many requests. Please try again later.",
 });
 
 export const authLimiter = buildRateLimiter({
+  scope: "authLimiter",
   windowMinutes: numberFromEnv("AUTH_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("AUTH_RATE_LIMIT_MAX", 20),
   message: "Too many authentication attempts. Please try again later.",
 });
 
 export const loginAccountLimiter = buildRateLimiter({
+  scope: "loginAccountLimiter",
   windowMinutes: numberFromEnv("AUTH_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("LOGIN_ACCOUNT_RATE_LIMIT_MAX", 10),
   message: "Too many authentication attempts. Please try again later.",
@@ -92,6 +100,7 @@ export const loginAccountLimiter = buildRateLimiter({
 });
 
 export const signupOtpRequestAccountLimiter = buildRateLimiter({
+  scope: "signupOtpRequestAccountLimiter",
   windowMinutes: numberFromEnv("SIGNUP_OTP_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("SIGNUP_OTP_ACCOUNT_RATE_LIMIT_MAX", 5),
   message: "Too many authentication attempts. Please try again later.",
@@ -99,6 +108,7 @@ export const signupOtpRequestAccountLimiter = buildRateLimiter({
 });
 
 export const signupOtpVerifyAccountLimiter = buildRateLimiter({
+  scope: "signupOtpVerifyAccountLimiter",
   windowMinutes: numberFromEnv("SIGNUP_OTP_VERIFY_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("SIGNUP_OTP_VERIFY_ACCOUNT_RATE_LIMIT_MAX", 10),
   message: "Invalid or expired signup code.",
@@ -106,6 +116,7 @@ export const signupOtpVerifyAccountLimiter = buildRateLimiter({
 });
 
 export const passwordResetRequestAccountLimiter = buildRateLimiter({
+  scope: "passwordResetRequestAccountLimiter",
   windowMinutes: numberFromEnv("PASSWORD_RESET_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX", 5),
   message: "If an account exists for that email, a password reset code will be sent.",
@@ -113,6 +124,7 @@ export const passwordResetRequestAccountLimiter = buildRateLimiter({
 });
 
 export const passwordResetVerifyAccountLimiter = buildRateLimiter({
+  scope: "passwordResetVerifyAccountLimiter",
   windowMinutes: numberFromEnv("PASSWORD_RESET_VERIFY_ACCOUNT_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("PASSWORD_RESET_VERIFY_ACCOUNT_RATE_LIMIT_MAX", 10),
   message: "Invalid or expired password reset code.",
@@ -120,6 +132,7 @@ export const passwordResetVerifyAccountLimiter = buildRateLimiter({
 });
 
 export const accountChangeOtpAccountLimiter = buildRateLimiter({
+  scope: "accountChangeOtpAccountLimiter",
   windowMinutes: numberFromEnv("ACCOUNT_CHANGE_OTP_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("ACCOUNT_CHANGE_OTP_RATE_LIMIT_MAX", 8),
   message: "Too many authentication attempts. Please try again later.",
@@ -127,48 +140,56 @@ export const accountChangeOtpAccountLimiter = buildRateLimiter({
 });
 
 export const tokenRefreshLimiter = buildRateLimiter({
+  scope: "tokenRefreshLimiter",
   windowMinutes: numberFromEnv("REFRESH_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("REFRESH_RATE_LIMIT_MAX", 60),
   message: "Too many session refresh attempts. Please sign in again later.",
 });
 
 export const uploadLimiter = buildRateLimiter({
+  scope: "uploadLimiter",
   windowMinutes: numberFromEnv("UPLOAD_RATE_LIMIT_WINDOW_MINUTES", 60),
   max: numberFromEnv("UPLOAD_RATE_LIMIT_MAX", 30),
   message: "Too many document uploads. Please try again later.",
 });
 
 export const adminLimiter = buildRateLimiter({
+  scope: "adminLimiter",
   windowMinutes: numberFromEnv("ADMIN_RATE_LIMIT_WINDOW_MINUTES", 15),
   max: numberFromEnv("ADMIN_RATE_LIMIT_MAX", 10),
   message: "Too many admin requests. Please try again later.",
 });
 
 export const gmailAuthorizeLimiter = buildRateLimiter({
+  scope: "gmailAuthorizeLimiter",
   windowMinutes: 15,
   max: 10,
   message: "Too many Gmail connection attempts. Please try again later.",
 });
 
 export const gmailScanLimiter = buildRateLimiter({
+  scope: "gmailScanLimiter",
   windowMinutes: 60,
   max: 6,
   message: "Too many Gmail scans. Please try again later.",
 });
 
 export const gmailImportLimiter = buildRateLimiter({
+  scope: "gmailImportLimiter",
   windowMinutes: 60,
   max: 30,
   message: "Too many Gmail imports. Please try again later.",
 });
 
 export const driveAuthorizeLimiter = buildRateLimiter({
+  scope: "driveAuthorizeLimiter",
   windowMinutes: 15,
   max: 10,
   message: "Too many Google Drive connection attempts. Please try again later.",
 });
 
 export const driveScanLimiter = buildRateLimiter({
+  scope: "driveScanLimiter",
   windowMinutes: 60,
   max: 6,
   message: "Too many Google Drive scans. Please try again later.",

@@ -1,3 +1,7 @@
+import { Agent } from "node:https";
+import { lookup } from "node:dns";
+import { isIP } from "node:net";
+import { publicSourceAddress } from "../ai/packageSourcePage";
 import webPush, { type PushSubscription as WebPushSubscription } from "web-push";
 
 import { prisma } from "../lib/prisma";
@@ -39,13 +43,16 @@ function httpError(message: string, statusCode: number, code?: string) {
   return Object.assign(new Error(message), { statusCode, code });
 }
 
-function validateSubscription(input: unknown): BrowserPushSubscription {
+export function validateSubscription(input: unknown): BrowserPushSubscription {
   const candidate = input as Partial<BrowserPushSubscription> | null;
   const endpoint = typeof candidate?.endpoint === "string" ? candidate.endpoint.trim() : "";
   const p256dh = typeof candidate?.keys?.p256dh === "string" ? candidate.keys.p256dh.trim() : "";
   const auth = typeof candidate?.keys?.auth === "string" ? candidate.keys.auth.trim() : "";
   if (!endpoint || !p256dh || !auth) throw httpError("Push subscription is incomplete.", 400);
-  if (!endpoint.startsWith("https://")) throw httpError("Push subscription endpoint is invalid.", 400);
+  let url: URL;
+  try { url = new URL(endpoint); } catch { throw httpError("Push subscription endpoint is invalid.", 400); }
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443") || hostname === "localhost" || (isIP(hostname) && !publicSourceAddress(hostname))) throw httpError("Push subscription endpoint is invalid.", 400);
   return { endpoint, keys: { p256dh, auth } };
 }
 
@@ -56,10 +63,12 @@ function toWebPush(subscription: BrowserPushSubscription): WebPushSubscription {
   };
 }
 
-function safeInternalUrl(url: string | undefined) {
+export function safeInternalUrl(url: string | undefined) {
   if (!url?.startsWith("/")) return "/";
-  if (url.startsWith("//")) return "/";
-  return url;
+  try {
+    const parsed = new URL(url, "https://readines.invalid");
+    return parsed.origin === "https://readines.invalid" ? `${parsed.pathname}${parsed.search}${parsed.hash}` : "/";
+  } catch { return "/"; }
 }
 
 export function getPushConfig() {
@@ -116,6 +125,17 @@ export async function disablePushSubscription(userId: string, input: unknown) {
   return { deviceEnabled: false };
 }
 
+// Validate DNS on the actual connection to prevent rebinding to internal services.
+const pushAgent = new Agent({
+  lookup(hostname, _options, callback) {
+    lookup(hostname, { family: 4, all: true }, (error, addresses) => {
+      if (error) return callback(error, "", 4);
+      if (!addresses.length || addresses.some(item => !publicSourceAddress(item.address))) return callback(new Error("Private push endpoint rejected."), "", 4);
+      callback(null, addresses[0]!.address, 4);
+    });
+  },
+});
+
 async function deactivateExpired(id: string) {
   await prisma.pushSubscription.update({
     where: { id },
@@ -125,28 +145,38 @@ async function deactivateExpired(id: string) {
 
 export async function sendPushToUser(userId: string, payload: NotificationPayload) {
   if (!configureWebPush()) throw httpError("Push notifications are not configured on this server.", 503, "PUSH_NOT_CONFIGURED");
-  const subscriptions = await prisma.pushSubscription.findMany({ where: { userId, active: true } });
   const safePayload = JSON.stringify({
     title: payload.title,
     body: payload.body,
     url: safeInternalUrl(payload.url),
   });
-  const results = await Promise.all(subscriptions.map(async (subscription) => {
+  let attempted = 0, sent = 0;
+  let cursor: string | undefined;
+  while (true) {
+    const subscriptions = await prisma.pushSubscription.findMany({ where: { userId, active: true, ...(cursor ? { id: { gt: cursor } } : {}) }, orderBy: { id: "asc" }, take: 100 });
+    if (!subscriptions.length) break;
+    for (let index = 0; index < subscriptions.length; index += 5) {
+    await Promise.all(subscriptions.slice(index, index + 5).map(async subscription => {
+    attempted += 1;
     try {
+      const checked = validateSubscription({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } });
       await webPush.sendNotification(toWebPush({
-        endpoint: subscription.endpoint,
-        keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-      }), safePayload);
-      return { id: subscription.id, sent: true };
+        endpoint: checked.endpoint,
+        keys: checked.keys,
+      }), safePayload, { agent: pushAgent, timeout: 10_000 });
+      sent += 1;
     } catch (error) {
       const statusCode = (error as { statusCode?: number })?.statusCode;
       if (statusCode === 404 || statusCode === 410) await deactivateExpired(subscription.id);
-      return { id: subscription.id, sent: false, statusCode };
+
     }
-  }));
+    }));
+    }
+    cursor = subscriptions[subscriptions.length - 1].id;
+  }
   return {
-    attempted: results.length,
-    sent: results.filter((result) => result.sent).length,
+    attempted,
+    sent,
   };
 }
 

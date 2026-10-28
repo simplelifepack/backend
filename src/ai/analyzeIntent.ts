@@ -1,3 +1,4 @@
+import { withPackageAIAdmission } from "../middleware/resourceLimits";
 import { buildPackageInput } from "./packageInput";
 import { consumeAIAction, releaseUninvokedAIAction, UsageLimitError } from "../services/accountUsage.service";
 import type { ProviderRequestOptions } from "./providers/types";
@@ -31,13 +32,13 @@ export async function analyzeIntent(userId: string, input: unknown, options: Pic
   if (!selection.provider) throw new AIUnavailableError();
 
   try {
-    return await selection.provider.analyzeIntent(query, {
+    return await withPackageAIAdmission(() => selection.provider!.analyzeIntent(query, {
       ...options,
       beforeRequest: async () => {
         const period = await consumeAIAction(userId, undefined, options.signal);
         return period ? () => releaseUninvokedAIAction(userId, period) : undefined;
       },
-    });
+    }));
   } catch (error) {
     if (error instanceof UsageLimitError || options.signal?.aborted) throw error;
     console.error("[Readiness AI] Provider request failed", { provider: selection.providerName, model: selection.model, status: (error as { status?: number })?.status });

@@ -1,3 +1,4 @@
+import { withPrivateMigration } from "../privacy/access";
 import "dotenv/config";
 import assert from "node:assert/strict";
 import bcrypt from "bcrypt";
@@ -78,7 +79,7 @@ async function run() {
   console.log("Google authentication tests passed.");
 }
 
-run()
+withPrivateMigration("synthetic legacy test fixtures", () => run()
   .finally(async () => {
     await prisma.user.deleteMany({ where: { email: { endsWith: `-${runId}@example.com` } } });
     await prisma.$disconnect();
@@ -86,4 +87,4 @@ run()
   .catch((error) => {
     console.error(error instanceof Error ? error.message : "Google authentication tests failed.");
     process.exitCode = 1;
-  });
+  }));

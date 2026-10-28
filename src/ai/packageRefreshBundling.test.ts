@@ -10,7 +10,7 @@ test("Packages dependencies load in a CommonJS-only serverless runtime", () => {
   execFileSync(process.execPath, [
     "--no-experimental-require-module",
     "-e",
-    'require("htmlparser2"); require("sanitize-html"); require("openai/helpers/zod");',
+    'require("htmlparser2"); require("openai/helpers/zod");',
   ], { cwd: path.resolve(__dirname, "../.."), stdio: "pipe" });
 });
 

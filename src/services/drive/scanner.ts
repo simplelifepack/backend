@@ -1,16 +1,15 @@
+import { readBoundedBytes } from "../boundedRead";
+import { withImportAdmission } from "../../middleware/resourceLimits";
 import { lockAccount, storedBytes, enforceStorage } from "../accountUsage.service";
 import { queueStorageCleanup, drainStorageCleanup } from "../storageCleanup.service";
 import crypto from "node:crypto";
-import fsp from "node:fs/promises";
-import path from "node:path";
 import type { drive_v3 } from "googleapis";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../lib/prisma";
-import { temporaryUploadsDir } from "../../middleware/upload";
 import { createEncryptedTemporaryUpload, saveEncryptedPermanentFile, deleteTemporaryUploadFile, removePermanentFile } from "../documentFileStorage";
 import { encryptDocumentOnBackend } from "../documentHybridEncryption";
-import { validateDecryptedDocument } from "../documentSecurityValidation";
+import { validateDecryptedDocument, withIsolatedPlaintextFile } from "../documentSecurityValidation";
 import { analyzeImportedDocument } from "../documentImportAnalysis";
 import {
   documentLookupHash,
@@ -39,11 +38,6 @@ type DrivePdf = {
   webViewLink: string | null;
 };
 
-type DriveFailure = {
-  fileId: string;
-  name: string;
-  reason: string;
-};
 
 export type DriveScanResult = {
   discovered: number;
@@ -83,10 +77,6 @@ function displayDriveFileName(name: string) {
   return clean.length > 80 ? `${clean.slice(0, 77)}...` : clean;
 }
 
-function summarizeDriveFailures(failures: DriveFailure[]) {
-  if (!failures.length) return null;
-  return `${failures.length} PDF(s) could not be processed. Please retry the scan.`;
-}
 
 function driveFailureReason(error: unknown) {
   const status = (error as { response?: { status?: number } }).response?.status;
@@ -115,8 +105,7 @@ async function withRetry<T>(operation: () => Promise<T>) {
   throw lastError;
 }
 
-export async function listDrivePdfs(drive: DriveApi, modifiedAfter: Date | null) {
-  const files: DrivePdf[] = [];
+export async function* listDrivePdfPages(drive: DriveApi, modifiedAfter: Date | null) {
   let pageToken: string | undefined;
   const clauses = [`mimeType = '${PDF_MIME}'`, "trashed = false"];
   if (modifiedAfter) clauses.push(`modifiedTime > '${modifiedAfter.toISOString()}'`);
@@ -131,6 +120,7 @@ export async function listDrivePdfs(drive: DriveApi, modifiedAfter: Date | null)
       orderBy: "modifiedTime",
       fields: "nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size,webViewLink)",
     }));
+    const files: DrivePdf[] = [];
     for (const file of response.data.files ?? []) {
       if (!file.id || !file.name || file.mimeType !== PDF_MIME || !file.modifiedTime) continue;
       files.push({
@@ -143,9 +133,16 @@ export async function listDrivePdfs(drive: DriveApi, modifiedAfter: Date | null)
         webViewLink: file.webViewLink ?? null,
       });
     }
+    yield files;
     pageToken = response.data.nextPageToken ?? undefined;
     logDriveScan("pagination", { pageFiles: response.data.files?.length ?? 0, hasNextPage: Boolean(pageToken) });
   } while (pageToken);
+}
+
+// Compatibility helper for existing callers; scanDrive consumes pages directly.
+export async function listDrivePdfs(drive: DriveApi, modifiedAfter: Date | null) {
+  const files: DrivePdf[] = [];
+  for await (const page of listDrivePdfPages(drive, modifiedAfter)) files.push(...page);
   return files;
 }
 
@@ -171,21 +168,20 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
     return "unchanged";
   }
 
-  const response = await withRetry(() => drive.files.get({ fileId: file.id, alt: "media" }, { responseType: "arraybuffer" }))
+  const response = await withRetry(() => drive.files.get({ fileId: file.id, alt: "media" }, { responseType: "stream", timeout: 45_000 }))
     .catch((error) => {
       logDriveScanError("download failed", error, { fileId: file.id, mimeType: file.mimeType });
       throw error;
     });
-  const content = Buffer.from(response.data as ArrayBuffer);
+  const content = await readBoundedBytes(response.data as unknown as AsyncIterable<Uint8Array>, MAX_PDF_SIZE);
   if (!content.length || content.length > MAX_PDF_SIZE) {
     logDriveScan("download invalid size", { fileId: file.id, mimeType: file.mimeType, size: content.length });
     throw new Error("Google Drive PDF is empty or exceeds the 25 MB limit.");
   }
   const plaintextHash = crypto.createHash("sha256").update(content).digest("hex");
   const checksum = userScopedDocumentHash(userId, plaintextHash)!;
-  const temporaryPath = path.join(temporaryUploadsDir, `${crypto.randomUUID()}.pdf`);
   try {
-    await fsp.writeFile(temporaryPath, content, { flag: "wx", mode: 0o600 });
+    return await withIsolatedPlaintextFile(content, ".pdf", async temporaryPath => {
     const analysis = await analyzeImportedDocument(userId, { path: temporaryPath, originalName: file.name, mimeType: PDF_MIME, size: content.length });
     const uniqueNumber = analysis.validation.uniqueIdentifier;
     const duplicate = await prisma.document.findFirst({
@@ -286,16 +282,18 @@ async function processPdf(userId: string, drive: DriveApi, file: DrivePdf, dupli
     const outcome = duplicate ? "duplicate_kept" : existingFile ? "updated" : "indexed";
     logDriveScan("stored", { fileId: file.id, mimeType: file.mimeType, outcome });
     return outcome;
+    });
   } finally {
     content.fill(0);
-    await fsp.unlink(temporaryPath).catch(() => undefined);
   }
 }
 
 export async function scanDrive(
   userId: string,
   options: { full?: boolean; duplicateAction?: DuplicateAction; drive?: DriveApi } = {},
-) {
+) { return withImportAdmission(() => scanDriveWork(userId, options)); }
+
+async function scanDriveWork(userId: string, options: { full?: boolean; duplicateAction?: DuplicateAction; drive?: DriveApi }) {
   logDriveScan("start", { userId, full: Boolean(options.full), duplicateAction: options.duplicateAction ?? "ignore" });
   const auth = options.drive ? null : await authorizedDrive(userId);
   const drive = options.drive ?? auth!.drive;
@@ -312,13 +310,14 @@ export async function scanDrive(
   });
   if (locked.count !== 1) throw Object.assign(new Error("A Google Drive scan is already running."), { statusCode: 409 });
   const counts: Record<string, number> = { indexed: 0, updated: 0, unchanged: 0, ignored: 0, duplicate: 0, duplicate_kept: 0, failed: 0 };
-  const failures: DriveFailure[] = [];
+  let failedCount = 0;
   let completed = 0;
   try {
     const checkpoint = options.full || !connection.lastScannedAt ? null : connection.lastSuccessfulSync;
-    const files = await listDrivePdfs(drive, checkpoint);
-    logDriveScan(`files found: ${files.length}`, { userId, checkpoint: checkpoint?.toISOString() ?? null });
-    await prisma.externalConnection.update({ where: { id: connection.id }, data: { scanPhase: "Finding PDFs...", scanTotal: files.length } });
+    let discovered = 0;
+    for await (const files of listDrivePdfPages(drive, checkpoint)) {
+    discovered += files.length;
+    await prisma.externalConnection.update({ where: { id: connection.id }, data: { scanPhase: "Finding PDFs...", scanTotal: discovered } });
     await mapBounded(files, async (file) => {
       const fileName = displayDriveFileName(file.name);
       try {
@@ -328,35 +327,36 @@ export async function scanDrive(
       } catch (error) {
         counts.failed += 1;
         const reason = driveFailureReason(error);
-        failures.push({ fileId: file.id, name: fileName, reason });
+        failedCount += 1;
         logDriveScanError("processing failed", error, { fileId: file.id, fileName, mimeType: file.mimeType, reason });
         await markDriveDisconnectedOnAuthFailure(userId, error);
       } finally {
         completed += 1;
         await prisma.externalConnection.update({
           where: { id: connection.id },
-          data: { scanProcessed: completed, scanPhase: completed >= files.length ? "Finishing..." : "Indexing..." },
+          data: { scanProcessed: completed, scanPhase: completed >= discovered ? "Finishing..." : "Indexing..." },
         });
       }
     });
+    }
     const indexedCount = await prisma.document.count({ where: { ownerProfileId: userId, sourceProvider: "GOOGLE_DRIVE" } });
     const imported = counts.indexed + counts.updated + counts.duplicate_kept;
     const skipped = counts.unchanged + counts.ignored + counts.duplicate;
-    const processed = files.length;
-    const message = files.length ? "Google Drive scan completed." : "0 eligible Drive files found";
+    const processed = discovered;
+    const message = discovered ? "Google Drive scan completed." : "0 eligible Drive files found";
     await prisma.externalConnection.update({
       where: { id: connection.id },
       data: {
         lastScannedAt: new Date(), lastSuccessfulSync: startedAt, scanStartedAt: null,
-        scanPhase: null, indexedCount, lastScanError: summarizeDriveFailures(failures),
+        scanPhase: null, indexedCount, lastScanError: failedCount ? `${failedCount} PDF(s) could not be processed. Please retry the scan.` : null,
       },
     });
     logDriveScan(`imported: ${imported}`, { userId });
     logDriveScan(`skipped: ${skipped}`, { userId });
     logDriveScan(`failed: ${counts.failed}`, { userId });
-    logDriveScan("completed", { userId, discovered: files.length, processed, imported, skipped, failed: counts.failed });
+    logDriveScan("completed", { userId, discovered, processed, imported, skipped, failed: counts.failed });
     return {
-      discovered: files.length,
+      discovered,
       processed,
       imported,
       skipped,

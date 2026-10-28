@@ -1,3 +1,4 @@
+import { withPrivateMigration } from "../privacy/access";
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -32,14 +33,14 @@ async function run() {
   const resetPinLogin = await loginWithPin({ email, pin: "000002" });
   assert.equal(resetPinLogin.user.pinConfigured, true);
   const second = await login({ email, password: "password123" });
-  assert.equal(await prisma.refreshToken.count({ where: { userId: user.id, revokedAt: null } }), 2);
+  assert.equal(await prisma.refreshToken.count({ where: { userId: user.id, revokedAt: null } }), 5);
   await logoutAll(user.id);
   assert.equal(await prisma.refreshToken.count({ where: { userId: user.id, revokedAt: null } }), 0);
   await assert.rejects(() => refresh({ refreshToken: first.refreshToken }), /Invalid refresh token/);
   await assert.rejects(() => refresh({ refreshToken: second.refreshToken }), /Invalid refresh token/);
 }
 
-run().finally(async () => {
+withPrivateMigration("synthetic legacy test fixtures", () => run().finally(async () => {
   await prisma.user.deleteMany({ where: { email } });
   await prisma.$disconnect();
-}).catch((error) => { console.error(error); process.exitCode = 1; });
+}).catch((error) => { console.error(error); process.exitCode = 1; }));

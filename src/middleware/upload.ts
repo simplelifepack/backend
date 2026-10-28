@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
+import { createAdmissionLimit } from "./resourceLimits";
 import { pipeline } from "node:stream";
 import { AsyncResource } from "node:async_hooks";
 import type { RequestHandler } from "express";
@@ -84,13 +85,53 @@ export const upload = multer({
   },
 });
 
-const encryptedMultipart = multer({
-  storage: multer.memoryStorage(),
+// Bound ciphertext while it arrives, before envelopes or file signatures are parsed.
+const requestBytes = new WeakMap<object, number>();
+const maxEncryptedBytes = MAX_DOCUMENT_UPLOAD_BYTES + 50 * AES_GCM_TAG_BYTES;
+const boundedMemoryStorage: multer.StorageEngine = {
+  _handleFile(req, file, cb) {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      req.removeListener("aborted", abort);
+      file.stream.removeListener("data", data);
+      file.stream.removeListener("end", end);
+      file.stream.removeListener("error", fail);
+      const buffer = error ? undefined : Buffer.concat(chunks, size);
+      chunks.length = 0;
+      if (error) { cb(error); file.stream.resume(); }
+      else cb(null, { buffer, size });
+    };
+    const abort = () => finish(new Error("Upload cancelled."));
+    const fail = (error: Error) => finish(error);
+    const end = () => finish();
+    const data = (chunk: Buffer) => {
+      const total = (requestBytes.get(req) ?? 0) + chunk.length;
+      if (size + chunk.length > MAX_DOCUMENT_UPLOAD_BYTES + AES_GCM_TAG_BYTES) return finish(new multer.MulterError("LIMIT_FILE_SIZE"));
+      if (total > maxEncryptedBytes) return finish(Object.assign(new Error("Upload exceeds aggregate limit."), { statusCode: 413 }));
+      requestBytes.set(req, total);
+      chunks.push(chunk);
+      size += chunk.length;
+    };
+    req.once("aborted", abort);
+    file.stream.on("data", data);
+    file.stream.once("end", end);
+    file.stream.once("error", fail);
+  },
+  _removeFile(_req, file, cb) { delete (file as Partial<Express.Multer.File>).buffer; cb(null); },
+};
+const encryptedParser = multer({
+  storage: boundedMemoryStorage,
+
   limits: {
-    fileSize: MAX_DOCUMENT_UPLOAD_BYTES + AES_GCM_TAG_BYTES,
+    fileSize: MAX_DOCUMENT_UPLOAD_BYTES + AES_GCM_TAG_BYTES + 1,
     files: 50,
     fields: 2,
     parts: 52,
+    fieldSize: 256 * 1024,
   },
   fileFilter: (_req, file, cb) => {
     if (!["encryptedFile", "encryptedFiles"].includes(file.fieldname) || file.mimetype !== "application/octet-stream") {
@@ -100,13 +141,19 @@ const encryptedMultipart = multer({
   },
 });
 
-// Incoming stream events can run outside requireAuth's AsyncLocalStorage scope.
-// Bind continuation at entry so private ownership checks retain this request's
-// verified identity, including parser failures and multi-chunk uploads.
+// Preserve authenticated AsyncLocalStorage across parser stream callbacks.
+const admitEncryptedUpload = createAdmissionLimit(4);
 export const encryptedUpload = {
-  array(fieldName: string, maxCount?: number): RequestHandler {
-    const parse = encryptedMultipart.array(fieldName, maxCount);
-    return (req, res, next) => parse(req, res, AsyncResource.bind(next));
+  array(field: string, count: number): RequestHandler {
+    const parse = encryptedParser.array(field, count);
+    return (req, res, next) => {
+      const continuation = AsyncResource.bind(next);
+      admitEncryptedUpload(req, res, () => parse(req, res, error => {
+        if (error) req.resume();
+        continuation(error);
+      }));
+    };
+
   },
 };
 

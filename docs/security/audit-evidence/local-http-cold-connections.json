@@ -1,0 +1,1205 @@
+{
+  "date": "2026-10-25",
+  "notes": [
+    "500 synthetic accounts; bcrypt cost 4; local PostgreSQL; provider requests blocked",
+    "Rate limits raised only in test process for capacity measurement",
+    "Client and server share process; memory/CPU include both",
+    "Upload payload: 64x64 synthetic PNG; not large-file capacity evidence"
+  ],
+  "checks": [
+    {
+      "name": "unexpired consumed upload survives cleanup",
+      "status": "Pass"
+    },
+    {
+      "name": "cross-user /documents/{id}",
+      "status": "Pass"
+    },
+    {
+      "name": "cross-user /documents/{id}/preview",
+      "status": "Pass"
+    },
+    {
+      "name": "cross-user /documents/{id}/download",
+      "status": "Pass"
+    },
+    {
+      "name": "encrypted document round trip",
+      "status": "Pass"
+    },
+    {
+      "name": "unauthenticated DELETE /api/admin/packages/{slug}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /api/health/medications/{medicationId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /api/health/members/{memberId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /api/health/members/{memberId}/tracked-metrics/{trackedId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /api/health/records/{recordId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /api/packages/{slug}/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /api/packages/{slug}/requirements/{requirementId}/assignment",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /api/trust/members/{id}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /api/wealth/records/{recordId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /documents/{id}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /documents/{id}/pages/{pageId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /packages/{slug}/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /packages/{slug}/requirements/{requirementId}/assignment",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /packs/{slug}/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated DELETE /packs/{slug}/requirements/{requirementId}/assignment",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/account/export/{jobId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/account/export/{jobId}/download",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/admin/packages",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/admin/packages/template.csv",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/admin/packages/{slug}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/billing/subscription",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/bootstrap",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/bootstrap/usage",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/home-attention",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/members",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/members/{memberId}/available-metrics",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/members/{memberId}/measurements",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/members/{memberId}/overview",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/members/{memberId}/records",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/members/{memberId}/timeline",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/members/{memberId}/tracked-metrics",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/records/{recordId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/health/reminders",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/integrations/digilocker/sessions/{id}/documents",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/integrations/digilocker/sessions/{id}/status",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/integrations/digilocker/status",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/notifications/config",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/packages",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/packages/custom/generation-jobs/{jobId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/packages/search",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/packages/{slug}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/preferences",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/search",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/trust",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/wealth/form/categories",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/wealth/form/categories/{categoryCode}/subtypes",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/wealth/form/categories/{categoryCode}/subtypes/{subtypeCode}/schema",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/wealth/handoff/summary",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/wealth/records",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /api/wealth/records/{recordId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /auth/me",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /documents",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /documents/assignment-options",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /documents/encryption-key",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /documents/{id}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /documents/{id}/download",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /documents/{id}/pages/{pageId}/download",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /documents/{id}/pages/{pageId}/preview",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /documents/{id}/preview",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /packages",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /packages/custom/generation-jobs/{jobId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /packages/search",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /packages/{slug}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /packs",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /packs/custom/generation-jobs/{jobId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /packs/search",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated GET /packs/{slug}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /api/admin/packages/{slug}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /api/health/medications/{medicationId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /api/health/members/{memberId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /api/health/records/{recordId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /api/packages/{slug}/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /api/preferences",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /api/trust/members/{id}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /api/wealth/records/{recordId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /documents/{id}/details",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /documents/{id}/pages/order",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /documents/{id}/pages/{pageId}",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /packages/{slug}/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated PATCH /packs/{slug}/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /admin/account/deletions/process",
+      "status": "Pass",
+      "http": 403
+    },
+    {
+      "name": "unauthenticated POST /admin/notifications/send",
+      "status": "Pass",
+      "http": 403
+    },
+    {
+      "name": "unauthenticated POST /admin/readiness/seed",
+      "status": "Pass",
+      "http": 403
+    },
+    {
+      "name": "unauthenticated POST /api/account/deletion",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/account/export",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/admin/packages",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/admin/packages/import",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/admin/packages/import/preview",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/billing/cancel",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/billing/checkout",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/billing/verify",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/health/members",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/health/members/{memberId}/measurements",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/health/members/{memberId}/medications",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/health/members/{memberId}/tracked-metrics",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/health/records",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/health/records/{recordId}/reprocess",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/health/reminders",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/integrations/digilocker/sessions",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/integrations/digilocker/sessions/{id}/cancel",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/integrations/digilocker/sessions/{id}/import",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/notifications/status",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/notifications/subscriptions",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/notifications/subscriptions/disable",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/notifications/test",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/packages/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/packages/custom/draft",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/packages/custom/generation-jobs",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/packages/search-or-generate",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/packages/{slug}/refresh",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/packages/{slug}/requirements/{requirementId}/assignment",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/trust/connections/{id}/leave",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/trust/family-members",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/trust/members",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/trust/members/{id}/resend-invitation",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/trust/members/{id}/reset-pin",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/wealth/form/records",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/wealth/handoff/send",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /api/wealth/records",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/account/change-email/request",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/account/change-email/verify",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/account/change-password/request",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/account/change-password/verify",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/account/pin/change",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/account/pin/reset/request",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/account/pin/reset/verify",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/account/pin/setup",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /auth/logout-all",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /documents",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /documents/analyze",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /documents/bulk-assign",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /documents/bulk-delete",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /documents/bulk-download",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /documents/upload",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /documents/{id}/pages",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packages/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packages/custom/draft",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packages/custom/generation-jobs",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packages/search-or-generate",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packages/{slug}/refresh",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packages/{slug}/requirements/{requirementId}/assignment",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packs/custom",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packs/custom/draft",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packs/custom/generation-jobs",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packs/search-or-generate",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packs/{slug}/refresh",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "unauthenticated POST /packs/{slug}/requirements/{requirementId}/assignment",
+      "status": "Pass",
+      "http": 401
+    },
+    {
+      "name": "no-consent upload never calls AI",
+      "status": "Pass"
+    },
+    {
+      "name": "AI generation external-provider load 10/25/50",
+      "status": "Not Tested",
+      "reason": "No provider requests allowed; no synthetic provider timings reported as real AI performance."
+    }
+  ],
+  "results": [
+    {
+      "name": "login",
+      "count": 100,
+      "rps": 376.0778150429527,
+      "statuses": {
+        "200": 100
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 163.7754590000004,
+      "p95": 255.68070899999975,
+      "p99": 257.79387499999984,
+      "peakRSS": 404160512,
+      "peakHeap": 139079368,
+      "cpuMs": 610.796,
+      "databaseConnections": 18
+    },
+    {
+      "name": "packages",
+      "count": 100,
+      "rps": 702.2301382597032,
+      "statuses": {
+        "200": 100
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 137.77700000000004,
+      "p95": 139.31987500000014,
+      "p99": 139.46829099999968,
+      "peakRSS": 400244736,
+      "peakHeap": 151204136,
+      "cpuMs": 381.12,
+      "databaseConnections": 18
+    },
+    {
+      "name": "mixed",
+      "count": 100,
+      "rps": 561.53827795864,
+      "statuses": {
+        "200": 100
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 173.03937499999984,
+      "p95": 175.71829100000014,
+      "p99": 175.86237500000016,
+      "peakRSS": 385187840,
+      "peakHeap": 148766296,
+      "cpuMs": 470.114,
+      "databaseConnections": 18
+    },
+    {
+      "name": "login",
+      "count": 250,
+      "rps": 556.9431695613054,
+      "statuses": {
+        "200": 229
+      },
+      "errors": {
+        "ECONNRESET": 21
+      },
+      "timeouts": 0,
+      "p50": 221.1070840000002,
+      "p95": 426.54654200000004,
+      "p99": 440.3452910000001,
+      "peakRSS": 415383552,
+      "peakHeap": 170545088,
+      "cpuMs": 1295.5,
+      "databaseConnections": 18
+    },
+    {
+      "name": "packages",
+      "count": 250,
+      "rps": 1474.9306045150545,
+      "statuses": {
+        "200": 250
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 142.69466699999975,
+      "p95": 157.2720000000004,
+      "p99": 163.40762499999983,
+      "peakRSS": 427769856,
+      "peakHeap": 185990776,
+      "cpuMs": 584.268,
+      "databaseConnections": 18
+    },
+    {
+      "name": "mixed",
+      "count": 250,
+      "rps": 1064.270023661531,
+      "statuses": {
+        "200": 250
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 154.23929099999987,
+      "p95": 225.85908299999983,
+      "p99": 229.97791700000016,
+      "peakRSS": 450379776,
+      "peakHeap": 188062808,
+      "cpuMs": 1219.618,
+      "databaseConnections": 18
+    },
+    {
+      "name": "login",
+      "count": 500,
+      "rps": 671.8095181174415,
+      "statuses": {
+        "200": 379
+      },
+      "errors": {
+        "ECONNRESET": 121
+      },
+      "timeouts": 0,
+      "p50": 492.78191700000025,
+      "p95": 696.8398749999997,
+      "p99": 727.2730829999996,
+      "peakRSS": 461651968,
+      "peakHeap": 160689312,
+      "cpuMs": 2010.923,
+      "databaseConnections": 18
+    },
+    {
+      "name": "packages",
+      "count": 500,
+      "rps": 1511.2375655599783,
+      "statuses": {
+        "200": 500
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 216.56787499999973,
+      "p95": 300.279708,
+      "p99": 317.455833,
+      "peakRSS": 455262208,
+      "peakHeap": 187492416,
+      "cpuMs": 1318.496,
+      "databaseConnections": 18
+    },
+    {
+      "name": "mixed",
+      "count": 500,
+      "rps": 1164.4234847803177,
+      "statuses": {
+        "200": 500
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 282.3847910000004,
+      "p95": 404.59870800000044,
+      "p99": 415.2972920000002,
+      "peakRSS": 491470848,
+      "peakHeap": 210783456,
+      "cpuMs": 2224.284,
+      "databaseConnections": 18
+    },
+    {
+      "name": "search",
+      "count": 100,
+      "rps": 484.18959495250164,
+      "statuses": {
+        "200": 100
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 129.53891599999952,
+      "p95": 204.29125000000022,
+      "p99": 205.04262500000004,
+      "peakRSS": 488013824,
+      "peakHeap": 220750696,
+      "cpuMs": 1159.745,
+      "databaseConnections": 18
+    },
+    {
+      "name": "search",
+      "count": 250,
+      "rps": 475.22572994063887,
+      "statuses": {
+        "200": 250
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 330.30624999999964,
+      "p95": 508.76937500000076,
+      "p99": 521.0985000000001,
+      "peakRSS": 549093376,
+      "peakHeap": 251000904,
+      "cpuMs": 2640.55,
+      "databaseConnections": 18
+    },
+    {
+      "name": "upload",
+      "count": 25,
+      "rps": 454.85558335228865,
+      "statuses": {
+        "200": 4,
+        "503": 21
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 34.563083000000006,
+      "p95": 54.522374999999556,
+      "p99": 54.90391699999964,
+      "peakRSS": 549928960,
+      "peakHeap": 223081472,
+      "cpuMs": 82.24,
+      "databaseConnections": 18
+    },
+    {
+      "name": "encrypted-download",
+      "count": 25,
+      "rps": 630.3745895095323,
+      "statuses": {
+        "200": 4,
+        "503": 21
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 19.556125000000065,
+      "p95": 39.47950000000037,
+      "p99": 39.58912500000042,
+      "peakRSS": 550109184,
+      "peakHeap": 232713744,
+      "cpuMs": 54.31,
+      "databaseConnections": 18
+    },
+    {
+      "name": "upload",
+      "count": 50,
+      "rps": 789.5141904438317,
+      "statuses": {
+        "200": 4,
+        "503": 46
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 52.757542000000285,
+      "p95": 62.742833999999675,
+      "p99": 63.05958399999963,
+      "peakRSS": 556859392,
+      "peakHeap": 248490048,
+      "cpuMs": 109.948,
+      "databaseConnections": 18
+    },
+    {
+      "name": "encrypted-download",
+      "count": 50,
+      "rps": 907.6908701892606,
+      "statuses": {
+        "200": 4,
+        "503": 46
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 33.65633400000024,
+      "p95": 54.8862909999998,
+      "p99": 54.923249999999825,
+      "peakRSS": 556924928,
+      "peakHeap": 224873168,
+      "cpuMs": 86.499,
+      "databaseConnections": 18
+    },
+    {
+      "name": "upload",
+      "count": 100,
+      "rps": 1118.0783917632027,
+      "statuses": {
+        "200": 4,
+        "503": 96
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 68.11175000000003,
+      "p95": 68.29954199999975,
+      "p99": 89.08483400000023,
+      "peakRSS": 539869184,
+      "peakHeap": 257748784,
+      "cpuMs": 168.936,
+      "databaseConnections": 18
+    },
+    {
+      "name": "encrypted-download",
+      "count": 100,
+      "rps": 1608.6082159246546,
+      "statuses": {
+        "200": 4,
+        "503": 96
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 39.79545899999994,
+      "p95": 41.177208000000064,
+      "p99": 62.04762500000015,
+      "peakRSS": 537214976,
+      "peakHeap": 244296400,
+      "cpuMs": 102.199,
+      "databaseConnections": 18
+    },
+    {
+      "name": "upload-download-cycle",
+      "count": 20,
+      "rps": 313.58529912118,
+      "statuses": {
+        "200": 8,
+        "503": 12
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 35.587125000000015,
+      "p95": 63.329625000000306,
+      "p99": 63.329625000000306,
+      "peakRSS": 537182208,
+      "peakHeap": 257379160,
+      "cpuMs": 94.341,
+      "databaseConnections": 18
+    },
+    {
+      "name": "upload-download-cycle",
+      "count": 20,
+      "rps": 290.7182740056049,
+      "statuses": {
+        "200": 8,
+        "503": 12
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 39.91712499999994,
+      "p95": 68.53483299999971,
+      "p99": 68.53483299999971,
+      "peakRSS": 545996800,
+      "peakHeap": 95204312,
+      "cpuMs": 121.585,
+      "databaseConnections": 18
+    },
+    {
+      "name": "upload-download-cycle",
+      "count": 20,
+      "rps": 302.6489378550643,
+      "statuses": {
+        "200": 8,
+        "503": 12
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 36.16691699999956,
+      "p95": 66.06983300000047,
+      "p99": 66.06983300000047,
+      "peakRSS": 546340864,
+      "peakHeap": 90974168,
+      "cpuMs": 108.093,
+      "databaseConnections": 18
+    },
+    {
+      "name": "upload-download-cycle",
+      "count": 20,
+      "rps": 294.99667206879275,
+      "statuses": {
+        "200": 8,
+        "503": 12
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 37.82787499999995,
+      "p95": 67.78658300000006,
+      "p99": 67.78658300000006,
+      "peakRSS": 546521088,
+      "peakHeap": 90161984,
+      "cpuMs": 108.599,
+      "databaseConnections": 18
+    },
+    {
+      "name": "upload-download-cycle",
+      "count": 20,
+      "rps": 288.035373509005,
+      "statuses": {
+        "200": 8,
+        "503": 12
+      },
+      "errors": {},
+      "timeouts": 0,
+      "p50": 39.680083999999624,
+      "p95": 68.81741599999987,
+      "p99": 68.81741599999987,
+      "peakRSS": 541425664,
+      "peakHeap": 89974664,
+      "cpuMs": 122.943,
+      "databaseConnections": 18
+    }
+  ],
+  "memory": [
+    {
+      "rss": 544653312,
+      "heapTotal": 315736064,
+      "heapUsed": 80956456,
+      "external": 45038962,
+      "arrayBuffers": 39792356
+    },
+    {
+      "rss": 546291712,
+      "heapTotal": 232898560,
+      "heapUsed": 77350168,
+      "external": 40031474,
+      "arrayBuffers": 35425336
+    },
+    {
+      "rss": 546521088,
+      "heapTotal": 221102080,
+      "heapUsed": 76513560,
+      "external": 40031474,
+      "arrayBuffers": 35436236
+    },
+    {
+      "rss": 541409280,
+      "heapTotal": 221364224,
+      "heapUsed": 76297368,
+      "external": 40097010,
+      "arrayBuffers": 35510655
+    },
+    {
+      "rss": 540786688,
+      "heapTotal": 221102080,
+      "heapUsed": 76373056,
+      "external": 40031474,
+      "arrayBuffers": 35343787
+    }
+  ],
+  "gcCount": 47,
+  "gcMs": 238.3537499308586
+}

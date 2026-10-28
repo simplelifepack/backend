@@ -1,0 +1,21 @@
+{
+  "measurements": [
+    {
+      "mode": "before",
+      "lcpMs": 420,
+      "cls": 0.0009874487940993656,
+      "singleInteractionMaxMs": 80
+    },
+    {
+      "mode": "after",
+      "lcpMs": 184,
+      "cls": 0.0009874487940993656,
+      "singleInteractionMaxMs": 48
+    }
+  ],
+  "notes": [
+    "One cold sample per build; local TLS proxy and disposable API",
+    "Single click interaction duration is not production field INP",
+    "Original dependency baseline and original-code/current-dependency comparison differ"
+  ]
+}

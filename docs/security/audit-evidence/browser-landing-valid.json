@@ -1,0 +1,545 @@
+[
+  {
+    "mode": "before",
+    "title": "Readines",
+    "bodyExcerpt": "Read\nn\nes\nFeatures\nHow it works\nPrivacy\nPricing\nSign in\nYour documents,\nin order and ready\nwhen you need them.\n\nReadines helps you organize important records, find what you need, and prepare for life’s important moments.\n\nGet started\nPrivate by desig",
+    "buttons": [
+      "Sign in",
+      "Get started ",
+      "Start free ",
+      "Annual",
+      "Monthly",
+      "Get started ",
+      "Get started "
+    ],
+    "errors": [],
+    "heap": {
+      "usedSize": 7082584,
+      "totalSize": 8257536,
+      "embedderHeapUsedSize": 3972424,
+      "backingStorageSize": 1211863
+    },
+    "metrics": {
+      "lcp": 420,
+      "cls": 0.0009874487940993656,
+      "events": [
+        {
+          "name": "pointerover",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "mouseover",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1082.8999999985099
+        },
+        {
+          "name": "pointerdown",
+          "duration": 80,
+          "interactionId": 3551,
+          "startTime": 1083.8999999985099
+        },
+        {
+          "name": "mousedown",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1083.8999999985099
+        },
+        {
+          "name": "pointerup",
+          "duration": 80,
+          "interactionId": 3551,
+          "startTime": 1084.3999999985099
+        },
+        {
+          "name": "mouseup",
+          "duration": 80,
+          "interactionId": 0,
+          "startTime": 1084.3999999985099
+        },
+        {
+          "name": "click",
+          "duration": 80,
+          "interactionId": 3551,
+          "startTime": 1084.3999999985099
+        },
+        {
+          "name": "pointerout",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "pointerleave",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "pointerleave",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "pointerleave",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "pointerleave",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "pointerleave",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "pointerleave",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "pointerover",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "pointerenter",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "mouseout",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        },
+        {
+          "name": "mouseover",
+          "duration": 16,
+          "interactionId": 0,
+          "startTime": 1147.6000000014901
+        }
+      ]
+    },
+    "navigation": [
+      {
+        "duration": 197.5,
+        "domContentLoaded": 196.80000000447035
+      }
+    ],
+    "resources": [
+      {
+        "name": "index-CqaVjoAF.js",
+        "duration": 76.70000000298023,
+        "bytes": 579476
+      },
+      {
+        "name": "rolldown-runtime-BCiCTKAo.js",
+        "duration": 76.29999999701977,
+        "bytes": 1601
+      },
+      {
+        "name": "react-dom-DoaxkDBs.js",
+        "duration": 76.69999999552965,
+        "bytes": 3883
+      },
+      {
+        "name": "api-BzBThOdT.js",
+        "duration": 92.89999999850988,
+        "bytes": 525605
+      },
+      {
+        "name": "styles-BmyU8J4a.js",
+        "duration": 83.79999999701977,
+        "bytes": 2389
+      },
+      {
+        "name": "createLucideIcon-Bs9T7607.js",
+        "duration": 86.89999999850988,
+        "bytes": 1531
+      },
+      {
+        "name": "theme-D1tNm34x.js",
+        "duration": 90.59999999403954,
+        "bytes": 1913
+      },
+      {
+        "name": "dist-Ck9xNT1l.js",
+        "duration": 92.20000000298023,
+        "bytes": 37477
+      },
+      {
+        "name": "styles-Bc_jbrzv.js",
+        "duration": 90.39999999850988,
+        "bytes": 3278
+      },
+      {
+        "name": "Stack-CPLU_BTD.js",
+        "duration": 91.10000000149012,
+        "bytes": 5813
+      },
+      {
+        "name": "bootstrap-C0UWHhQ6.js",
+        "duration": 93.79999999701977,
+        "bytes": 21937
+      },
+      {
+        "name": "index-Bxpj4-Ci.css",
+        "duration": 91,
+        "bytes": 207733
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 3.1999999955296516,
+        "bytes": 609
+      },
+      {
+        "name": "bold.ttf",
+        "duration": 20.5,
+        "bytes": 150592
+      },
+      {
+        "name": "refresh",
+        "duration": 84.5,
+        "bytes": 0
+      },
+      {
+        "name": "client",
+        "duration": 5.5,
+        "bytes": 0
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 5.5,
+        "bytes": 609
+      },
+      {
+        "name": "plans",
+        "duration": 7.299999997019768,
+        "bytes": 0
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 2.0999999940395355,
+        "bytes": 609
+      },
+      {
+        "name": "semibold.ttf",
+        "duration": 17.399999998509884,
+        "bytes": 151816
+      },
+      {
+        "name": "regular.ttf",
+        "duration": 17.600000001490116,
+        "bytes": 154928
+      },
+      {
+        "name": "medium.ttf",
+        "duration": 22.299999997019768,
+        "bytes": 153160
+      }
+    ]
+  },
+  {
+    "mode": "after",
+    "title": "Readines",
+    "bodyExcerpt": "Read\nn\nes\nFeatures\nHow it works\nPrivacy\nPricing\nSign in\nYour documents,\nin order and ready\nwhen you need them.\n\nReadines helps you organize important records, find what you need, and prepare for life’s important moments.\n\nGet started\nPrivate by desig",
+    "buttons": [
+      "Sign in",
+      "Get started ",
+      "Start free ",
+      "Annual",
+      "Monthly",
+      "Get started ",
+      "Get started "
+    ],
+    "errors": [],
+    "heap": {
+      "usedSize": 6969700,
+      "totalSize": 7995392,
+      "embedderHeapUsedSize": 3979272,
+      "backingStorageSize": 1108872
+    },
+    "metrics": {
+      "lcp": 184,
+      "cls": 0.0009874487940993656,
+      "events": [
+        {
+          "name": "pointerover",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerenter",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "mouseover",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 797.8999999985099
+        },
+        {
+          "name": "pointerdown",
+          "duration": 48,
+          "interactionId": 4793,
+          "startTime": 798
+        },
+        {
+          "name": "mousedown",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 798
+        },
+        {
+          "name": "pointerup",
+          "duration": 48,
+          "interactionId": 4793,
+          "startTime": 798
+        },
+        {
+          "name": "mouseup",
+          "duration": 48,
+          "interactionId": 0,
+          "startTime": 798
+        },
+        {
+          "name": "click",
+          "duration": 48,
+          "interactionId": 4793,
+          "startTime": 798
+        }
+      ]
+    },
+    "navigation": [
+      {
+        "duration": 80.89999999850988,
+        "domContentLoaded": 80.39999999850988
+      }
+    ],
+    "resources": [
+      {
+        "name": "index-BOqtos3A.js",
+        "duration": 11.300000004470348,
+        "bytes": 510840
+      },
+      {
+        "name": "rolldown-runtime-BCiCTKAo.js",
+        "duration": 12.799999997019768,
+        "bytes": 1601
+      },
+      {
+        "name": "react-dom-DGgPs-sA.js",
+        "duration": 14.899999998509884,
+        "bytes": 3883
+      },
+      {
+        "name": "styles-M4LH-WO7.js",
+        "duration": 16,
+        "bytes": 2389
+      },
+      {
+        "name": "api-3hij-_rO.js",
+        "duration": 16.200000002980232,
+        "bytes": 529077
+      },
+      {
+        "name": "createLucideIcon-TgDgYIDY.js",
+        "duration": 16.69999999552965,
+        "bytes": 1531
+      },
+      {
+        "name": "Stack-Cqz3RxnW.js",
+        "duration": 16.299999997019768,
+        "bytes": 5813
+      },
+      {
+        "name": "styles-CUU9JNi4.js",
+        "duration": 17.5,
+        "bytes": 3278
+      },
+      {
+        "name": "bootstrap-Cctnyx_f.js",
+        "duration": 17.799999997019768,
+        "bytes": 21937
+      },
+      {
+        "name": "usageSlice-mZaDDjqV.js",
+        "duration": 20.799999997019768,
+        "bytes": 1149
+      },
+      {
+        "name": "index-Bxpj4-Ci.css",
+        "duration": 16.5,
+        "bytes": 207733
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 3.7000000029802322,
+        "bytes": 609
+      },
+      {
+        "name": "refresh",
+        "duration": 18.200000002980232,
+        "bytes": 0
+      },
+      {
+        "name": "client",
+        "duration": 3.2000000029802322,
+        "bytes": 0
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 4.399999998509884,
+        "bytes": 609
+      },
+      {
+        "name": "bold.ttf",
+        "duration": 11.399999998509884,
+        "bytes": 150592
+      },
+      {
+        "name": "favicon.svg",
+        "duration": 3.100000001490116,
+        "bytes": 609
+      },
+      {
+        "name": "plans",
+        "duration": 6.9000000059604645,
+        "bytes": 0
+      },
+      {
+        "name": "regular.ttf",
+        "duration": 11.200000002980232,
+        "bytes": 154928
+      },
+      {
+        "name": "semibold.ttf",
+        "duration": 15.400000005960464,
+        "bytes": 151816
+      },
+      {
+        "name": "medium.ttf",
+        "duration": 14,
+        "bytes": 153160
+      }
+    ]
+  }
+]

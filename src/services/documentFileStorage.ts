@@ -501,11 +501,8 @@ export async function cleanupTemporaryUploads() {
   const now = new Date();
   const staleUploads = await prisma.temporaryUpload.findMany({
     where: {
-      OR: [
-        { expiresAt: { lte: now } },
-        { status: { not: TEMP_STATUS_ACTIVE } },
-        { consumedAt: { not: null } },
-      ],
+      // A consumed row may still be copying to permanent encrypted storage.
+      expiresAt: { lte: now },
     },
     take: 100,
     select: { id: true, storagePath: true },
@@ -522,7 +519,7 @@ export async function cleanupTemporaryUploads() {
   }
 
   const known = await prisma.temporaryUpload.findMany({
-    where: { status: TEMP_STATUS_ACTIVE },
+    where: { expiresAt: { gt: now } },
     select: { storagePath: true },
   });
   const knownPaths = new Set(known.map((upload) => path.resolve(upload.storagePath)));

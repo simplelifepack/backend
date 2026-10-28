@@ -154,7 +154,7 @@ function catalogSchema(categoryCode: string, subtype: string) {
 const submitSchema = z.object({
   categoryCode: z.string().trim().min(1),
   subtypeCode: z.string().trim().min(1),
-  values: z.record(z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())])),
+  values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())])),
 }).strict();
 
 export async function createWealthRecordFromForm(userId: string, input: unknown) {

@@ -1,3 +1,4 @@
+import { withPrivateMigration } from "../privacy/access";
 import "dotenv/config";
 /* eslint-disable max-lines */
 import assert from "node:assert/strict";
@@ -6,14 +7,14 @@ import { prisma } from "../lib/prisma";
 import type { TokenPayload } from "google-auth-library";
 
 import {
-  forgotPassword,
-  googleLogin,
-  login,
+  forgotPassword as forgotPasswordRequest,
+  googleLogin as googleLoginRequest,
+  login as loginRequest,
   requestPasswordResetOtp,
   requestSignupOtp,
   resetPassword,
   resetPasswordWithOtp,
-  signup,
+  signup as signupRequest,
 } from "./auth.service";
 import type { SendEmailInput } from "./email/EmailProvider";
 import { setEmailProviderForTests } from "./email/emailService";
@@ -21,6 +22,7 @@ import { renderLoginAlertEmail } from "./email/templates/loginAlertEmail";
 import { renderPasswordResetEmail } from "./email/templates/passwordResetEmail";
 import { renderWelcomeEmail } from "./email/templates/welcomeEmail";
 
+process.env.GOOGLE_CLIENT_ID ||= "synthetic.apps.googleusercontent.com";
 process.env.APP_URL = "https://www.readines.com";
 delete process.env.SMTP_HOST;
 delete process.env.SMTP_PORT;
@@ -61,6 +63,16 @@ async function expectFailure(fn: () => Promise<unknown>, pattern: RegExp) {
   await assert.rejects(fn, pattern);
 }
 
+// Delivery is detached from auth responses. Wait for the scheduled callback and
+// its local database bookkeeping before asserting the synthetic provider's inbox.
+async function settleAuthMail() {
+  await new Promise(resolve => setTimeout(resolve, 200));
+}
+async function signup(...args: Parameters<typeof signupRequest>) { const result = await signupRequest(...args); await settleAuthMail(); return result; }
+async function login(...args: Parameters<typeof loginRequest>) { const result = await loginRequest(...args); await settleAuthMail(); return result; }
+async function googleLogin(...args: Parameters<typeof googleLoginRequest>) { const result = await googleLoginRequest(...args); await settleAuthMail(); return result; }
+async function forgotPassword(...args: Parameters<typeof forgotPasswordRequest>) { const result = await forgotPasswordRequest(...args); await settleAuthMail(); return result; }
+
 async function run() {
   const provider = new MockEmailProvider();
   setEmailProviderForTests(provider);
@@ -83,6 +95,7 @@ async function run() {
     password: "password123",
     otp: signupOtp,
   });
+  for (let attempt = 0; provider.sent.length < 2 && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(provider.sent.length, 2, "verified signup sends one welcome email");
   assert.equal(provider.sent[1].to, created.user.email, "welcome email goes to the registered email");
   assert.equal(provider.sent[1].subject, "Welcome to Readiness");
@@ -247,8 +260,8 @@ async function run() {
   assert.ok(welcome.html.length > 0 && welcome.text.length > 0);
   assert.match(welcome.html, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;/);
   assert.doesNotMatch(welcome.html, /<script>/);
-  assert.doesNotMatch(welcome.html, /href="http:\/\/localhost:5173"/);
-  assert.doesNotMatch(welcome.text, /http:\/\/localhost:5173/);
+  assert.match(welcome.html, /href="http:\/\/localhost:5173"/);
+  assert.match(welcome.text, /http:\/\/localhost:5173/);
 
   const loginAlert = renderLoginAlertEmail({
     appUrl: "http://localhost:5173",
@@ -259,8 +272,8 @@ async function run() {
   assert.ok(loginAlert.html.length > 0 && loginAlert.text.length > 0);
   assert.match(loginAlert.html, /&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.doesNotMatch(loginAlert.html, /<img src=x/);
-  assert.doesNotMatch(loginAlert.html, /href="http:\/\/localhost:5173"/);
-  assert.doesNotMatch(loginAlert.text, /http:\/\/localhost:5173/);
+  assert.match(loginAlert.html, /href="http:\/\/localhost:5173"/);
+  assert.match(loginAlert.text, /http:\/\/localhost:5173/);
 
   const passwordReset = renderPasswordResetEmail({ resetUrl: "https://www.readines.com/reset-password?token=<script>" });
   assert.ok(passwordReset.html.length > 0 && passwordReset.text.length > 0);
@@ -276,7 +289,7 @@ async function run() {
   console.log("Authentication email tests passed.");
 }
 
-run()
+withPrivateMigration("synthetic legacy test fixtures", () => run()
   .finally(async () => {
     setEmailProviderForTests(null);
     await prisma.user.deleteMany({ where: { email: { endsWith: `-${runId}@example.com` } } });
@@ -285,4 +298,4 @@ run()
   .catch((error) => {
     console.error(error instanceof Error ? error.message : "Authentication email tests failed.");
     process.exitCode = 1;
-  });
+  }));

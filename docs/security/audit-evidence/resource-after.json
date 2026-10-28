@@ -1,0 +1,96 @@
+{
+  "mode": "after",
+  "notes": "Client and server share process. Upload: 50 x 1 MiB; ZIP: 100 x 1 MiB, three rounds. Explicit GC between rounds. Before uses original upload middleware; archive bytes compared via SHA-256.",
+  "oversizedStatus": 413,
+  "samples": [
+    {
+      "cycle": 0,
+      "ms": 44.569665999999984,
+      "rss": 252346368,
+      "heapTotal": 33259520,
+      "heapUsed": 15070072,
+      "external": 24307307,
+      "arrayBuffers": 25367323
+    },
+    {
+      "cycle": 1,
+      "ms": 35.593500000000006,
+      "rss": 254787584,
+      "heapTotal": 33783808,
+      "heapUsed": 13449616,
+      "external": 9618285,
+      "arrayBuffers": 35853083
+    },
+    {
+      "cycle": 2,
+      "ms": 34.28616699999998,
+      "rss": 254902272,
+      "heapTotal": 33783808,
+      "heapUsed": 13436648,
+      "external": 6472131,
+      "arrayBuffers": 46338843
+    },
+    {
+      "cycle": 3,
+      "ms": 33.91808299999997,
+      "rss": 258097152,
+      "heapTotal": 33783808,
+      "heapUsed": 13507016,
+      "external": 22203437,
+      "arrayBuffers": 56824603
+    },
+    {
+      "cycle": 4,
+      "ms": 34.79087499999997,
+      "rss": 273072128,
+      "heapTotal": 34045952,
+      "heapUsed": 13551336,
+      "external": 37934626,
+      "arrayBuffers": 67310363
+    }
+  ],
+  "archive": [
+    {
+      "cycle": 0,
+      "ms": 1786.854041,
+      "startRSS": 273072128,
+      "peakRSS": 281559040,
+      "digest": "2a2fbaec58521d816885a0415d523a5ab3f1f0d3586edc08fb56cfccf09067e2",
+      "afterGC": {
+        "rss": 219267072,
+        "heapTotal": 34045952,
+        "heapUsed": 13642456,
+        "external": 12829106,
+        "arrayBuffers": 67375899
+      }
+    },
+    {
+      "cycle": 1,
+      "ms": 1903.6028750000005,
+      "startRSS": 219267072,
+      "peakRSS": 219283456,
+      "digest": "2a2fbaec58521d816885a0415d523a5ab3f1f0d3586edc08fb56cfccf09067e2",
+      "afterGC": {
+        "rss": 113557504,
+        "heapTotal": 34045952,
+        "heapUsed": 13646976,
+        "external": 12829106,
+        "arrayBuffers": 67375899
+      }
+    },
+    {
+      "cycle": 2,
+      "ms": 1984.4838339999997,
+      "startRSS": 113573888,
+      "peakRSS": 114769920,
+      "digest": "2a2fbaec58521d816885a0415d523a5ab3f1f0d3586edc08fb56cfccf09067e2",
+      "afterGC": {
+        "rss": 109543424,
+        "heapTotal": 34045952,
+        "heapUsed": 13658448,
+        "external": 12829106,
+        "arrayBuffers": 67375899
+      }
+    }
+  ]
+}

@@ -42,6 +42,21 @@ export class LocalStorageProvider implements StorageProvider {
     return { key: input.key, sizeBytes: input.body.length };
   }
 
+  async uploadFile(input: Omit<UploadObjectInput, "body"> & { filePath: string }): Promise<StoredObject> {
+    const destination = this.resolveKey(input.key);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
+    try { await fs.copyFile(input.filePath, temporary, fs.constants.COPYFILE_EXCL); await fs.chmod(temporary, 0o600); await fs.rename(temporary, destination); }
+    catch (error) { await fs.rm(temporary, { force: true }).catch(() => undefined); throw error; }
+    return { key: input.key, sizeBytes: (await fs.stat(destination)).size };
+  }
+
+  async downloadFile(key: string, filePath: string, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    try { await fs.copyFile(this.resolveKey(key), filePath, fs.constants.COPYFILE_EXCL); await fs.chmod(filePath, 0o600); signal?.throwIfAborted(); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new StorageObjectNotFoundError(key); throw error; }
+  }
+
   async download(key: string) {
     try {
       return await fs.readFile(this.resolveKey(key));

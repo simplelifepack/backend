@@ -1,8 +1,10 @@
+import { pipeline } from "node:stream/promises";
+import { createAdmissionLimit } from "../middleware/resourceLimits";
 import { Router } from "express";
 
 import { requireAdminSeedToken } from "../middleware/security";
 import { requireAuth, requireFreshAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
-import { downloadAccountExport, getAccountExportJob, requestAccountExport } from "../services/accountExport.service";
+import { streamAccountExport, getAccountExportJob, requestAccountExport } from "../services/accountExport.service";
 import { processDueAccountDeletions, scheduleAccountDeletion } from "../services/accountDeletion.service";
 
 const router = Router();
@@ -27,17 +29,20 @@ router.get("/export/:jobId", async (req, res, next) => {
   }
 });
 
-router.get("/export/:jobId/download", async (req, res, next) => {
+router.get("/export/:jobId/download", createAdmissionLimit(2), async (req, res, next) => {
+  const controller = new AbortController();
+  const cancel = () => { if (!res.writableFinished) controller.abort(); };
+  res.once("close", cancel);
+  let download: Awaited<ReturnType<typeof streamAccountExport>> | undefined;
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
-    const { data, fileName } = await downloadAccountExport(authUser.id, req.params.jobId);
+    download = await streamAccountExport(authUser.id, String(req.params.jobId), controller.signal);
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${download.fileName}"`);
     res.setHeader("Cache-Control", "private, no-store");
-    return res.send(data);
-  } catch (error) {
-    return next(error);
-  }
+    await pipeline(download.stream, res, { signal: controller.signal });
+  } catch (error) { next(error); }
+  finally { res.removeListener("close", cancel); await download?.dispose(); }
 });
 
 router.post("/deletion", requireFreshAuth, async (req, res, next) => {

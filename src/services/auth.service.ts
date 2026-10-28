@@ -218,7 +218,7 @@ function dispatchAuthEmail(send: () => Promise<unknown>) {
 async function createRefreshToken(userId: string, authVersion: number) {
   const refreshToken = randomBytes(48).toString("base64url");
 
-  await prisma.refreshToken.create({
+  const session = await prisma.refreshToken.create({
     data: {
       tokenHash: hashRefreshToken(refreshToken),
       authVersion,
@@ -227,12 +227,14 @@ async function createRefreshToken(userId: string, authVersion: number) {
     },
   });
 
-  return refreshToken;
+  return { refreshToken, sessionId: session.id };
 }
 
 async function buildAuthResult(user: AuthUser, extra: Pick<AuthResult, "deletionCancelled"> = {}): Promise<AuthResult> {
+  const session = await createRefreshToken(user.id, user.authVersion ?? 0);
   const accessToken = signAccessToken({
     sub: user.id,
+    sid: session.sessionId,
     email: user.email,
     name: user.name,
     authVersion: user.authVersion ?? 0,
@@ -241,7 +243,7 @@ async function buildAuthResult(user: AuthUser, extra: Pick<AuthResult, "deletion
   return {
     token: accessToken,
     accessToken,
-    refreshToken: await createRefreshToken(user.id, user.authVersion ?? 0),
+    refreshToken: session.refreshToken,
     user: toAuthUser(user),
     ...extra,
   };
@@ -275,44 +277,29 @@ function selectAuthUser(user: {
   };
 }
 
-async function markPinFailure(userId: string, currentAttempts: number) {
-  const nextAttempts = currentAttempts + 1;
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      pinAttemptCount: nextAttempts,
-      pinLockedUntil: nextAttempts >= PIN_MAX_ATTEMPTS ? getPinLockoutExpiry() : null,
-    },
-    select: { id: true },
-  });
-}
-
-async function clearPinFailures(userId: string) {
-  await prisma.user.update({
-    where: { id: userId },
-    data: { pinAttemptCount: 0, pinLockedUntil: null },
-    select: { id: true },
-  });
-}
-
 async function assertPinMatches(user: {
   id: string;
   pinHash: string | null;
   pinAttemptCount: number;
   pinLockedUntil: Date | null;
 }, pin: string, message = "Invalid PIN.") {
-  const now = new Date();
-  if (!user.pinHash || (user.pinLockedUntil && user.pinLockedUntil > now)) {
-    throw httpError(message, 401);
-  }
-
-  const isMatch = await bcrypt.compare(pin, user.pinHash);
-  if (!isMatch) {
-    await withPrivateUser(user.id, () => markPinFailure(user.id, user.pinAttemptCount));
-    throw httpError(message, 401);
-  }
-
-  if (user.pinAttemptCount > 0 || user.pinLockedUntil) await withPrivateUser(user.id, () => clearPinFailures(user.id));
+  if (!user.pinHash || (user.pinLockedUntil && user.pinLockedUntil > new Date())) throw httpError(message, 401);
+  // Do expensive bcrypt work outside the lock, then recheck the current verifier
+  // and lockout while serializing the short counter update across all workers.
+  const matches = await bcrypt.compare(pin, user.pinHash);
+  const accepted = await withPrivateUser(user.id, () => prisma.$transaction(async tx => {
+    const rows = await tx.$queryRaw<Array<{pinHash: string | null; pinAttemptCount: number; pinLockedUntil: Date | null}>>`SELECT "pinHash", "pinAttemptCount", "pinLockedUntil" FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+    const current = rows[0];
+    if (!current || current.pinHash !== user.pinHash || (current.pinLockedUntil && current.pinLockedUntil > new Date())) return false;
+    if (!matches) {
+      const count = current.pinAttemptCount + 1;
+      await tx.user.update({ where: { id: user.id }, data: { pinAttemptCount: count, pinLockedUntil: count >= PIN_MAX_ATTEMPTS ? getPinLockoutExpiry() : null }, select: { id: true } });
+      return false;
+    }
+    if (current.pinAttemptCount || current.pinLockedUntil) await tx.user.update({ where: { id: user.id }, data: { pinAttemptCount: 0, pinLockedUntil: null }, select: { id: true } });
+    return true;
+  }));
+  if (!accepted) throw httpError(message, 401);
 }
 
 export async function requestSignupOtp(input: unknown) {
@@ -1047,11 +1034,12 @@ export async function resetPassword(input: unknown) {
   });
 }
 
-export async function getUserById(id: string, authVersion?: number) {
+export async function getUserById(id: string, authVersion?: number, sessionId?: string) {
   const user = await prisma.user.findUnique({
     where: {
       id,
       ...(authVersion === undefined ? {} : { authVersion }),
+      ...(sessionId ? { refreshTokens: { some: { id: sessionId, revokedAt: null, expiresAt: { gt: new Date() } } } } : {}),
     },
     select: {
       id: true,

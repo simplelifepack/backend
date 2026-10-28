@@ -1,0 +1,37 @@
+[
+  {
+    "file": "src/privacy/documents.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/health.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/modules.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/trust.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/catalogue.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/auth.integration.test.ts",
+    "status": 0,
+    "signal": null
+  },
+  {
+    "file": "src/privacy/imports.integration.test.ts",
+    "status": 0,
+    "signal": null
+  }
+]

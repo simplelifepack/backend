@@ -1,0 +1,37 @@
+diff --git a/src/services/digilocker/digilocker.service.ts b/src/services/digilocker/digilocker.service.ts
+index de74643..a7aefee 100644
+--- a/src/services/digilocker/digilocker.service.ts
++++ b/src/services/digilocker/digilocker.service.ts
+@@ -0,0 +1 @@
++import { withImportAdmission } from "../../middleware/resourceLimits";
+@@ -148,0 +150,4 @@ export async function importDigiLockerDocuments(input: { userId: string; session
++  return withImportAdmission(() => importDocuments(input));
++}
++
++async function importDocuments(input: { userId: string; sessionId: string; references: string[]; consentVersion: string; consent: boolean }) {
+diff --git a/src/services/digilocker/digilocker.test.ts b/src/services/digilocker/digilocker.test.ts
+index e7b0559..87841c9 100644
+--- a/src/services/digilocker/digilocker.test.ts
++++ b/src/services/digilocker/digilocker.test.ts
+@@ -207 +207 @@ async function suite() {
+-    // AI allowance exhausted: encrypted import succeeds with manual review and no provider AI call.
++    // Exhausted package-search allowance must not block document processing.
+@@ -210 +210,2 @@ async function suite() {
+-    setDocumentAnalyzerForTests({ analyzeDocument: async () => { throw new Error("AI must not be invoked when quota is exhausted"); } });
++    let documentAICalls = 0;
++    setDocumentAnalyzerForTests({ analyzeDocument: async () => { documentAICalls++; return { category: "Other", documentType: "Certificate", uniqueNumber: null, nameOnDocument: null, expiryDate: null, fields: {}, extractedText: "Synthetic certificate" }; } });
+@@ -212 +213,2 @@ async function suite() {
+-    assert.equal(vault.get(manual.documentId).analysisSource, "manual");
++    assert.equal(vault.get(manual.documentId).analysisSource, "ai");
++    assert.equal(documentAICalls, 1);
+diff --git a/src/services/digilocker/importer.ts b/src/services/digilocker/importer.ts
+index e95552c..d8bbd4c 100644
+--- a/src/services/digilocker/importer.ts
++++ b/src/services/digilocker/importer.ts
+@@ -8 +8 @@ import { assertAIProcessingEnabled } from "../aiProcessing.service";
+-import { consumeAIAction, enforceStorage, lockAccount, storedBytes } from "../accountUsage.service";
++import { enforceStorage, lockAccount, storedBytes } from "../accountUsage.service";
+@@ -38 +37,0 @@ export async function storeLockerDocument(userId: string, file: LockerDocument,
+-          // Reuse the original-file analyzer with account usage charged before invocation.
+@@ -41 +39,0 @@ export async function storeLockerDocument(userId: string, file: LockerDocument,
+-          await consumeAIAction(userId);
