@@ -73,8 +73,8 @@ export async function runDigiLockerWorker(deadlineMs = 240_000) {
       let content: Buffer | undefined;
       const consent = payload.consents?.[payload.consents.length - 1];
       let currentReference: string | undefined;
-      const persist = async (entry: Progress) => {
-        controller.signal.throwIfAborted();
+      const persist = async (entry: Progress, timedOut = false) => {
+        if (!timedOut) controller.signal.throwIfAborted();
         const index = progress.findIndex(p => p.reference === entry.reference);
         if (index < 0) progress.push(entry); else progress[index] = entry;
         const result = await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: "IMPORTING",
@@ -91,7 +91,7 @@ export async function runDigiLockerWorker(deadlineMs = 240_000) {
           if (!document) throw stopped();
           await persist({ reference, phase: "Importing" });
           const existing = await prisma.document.findFirst({ where: { ownerProfileId: session.userId, deletedAt: null,
-            sourceProvider: "DIGILOCKER", sourceMessageId: reference } });
+            sourceProvider: "DIGILOCKER", sourceMessageId: reference }, select: { id: true } });
           let result: { documentId: string; duplicate: boolean };
           if (existing) result = { documentId: existing.id, duplicate: true };
           else {
@@ -111,7 +111,7 @@ export async function runDigiLockerWorker(deadlineMs = 240_000) {
         const retryable = ["DIGILOCKER_PROVIDER_ERROR", "DIGILOCKER_RATE_LIMITED", "DOCUMENT_SAVE_FAILED", "IMPORT_FAILED"].includes(diagnostic.code);
         const timedOut = controller.signal.reason?.name === "TimeoutError";
         const retry = retryable && session.importAttempts < MAX_ATTEMPTS && (!controller.signal.aborted || timedOut) && !!session.expiresAt && session.expiresAt > new Date();
-        if (currentReference && !controller.signal.aborted) await persist({ reference: currentReference, phase: "Failed", message: diagnostic.message }).catch(() => undefined);
+        if (currentReference && (!controller.signal.aborted || timedOut)) await persist({ reference: currentReference, phase: "Failed", message: diagnostic.message }, timedOut).catch(() => undefined);
         // Partial success survives failure. A manual retry requires new explicit
         // consent; automatic retries replay the same durable consent only.
         const result = await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: "IMPORTING", importLeaseToken: lease.token },

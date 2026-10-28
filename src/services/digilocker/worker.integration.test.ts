@@ -126,6 +126,14 @@ void test("durable imports with real PostgreSQL and a synthetic DigiLocker bound
       const cleared = await asOwner(() => prisma.digiLockerConsentSession.findFirstOrThrow({ where: { id, userId: owner } }));
       assert.equal(cleared.encryptedCredentials, null); assert.equal(cleared.status, "CANCELLED");
     });
+    await t.test("invocation timeouts retain durable progress for retry instead of stranding IMPORTING", async () => {
+      const id = await connect(); await enqueue(id, ["three"]);
+      slowDownload = signal => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+      await runDigiLockerWorker(20); slowDownload = undefined;
+      const interrupted = await status(id); assert.equal(interrupted.status, "IMPORTING");
+      await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "importNextAttemptAt" = timezone('UTC', CURRENT_TIMESTAMP) WHERE "id" = ${id}`;
+      await runDigiLockerWorker(); assert.equal((await status(id)).progress[0].phase, "Completed");
+    });
     await t.test("invalid progress ciphertext terminates the job and independently revokes credentials", async () => {
       const id = await connect(); await enqueue(id, ["three"]);
       await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "encryptedProgress" = "encryptedPayload" WHERE "id" = ${id}`;

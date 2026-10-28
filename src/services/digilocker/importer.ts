@@ -15,7 +15,7 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
   lease?.signal.throwIfAborted();
   const hash = userScopedDocumentHash(userId, createHash("sha256").update(content).digest("hex"))!;
   const findExisting = (db = prisma) => db.document.findFirst({ where: { ownerProfileId: userId, deletedAt: null,
-    OR: [{ userScopedDedupHash: hash }, { sourceProvider: "DIGILOCKER", sourceMessageId: file.reference }] } });
+    OR: [{ userScopedDedupHash: hash }, { sourceProvider: "DIGILOCKER", sourceMessageId: file.reference }] }, select: { id: true } });
   const existing = await findExisting();
   if (existing) return { documentId: existing.id, duplicate: true };
   await phase("Encrypting");
