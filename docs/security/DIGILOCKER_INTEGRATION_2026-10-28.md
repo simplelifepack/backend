@@ -35,3 +35,14 @@ Vercel metadata showed no recurring Razorpay plan IDs or webhook secret configur
 A test preview requires CRON_SECRET. Import admission starts a best-effort Vercel waitUntil drain (three workers, 270-second invocation budget); the protected GET /api/integrations/digilocker/worker endpoint provides durable scheduler recovery. Timeout retries preserve the durable job. The current Hobby plan permits daily cron only; the committed cron is daily cleanup. Status checks also restart eligible interrupted jobs. Vercel cron executes for production deployments; preview crash-recovery verification must invoke the protected worker explicitly if its best-effort invocation is interrupted. Configure a minute-level external/paid production scheduler before relying on autonomous crash recovery while the browser is closed. Key rotation still requires preserving old versioned decryption keys, separately backing up lookup keys and following the private-data recovery runbook; lookup-key rotation is not an in-place key replacement.
 
 Still required: successful real provider consent/scopes/callback/HMAC/imports and revocation, Razorpay credentials and real test lifecycle, authenticated hosted penetration tests, hosted load/memory/GC and before/after p95/p99/failure-rate comparisons, and real-device mobile/light/dark/focus QA. Automated synthetic checks do not satisfy these live gates. PRs should remain unmerged until the applicable gates have evidence.
+
+## Hosted test configuration
+
+The additive migration is confirmed applied to the connected Supabase project.
+The existing verified-host firewall intentionally denies new generated/branch
+hostnames. Test traffic will use the designated DigiLocker preview hosts already
+on its allowlist: `backend-git-codex-digilocker-preview-lifepack1.vercel.app` and
+`frontend-web-git-codex-digilocker-preview-lifepack1.vercel.app`. The new backend
+branch's frontend/CORS configuration and frontend branch API URL use these test
+hosts. Existing production serving aliases remain unchanged. The registered
+provider callback still needs a verified route to the test callback handler.
