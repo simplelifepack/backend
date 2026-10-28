@@ -1,6 +1,6 @@
 # Combined PR #3/#4 integration — 2026-10-28
 
-Both repositories integrate the fetched PR #3 and PR #4 heads with current main on `codex/digilocker-durable-integration`. No GitHub PR has been merged. Backend upload conflict retains admission limits, authenticated AsyncLocalStorage, bounded parsing and stream draining. Callback routing and domain restrictions are retained together. Frontend retains domain redirects and CSP.
+Both repositories integrate the fetched PR #3 and PR #4 heads with current main on `codex/digilocker-durable-integration`. No GitHub PR has been merged. Backend upload conflict retains admission limits, authenticated AsyncLocalStorage, bounded parsing and stream draining. Callback validation and CSP are retained. The later requested removal deletes frontend hostname/early-access gates and backend early-access blocking; account authentication and authorization remain enforced.
 
 ## Implemented
 
@@ -17,7 +17,7 @@ Both repositories integrate the fetched PR #3 and PR #4 heads with current main 
 ## Verification
 
 - All 27 backend test files changed in PR #3/#4, plus billing/worker coverage, passed against combined code and isolated PostgreSQL with synthetic provider boundaries. Added bootstrap, preview-migration, cancellation, global admission and revocation-retry checks pass.
-- Frontend: 57 files / 266 tests passed, including new cache commit-order, bounded request registry, signal forwarding and Retry-After tests. Both repository lint checks and TypeScript checks pass; production builds pass. Existing bundle-size warnings remain.
+- Frontend: 56 files / 226 tests passed after removing obsolete hostname-gate tests, including new cache commit-order, bounded request registry, signal forwarding and Retry-After tests. Both repository lint checks and TypeScript checks pass; production builds pass. Existing bundle-size warnings remain.
 - All migrations applied to a fresh disposable PostgreSQL database. Prisma reports an empty schema diff against the merged schema.
 - Real PostgreSQL tests exercise concurrent enqueue, provider-reference retries, expired leases, stale commit fencing, partial progress, retry timing, active cancellation, cross-account denial, three-worker admission, revocation retries and expiry.
 - Disposable backup/restore: all 44 table counts and a sentinel record matched. This validates the synthetic database round trip, not current production backup recoverability or object-storage recovery.
@@ -44,12 +44,10 @@ hostnames. Test traffic will use the designated DigiLocker preview hosts already
 on its allowlist: `backend-git-codex-digilocker-preview-lifepack1.vercel.app` and
 `frontend-web-git-codex-digilocker-preview-lifepack1.vercel.app`. The new backend
 branch's frontend/CORS configuration and frontend branch API URL use these test
-hosts. Existing production serving aliases remain unchanged. The registered
-provider callback still needs a verified route to the test callback handler.
+hosts. The main frontend aliases now serve the approved auth-enabled test build. The registered provider callback has the approved forwarding rules described below.
 
 Hosted verification confirms the new migration is applied and the Git-connected
-builds succeed. The designated preview host configuration was updated after the
-first build, so a fresh Git build is required to capture those values. Ten real
+builds succeed. Git-connected builds include the verified designated-host configuration. Ten real
 PostgreSQL worker tests now pass, including invocation-timeout retries and
 invalid-progress handling. The approved temporary callback routing is now published and synthetic invalid-state callbacks were verified.
 
@@ -61,3 +59,19 @@ approved temporary project rules relay only GET root callbacks on the registered
 backend host with state+code or state+error to the designated test callback.
 Synthetic invalid-state probes return 303 to the expected frontend error
 fragment; ordinary root traffic remains 404. No firewall rule was changed.
+
+
+## Main-domain verification update
+
+The user explicitly approved frontend build `b68b397` on both `readines.com` and `www.readines.com`. Both aliases now point to `dpl_8AQiyD4oe85qhjAW5LQ45RebwQxq`; rollback build `826a48b` remains available as `dpl_4oeKcTbviejPQxZCbijWM5DwJprS`. Git main and PR merge state are unchanged. The frontend uses the designated test backend, preserving the original registered callback host for ordinary traffic.
+
+Chrome restored the existing account on the main domain and loaded Documents. Real status/session requests returned 200. Connect DigiLocker reached the provider's actual sign-in form with the registered callback accepted, replacing the previous redirect mismatch. Provider sign-in, consent, returned scopes, HMAC and actual document import remain pending human sign-in. No PIN or OTP was requested in chat.
+
+Hosted testing found an express-rate-limit false double-count warning for stacked shared stores. Each store now exposes its actual scope as its validation prefix; counters and limits remain unchanged. A real Express/PostgreSQL stacked-limiter regression and all 27 combined backend test files pass.
+
+Synthetic source-baseline measurements are saved beside current resource evidence. On the same local workflow with three 9 MiB PDFs and AI disabled, peak RSS fell from 337.42 MiB to 236.53 MiB and post-GC RSS from 335.95 MiB to 215.2 MiB. Baseline synchronous completion p95/p99 was 322.20/322.56 ms; durable admission p95/p99 was 22.29/54.99 ms. These timings measure different completion boundaries and are not a production end-to-end latency comparison.
+
+
+Live provider verification: the user completed DigiLocker authentication and selected PAN. The registered callback returned successfully, authenticated session and provider document-list requests returned 200, and the user explicitly approved copying that PAN record. The durable import reached `Completed — already in Documents`, confirming real OAuth/listing/import admission and deduplication without creating another copy. Because the record was deduplicated, this test does not establish a fresh provider PDF download/HMAC/encryption or AI operation. Those paths remain covered by synthetic integration tests pending a distinct real document.
+
+The user subsequently requested pushing all combined work, including the previous DigiLocker PRs, to main. This authorizes releasing the integrated source; outstanding external verification remains explicitly recorded above.

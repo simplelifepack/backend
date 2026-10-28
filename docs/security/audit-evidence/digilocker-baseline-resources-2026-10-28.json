@@ -1,0 +1,38 @@
+{
+  "environment": "PR #4 source baseline (8e9d478); local disposable PostgreSQL; synthetic provider; AI disabled. Source comparison only, not production.",
+  "synchronousImportRequest": {
+    "samples": 23,
+    "p95Ms": 322.2004999999999,
+    "p99Ms": 322.55674999999974
+  },
+  "largePdfs": {
+    "count": 3,
+    "bytesEach": 9437184,
+    "maximumDownloads": 1,
+    "before": {
+      "rss": 211304448,
+      "heapTotal": 108462080,
+      "heapUsed": 32589968,
+      "external": 10533937,
+      "arrayBuffers": 4098543,
+      "maxRssBytes": 211435520
+    },
+    "afterImports": {
+      "rss": 352272384,
+      "heapTotal": 101662720,
+      "heapUsed": 41612560,
+      "external": 83929638,
+      "arrayBuffers": 79857060,
+      "maxRssBytes": 353812480
+    },
+    "afterGc": {
+      "rss": 352272384,
+      "heapTotal": 101662720,
+      "heapUsed": 28429848,
+      "external": 83929638,
+      "arrayBuffers": 70166770,
+      "maxRssBytes": 353812480
+    }
+  },
+  "rateLimits": []
+}
