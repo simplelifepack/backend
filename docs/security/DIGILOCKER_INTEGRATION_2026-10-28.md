@@ -46,3 +46,11 @@ on its allowlist: `backend-git-codex-digilocker-preview-lifepack1.vercel.app` an
 branch's frontend/CORS configuration and frontend branch API URL use these test
 hosts. Existing production serving aliases remain unchanged. The registered
 provider callback still needs a verified route to the test callback handler.
+
+Hosted verification confirms the new migration is applied and the Git-connected
+builds succeed. The designated preview host configuration was updated after the
+first build, so a fresh Git build is required to capture those values. Ten real
+PostgreSQL worker tests now pass, including invocation-timeout retries and
+invalid-progress handling. Temporary callback-routing rules are prepared but
+require explicit approval before they can forward OAuth codes to the test
+callback. No callback rule has been staged or published yet.
