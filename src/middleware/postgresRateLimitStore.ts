@@ -6,6 +6,7 @@ import { privateLookup } from "../privacy/fieldEncryption";
 // limiters separate from waitlist limits. No new schema or plaintext identifiers.
 export class PostgresRateLimitStore implements Store {
   readonly localKeys = false;
+  get prefix() { return `${this.scope}:`; }
   private nextPruneAt = 0;
   constructor(private readonly scope: string, private readonly windowMs: number, private readonly database = prisma) {}
   private key(value: string) { return `api:${privateLookup(value, { model: "RateLimit", field: this.scope, ownerId: "server" })}`; }
