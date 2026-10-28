@@ -5,12 +5,13 @@ import { loadDigiLockerConfig } from "../../config/digilocker";
 import { withPrivateUser } from "../../privacy/access";
 import { encryptPrivateValue, decryptPrivateValue } from "../../privacy/fieldEncryption";
 import { authorizationUrl, exchangeCode, issuedDocuments, downloadDocument, revokeToken, type LockerDocument } from "./provider";
+import { importFailure } from "./importFailure";
 import { storeLockerDocument, type ImportPhase } from "./importer";
 
 export const COPY_CONSENT_VERSION = "digilocker-copy-v1";
 export const COPY_CONSENT_PURPOSE = "Copy selected DigiLocker documents to encrypted ReadiNes storage and process using the existing AI preference.";
 type Consent = { id: string; timestamp: string; version: string; purpose: string; references: string[] };
-type Progress = { reference: string; phase: ImportPhase; documentId?: string; duplicate?: boolean; message?: string };
+type Progress = { reference: string; phase: ImportPhase; documentId?: string; duplicate?: boolean; code?: string; message?: string };
 type Payload = { verifier?: string; accessToken?: string; documents?: LockerDocument[]; consents?: Consent[]; progress?: Progress[] };
 const binding = (session: Pick<DigiLockerConsentSession, "id" | "userId">) => ({ model: "DigiLockerConsentSession", recordId: session.id, ownerId: session.userId, field: "encryptedPayload" });
 const read = (session: DigiLockerConsentSession): Payload => ({
@@ -166,17 +167,19 @@ export async function importDigiLockerDocuments(input: { userId: string; session
     for (const reference of input.references) {
       if (payload.progress?.some(p => p.reference === reference && p.phase === "Completed")) continue;
       let content: Buffer | undefined;
+      let stage: ImportPhase = "Importing";
       try {
-        if (!session.expiresAt || session.expiresAt <= new Date()) throw fail("DigiLocker session expired. Reconnect to retry.");
+        if (!session.expiresAt || session.expiresAt <= new Date()) throw Object.assign(fail("DigiLocker session expired. Reconnect to retry."), { code: "DIGILOCKER_ACCESS_EXPIRED" });
         await updateProgress(reference, { phase: "Importing" });
         const document = payload.documents!.find(doc => doc.reference === reference)!;
         content = await downloadDocument(payload.accessToken, reference);
         const result = await storeLockerDocument(input.userId, document, content, { sessionId: session.id, id: consent.id, timestamp: consent.timestamp, version: consent.version },
-          phase => updateProgress(reference, { phase }));
+          phase => { stage = phase; return updateProgress(reference, { phase }); });
         await updateProgress(reference, { phase: "Completed", ...result });
       } catch (error) {
-        const code = (error as { code?: string }).code;
-        await updateProgress(reference, { phase: "Failed", message: code === "STORAGE_LIMIT_EXCEEDED" ? "Storage limit reached. Free space or upgrade, then retry." : "Import failed. Reconnect if access expired, then retry this document." });
+        const failure = importFailure(error);
+        console.warn({ event: "digilocker_import_failed", stage, code: failure.code, ...(failure.providerStatus ? { providerStatus: failure.providerStatus } : {}) });
+        await updateProgress(reference, { phase: "Failed", code: failure.code, message: failure.message });
       } finally { content?.fill(0); }
     }
   } finally {

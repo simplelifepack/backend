@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- In-memory Prisma delegates deliberately use flexible synthetic records. */
 import assert from "node:assert/strict";
+import { Prisma } from "@prisma/client";
 import { test } from "node:test";
 import { createHmac, randomBytes, createHash, generateKeyPairSync } from "node:crypto";
 import { authorizationUrl, downloadDocument, exchangeCode, normalizeIssuedDocuments, providerRequest } from "./provider";
@@ -40,7 +41,12 @@ const fake: any = {
     create: async ({ data }: any) => { temporary.set(data.id, data); return data; },
     delete: async ({ where }: any) => { temporary.delete(where.id); },
   },
-  documentFile: { create: async ({ data }: any) => data },
+  documentFile: { create: async ({ data }: any) => {
+    const fields = new Set(Prisma.dmmf.datamodel.models.find(model => model.name === "DocumentFile")!.fields.map(field => field.name));
+    assert.deepEqual(Object.keys(data).filter(key => !fields.has(key)), [], "DigiLocker page writes must match the actual Prisma DocumentFile schema");
+    assert.equal(data.ciphertextHash, data.encryptedSha256);
+    return data;
+  } },
   externalOAuthState: {
     create: async ({ data }: any) => { const row = { id: randomBytes(8).toString("hex"), usedAt: null, ...data }; states.set(row.stateHash, row); return row; },
     findUnique: async ({ where }: any) => states.get(where.stateHash) ?? null,
@@ -204,12 +210,14 @@ async function suite() {
     usedBytes = 50 * 1024 * 1024;
     await assert.rejects(storeLockerDocument("owner-a", file, secondBytes, { sessionId: session.id, id: "consent", timestamp: new Date().toISOString(), version: "v1" }, async () => undefined), { code: "STORAGE_LIMIT_EXCEEDED" });
     assert.equal(temporary.size, 0); usedBytes = 0;
-    // AI allowance exhausted: encrypted import succeeds with manual review and no provider AI call.
+    // Exhausted package-search allowance must not block document processing.
     aiEnabled = true;
     const { setDocumentAnalyzerForTests } = await import("../documentAnalyzer");
-    setDocumentAnalyzerForTests({ analyzeDocument: async () => { throw new Error("AI must not be invoked when quota is exhausted"); } });
+    let documentAICalls = 0;
+    setDocumentAnalyzerForTests({ analyzeDocument: async () => { documentAICalls++; return { category: "Other", documentType: "Certificate", uniqueNumber: null, nameOnDocument: null, expiryDate: null, fields: {}, extractedText: "Synthetic certificate" }; } });
     const manual = await storeLockerDocument("owner-a", file, secondBytes, { sessionId: session.id, id: "consent", timestamp: new Date().toISOString(), version: "v1" }, async () => undefined);
-    assert.equal(vault.get(manual.documentId).analysisSource, "manual");
+    assert.equal(vault.get(manual.documentId).analysisSource, "ai");
+    assert.equal(documentAICalls, 1);
     assert.equal(temporary.size, 0);
     assert.deepEqual(await fs.readdir(path.join(process.env.UPLOADS_DIR!, "tmp")), []);
   });

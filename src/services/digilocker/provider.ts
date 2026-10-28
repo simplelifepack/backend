@@ -7,7 +7,13 @@ export type LockerDocument = {
   issueDate: string | null; modifiedAt: string | null; mimeType: string;
   available: boolean; reason: string | null;
 };
-export const providerError = () => Object.assign(new Error("DigiLocker could not complete the request. Reconnect if access has expired."), { statusCode: 502 });
+class ProviderError extends Error {
+  readonly statusCode = 502;
+  constructor(readonly code = "DIGILOCKER_PROVIDER_ERROR", readonly providerStatus?: number) {
+    super("DigiLocker could not complete the request.");
+  }
+}
+export const providerError = () => new ProviderError();
 
 // Bounded reads, no redirects (including file downloads), and fixed provider host.
 export async function providerRequest(endpoint: string, init: RequestInit = {}, maxBytes = 1024 * 1024) {
@@ -15,9 +21,14 @@ export async function providerRequest(endpoint: string, init: RequestInit = {}, 
     const response = await fetch(`${loadDigiLockerConfig().baseUrl}${endpoint}`, {
       ...init, redirect: "error", signal: AbortSignal.timeout(45_000),
     });
-    if (!response.ok || Number(response.headers.get("content-length") ?? 0) > maxBytes) {
+    if (!response.ok) {
       await response.body?.cancel();
-      throw providerError();
+      const code = ({ 401: "DIGILOCKER_ACCESS_EXPIRED", 403: "DIGILOCKER_ACCESS_DENIED", 404: "DIGILOCKER_FILE_UNAVAILABLE", 429: "DIGILOCKER_RATE_LIMITED" } as Record<number, string>)[response.status];
+      throw new ProviderError(code, response.status);
+    }
+    if (Number(response.headers.get("content-length") ?? 0) > maxBytes) {
+      await response.body?.cancel();
+      throw new ProviderError("FILE_TOO_LARGE");
     }
     const chunks: Buffer[] = [];
     let length = 0;
@@ -28,12 +39,12 @@ export async function providerRequest(endpoint: string, init: RequestInit = {}, 
         const next = await reader.read();
         if (next.done) break;
         length += next.value.length;
-        if (length > maxBytes) throw providerError();
+        if (length > maxBytes) throw new ProviderError("FILE_TOO_LARGE");
         chunks.push(Buffer.from(next.value));
       }
     } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
     return { content: Buffer.concat(chunks), headers: response.headers };
-  } catch { throw providerError(); }
+  } catch (error) { throw error instanceof ProviderError ? error : providerError(); }
 }
 
 export function authorizationUrl(state: string, challenge: string) {
@@ -83,9 +94,11 @@ export async function downloadDocument(accessToken: string, reference: string) {
   }, MAX_DOCUMENT_UPLOAD_BYTES);
   const expected = createHmac("sha256", loadDigiLockerConfig().clientSecret).update(response.content).digest();
   const actual = Buffer.from(response.headers.get("hmac") ?? "", "base64");
-  if (response.headers.get("content-type")?.split(";")[0].toLowerCase() !== "application/pdf" ||
-      expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-    response.content.fill(0); throw providerError();
+  if (response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/pdf") {
+    response.content.fill(0); throw new ProviderError("UNSUPPORTED_FILE_TYPE");
+  }
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    response.content.fill(0); throw new ProviderError("DIGILOCKER_INTEGRITY_FAILED");
   }
   return response.content;
 }
