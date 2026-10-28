@@ -1,5 +1,5 @@
 import { waitUntil } from "@vercel/functions";
-import { timingSafeEqual } from "node:crypto";
+import { authorizedWorker } from "../services/digilocker/workerAuthorization";
 import { createAdmissionLimit } from "../middleware/resourceLimits";
 import { drainDigiLockerQueue } from "../services/digilocker/worker";
 import { Router } from "express";
@@ -23,9 +23,7 @@ router.get("/callback", async (req, res) => {
 });
 // A scheduler is the recovery path when a function or host disappears.
 router.get("/worker", async (req, res, next) => {
-  const expected = Buffer.from(`Bearer ${process.env.CRON_SECRET ?? ""}`);
-  const actual = Buffer.from(req.get("authorization") ?? "");
-  if (!process.env.CRON_SECRET || actual.length !== expected.length || !timingSafeEqual(actual, expected)) return res.sendStatus(401);
+  if (!authorizedWorker(req.get("authorization"))) return res.sendStatus(401);
   try { await drainDigiLockerQueue(); res.json({ ok: true }); } catch (error) { next(error); }
 });
 router.use(requireAuth);
