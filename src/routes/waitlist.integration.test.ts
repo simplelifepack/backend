@@ -49,6 +49,7 @@ async function submission(email: string) {
   return { email, website: "", challenge: token, solution: solve(token) };
 }
 beforeEach(async () => {
+  process.env.PUBLIC_SITE_EARLY_ACCESS_ONLY = "1";
   await prisma.waitlistRegistration.deleteMany();
   await prisma.waitlistProof.deleteMany();
   await prisma.waitlistRateLimit.deleteMany();
@@ -141,6 +142,15 @@ test("production origins may use waitlist only; approved app origins retain auth
   }
   for (const origin of ["https://unconfigured.vercel.app", "http://localhost:9999", "https://readines.com.evil.test"]) assert.equal(allowedBrowserOrigins().has(origin), false);
   assert.equal((await fetch(`${await base()}/api/protected`)).status, 401);
+});
+test("public frontend origins support authentication when early-access-only mode is disabled", async () => {
+  delete process.env.PUBLIC_SITE_EARLY_ACCESS_ONLY;
+  for (const origin of ["https://readines.com", "https://www.readines.com"]) {
+    const response = await call("/auth/login", {}, origin);
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get("access-control-allow-origin"), origin);
+    assert.equal((await call("/api/protected", undefined, origin)).status, 401);
+  }
 });
 test("provider result reports acceptance and explicit rejection without swallowing outcome", async () => {
   assert.equal((await sendWaitlistEmail("person@example.com", "https://readines.com/")).status, "sent");

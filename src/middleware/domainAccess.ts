@@ -16,7 +16,7 @@ export const productionDomainAccess: RequestHandler = (req, res, next) => {
   const origin = req.get("origin");
   const publicWaitlist = (req.method === "GET" && req.path === "/api/waitlist/challenge") ||
     (req.method === "POST" && ["/api/waitlist/register", "/api/waitlist/unsubscribe"].includes(req.path));
-  if (origin && productionOrigins.includes(origin) && !publicWaitlist) {
+  if (process.env.PUBLIC_SITE_EARLY_ACCESS_ONLY === "1" && origin && productionOrigins.includes(origin) && !publicWaitlist) {
     return res.status(403).json({ message: "Only early access registration is available on this domain." });
   }
   next();

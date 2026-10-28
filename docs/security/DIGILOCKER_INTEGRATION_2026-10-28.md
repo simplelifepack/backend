@@ -54,3 +54,13 @@ PostgreSQL worker tests now pass, including invocation-timeout retries and
 invalid-progress handling. Temporary callback-routing rules are prepared but
 require explicit approval before they can forward OAuth codes to the test
 callback. No callback rule has been staged or published yet.
+
+The user subsequently requested authentication on `readines.com` for live
+DigiLocker testing. Early-access-only API blocking is now opt-in with
+`PUBLIC_SITE_EARLY_ACCESS_ONLY=1`; normal authenticated APIs remain protected.
+Frontend domain redirects that forced application paths back to `/` are removed.
+The test backend returns OAuth users to `https://readines.com`. Two explicitly
+approved temporary project rules relay only GET root callbacks on the registered
+backend host with state+code or state+error to the designated test callback.
+Synthetic invalid-state probes return 303 to the expected frontend error
+fragment; ordinary root traffic remains 404. No firewall rule was changed.
