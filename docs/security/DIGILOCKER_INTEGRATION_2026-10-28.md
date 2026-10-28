@@ -1,0 +1,37 @@
+# Combined PR #3/#4 integration — 2026-10-28
+
+Both repositories integrate the fetched PR #3 and PR #4 heads with current main on `codex/digilocker-durable-integration`. No GitHub PR has been merged. Backend upload conflict retains admission limits, authenticated AsyncLocalStorage, bounded parsing and stream draining. Callback routing and domain restrictions are retained together. Frontend retains domain redirects and CSP.
+
+## Implemented
+
+- Import requests persist explicit consent and return HTTP 202. The durable batch lives on its owner-bound session; each worker invocation handles one document. PostgreSQL atomically claims leases under a short advisory transaction, caps active leases at three and recovers expired leases. Attempts, retry timestamps and encrypted progress survive process loss.
+- Provider downloads and AI calls receive AbortSignals. Five-second heartbeats fence cancelled/expired/stale workers. The document transaction locks/checks the session lease before writing. Cancellation cannot be overwritten by a late worker completion. Time comparisons and raw timestamp parameters explicitly use UTC.
+- Provider references are checked before downloading; owner-scoped hash/reference deduplication remains inside the account-locked final transaction. One process holds at most three import work slots and at most four document AI slots. A fourth import worker gets 503; error middleware includes Retry-After.
+- Stream chunks are wiped on successful and failed bounded reads. Import buffers are wiped in all exits, including validation/storage failures. Validation precedes encryption; ciphertext references are released after encrypted temporary storage, and the source plaintext buffer is wiped once its isolated analysis file exists.
+- Progress is encrypted separately from credential/consent payloads. Failed provider revocations retain encrypted terminal credentials for bounded maintenance retries until expiry. Cancelled and failed sessions cannot use retained credentials for imports.
+- Frontend polling aborts on cleanup, backs off on errors, respects Retry-After and pauses scheduling while hidden. Users can refresh status, cancel a running import or reconnect after interruption. Individual results and expiry messages retain partial-success information. Document lists render fifty rows at a time.
+- IndexedDB operations serialize clear/write ordering and resolve only after transaction commit. Cache writes check auth generation and account scope. Redux keeps at most 2,048 pending IDs for ten minutes and rejects unknown/expired completions; logout/account replacement invalidates pending work.
+- Inherited file-length lint failures were resolved by separating service modules, hooks and view components. Existing design-system components and styling are retained. SMTP pool typing is corrected. Admin bootstrap consumes its invocation secret, requires a generated 16-character minimum password (72 UTF-8 bytes maximum), and requires `--rotate-password` to change an existing admin password.
+- Preview builds skip inherited database migrations unless `PREVIEW_DATABASE_MIGRATIONS_APPROVED=1` is explicitly configured.
+
+## Verification
+
+- All 27 backend test files changed in PR #3/#4, plus billing/worker coverage, passed against combined code and isolated PostgreSQL with synthetic provider boundaries. Added bootstrap, preview-migration, cancellation, global admission and revocation-retry checks pass.
+- Frontend: 57 files / 266 tests passed, including new cache commit-order, bounded request registry, signal forwarding and Retry-After tests. Both repository lint checks and TypeScript checks pass; production builds pass. Existing bundle-size warnings remain.
+- All migrations applied to a fresh disposable PostgreSQL database. Prisma reports an empty schema diff against the merged schema.
+- Real PostgreSQL tests exercise concurrent enqueue, provider-reference retries, expired leases, stale commit fencing, partial progress, retry timing, active cancellation, cross-account denial, three-worker admission, revocation retries and expiry.
+- Disposable backup/restore: all 44 table counts and a sentinel record matched. This validates the synthetic database round trip, not current production backup recoverability or object-storage recovery.
+- Local resource profile (synthetic provider, AI disabled): queue admission p95 22.3 ms / p99 55.0 ms; small-PDF worker p95 189.9 ms / p99 221.1 ms. Three 9 MiB PDFs reached process peak RSS 236.5 MiB. RSS after GC remained about 215 MiB; Node/native allocators can retain pages. See the evidence JSON for heap/external buffers. This is neither a production baseline nor a serverless equivalence claim.
+- Local shared-key rate-limit profile at 32 one-connection pools: 33 total connections including the observer, p95 11.0 ms / p99 32.5 ms, 640 operations, zero failures. Connection totals still scale with function instances; pool size one does not globally cap database connections.
+
+## Hosted verification and outstanding gates
+
+The user authorized the connected `readiness` Supabase project (`izsujcwyuirkzkafhfnp`) as the current test environment and requested Vercel test-branch deployment. Existing records must be preserved. The additive migration adds queue metadata only.
+
+A real Chrome localhost OAuth attempt returned `redirect_uri_mismatch` for `http://localhost:4000/api/integrations/digilocker/callback`, before authentication or document consent. The saved provider callback is `https://backend-three-sage-78.vercel.app/`. A preview callback cannot complete through a different deployment/database without a supported routing arrangement. Do not claim scopes, HMAC, real imports or real token revocation are verified until that flow succeeds.
+
+Vercel metadata showed no recurring Razorpay plan IDs or webhook secret configured. Synthetic billing lifecycle tests pass; real test checkout/payment/refund/webhook verification remains pending. The bootstrap password remains a readable production-scoped Vercel configuration variable; remove it after intentional offline provisioning/rotation and keep future invocation secrets out of persistent deployment configuration. This task has not changed existing account passwords or encryption keys.
+
+A test preview requires CRON_SECRET. Import admission starts a best-effort Vercel waitUntil drain (three workers, 270-second invocation budget); the protected GET /api/integrations/digilocker/worker endpoint provides durable scheduler recovery. Timeout retries preserve the durable job. Vercel cron executes for production deployments; preview crash-recovery verification must invoke the protected worker explicitly if its best-effort invocation is interrupted. Configure the real production scheduler before enabling imports there. Key rotation still requires preserving old versioned decryption keys, separately backing up lookup keys and following the private-data recovery runbook; lookup-key rotation is not an in-place key replacement.
+
+Still required: successful real provider consent/scopes/callback/HMAC/imports and revocation, Razorpay credentials and real test lifecycle, authenticated hosted penetration tests, hosted load/memory/GC and before/after p95/p99/failure-rate comparisons, and real-device mobile/light/dark/focus QA. Automated synthetic checks do not satisfy these live gates. PRs should remain unmerged until the applicable gates have evidence.

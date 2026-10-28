@@ -69,3 +69,8 @@ test("offline backfills use the direct connection without mutating runtime confi
   assert.equal(child.DOTENV_CONFIG_PATH, "/dev/null");
   assert.throws(() => migrationChildEnvironment({ DATABASE_URL: "synthetic-runtime-pool" }));
 });
+
+test("preview builds skip inherited database migrations until staging is explicitly configured", () => {
+  assert.deepEqual(vercelBuildCommands({ VERCEL_ENV: "preview" }), [["scripts/prisma-command.mjs", "generate"]]);
+  assert.deepEqual(vercelBuildCommands({ VERCEL_ENV: "preview", PREVIEW_DATABASE_MIGRATIONS_APPROVED: "1" }), [["scripts/prisma-command.mjs", "migrate-deploy"], ["scripts/prisma-command.mjs", "generate"]]);
+});

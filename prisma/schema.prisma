@@ -761,6 +761,12 @@ model TemporaryUpload {
 }
 
 model DigiLockerConsentSession {
+  encryptedProgress String?
+  importLeaseToken String?
+  importLeaseUntil DateTime?
+  importAttempts Int @default(0)
+  importNextAttemptAt DateTime?
+
   encryptedPayload String?
   encryptedCredentials String?
   private_verificationId String?
@@ -791,6 +797,7 @@ model DigiLockerConsentSession {
 
   @@index([userId, status])
   @@index([verificationId])
+  @@index([status, importNextAttemptAt, importLeaseUntil], map: "digilocker_import_queue_idx")
   @@map("digilocker_consent_sessions")
 }
 

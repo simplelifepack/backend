@@ -10,15 +10,15 @@ import { storeLockerDocument, type ImportPhase } from "./importer";
 
 export const COPY_CONSENT_VERSION = "digilocker-copy-v1";
 export const COPY_CONSENT_PURPOSE = "Copy selected DigiLocker documents to encrypted ReadiNes storage and process using the existing AI preference.";
-type Consent = { id: string; timestamp: string; version: string; purpose: string; references: string[] };
-type Progress = { reference: string; phase: ImportPhase; documentId?: string; duplicate?: boolean; code?: string; message?: string };
-type Payload = { verifier?: string; accessToken?: string; documents?: LockerDocument[]; consents?: Consent[]; progress?: Progress[] };
-const binding = (session: Pick<DigiLockerConsentSession, "id" | "userId">) => ({ model: "DigiLockerConsentSession", recordId: session.id, ownerId: session.userId, field: "encryptedPayload" });
-const read = (session: DigiLockerConsentSession): Payload => ({
+export type Consent = { id: string; timestamp: string; version: string; purpose: string; references: string[] };
+export type Progress = { reference: string; phase: ImportPhase; documentId?: string; duplicate?: boolean; code?: string; message?: string };
+export type Payload = { verifier?: string; accessToken?: string; documents?: LockerDocument[]; consents?: Consent[]; progress?: Progress[] };
+export const binding = (session: Pick<DigiLockerConsentSession, "id" | "userId">) => ({ model: "DigiLockerConsentSession", recordId: session.id, ownerId: session.userId, field: "encryptedPayload" });
+export const read = (session: DigiLockerConsentSession): Payload => ({
   ...(session.encryptedPayload ? decryptPrivateValue<Payload>(session.encryptedPayload, binding(session)) : {}),
   ...(session.encryptedCredentials ? decryptPrivateValue<Payload>(session.encryptedCredentials, { ...binding(session), field: "encryptedCredentials" }) : {}),
 });
-const seal = (session: Pick<DigiLockerConsentSession, "id" | "userId"> & { expiresAt?: Date | null }, payload: Payload) => {
+export const seal = (session: Pick<DigiLockerConsentSession, "id" | "userId"> & { expiresAt?: Date | null }, payload: Payload) => {
   const { accessToken, verifier, ...audit } = payload;
   return {
     encryptedPayload: encryptPrivateValue(audit, binding(session)),
@@ -31,7 +31,7 @@ export async function cleanupExpiredDigiLockerCredentials() {
   if (Date.now() < nextCredentialCleanup) return;
   nextCredentialCleanup = Date.now() + 60_000;
   try { await prisma.$executeRaw`UPDATE "digilocker_consent_sessions" SET "encryptedCredentials" = NULL
-    WHERE "expiresAt" <= NOW() AND "encryptedCredentials" IS NOT NULL`;
+    WHERE "expiresAt" <= timezone('UTC', CURRENT_TIMESTAMP) AND "encryptedCredentials" IS NOT NULL`;
   } catch (error) {
     const candidate = error as { code?: string; meta?: { code?: string; message?: string } };
     if (candidate.code === "P2010" && candidate.meta?.code === "42703" &&
@@ -60,7 +60,8 @@ export function digilockerStatus() {
 function assertConfigured() { if (!loadDigiLockerConfig().configured) throw new DigiLockerDisabledError(); }
 function statusResponse(session: DigiLockerConsentSession) {
   const payload = read(session);
-  return { id: session.id, status: session.status, expiresAt: session.expiresAt, progress: payload.progress ?? [] };
+  const progress = session.encryptedProgress ? decryptPrivateValue<Progress[]>(session.encryptedProgress, { ...binding(session), field: "encryptedProgress" }) : payload.progress ?? [];
+  return { id: session.id, status: session.status, expiresAt: session.expiresAt, progress };
 }
 async function owned(userId: string, id: string) {
   const session = await prisma.digiLockerConsentSession.findFirst({ where: { id, userId } });
@@ -69,11 +70,25 @@ async function owned(userId: string, id: string) {
 }
 async function expire(session: DigiLockerConsentSession) {
   if (session.expiresAt && session.expiresAt <= new Date()) {
-    const payload = read(session);
-    delete payload.accessToken; delete payload.verifier;
-    return prisma.digiLockerConsentSession.update({ where: { id: session.id }, data: { status: "EXPIRED", ...seal(session, payload) } });
+    await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: { in: ["PENDING", "AUTHENTICATED", "IMPORTING"] }, expiresAt: { lte: new Date() } },
+      data: { status: "EXPIRED", importLeaseToken: null, importLeaseUntil: null } });
+    await revokeSessionCredentials(session);
+    return owned(session.userId, session.id);
   }
   return session;
+}
+// Keep failed revocations encrypted until credential expiry so maintenance can
+// retry them. Terminal sessions never expose or reuse these credentials.
+export async function revokeSessionCredentials(session: DigiLockerConsentSession) {
+  if (session.expiresAt && session.expiresAt <= new Date()) {
+    await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, encryptedCredentials: session.encryptedCredentials }, data: { encryptedCredentials: null } });
+    return;
+  }
+  const payload = session.encryptedCredentials ? decryptPrivateValue<Payload>(session.encryptedCredentials,
+    { ...binding(session), field: "encryptedCredentials" }) : {};
+  try { if (payload.accessToken) await revokeToken(payload.accessToken); }
+  catch { if (session.expiresAt && session.expiresAt > new Date()) return; }
+  await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, encryptedCredentials: session.encryptedCredentials }, data: { encryptedCredentials: null } });
 }
 export async function startDigiLockerSession(input: { userId: string }) {
   assertConfigured();
@@ -104,25 +119,33 @@ export async function completeDigiLockerAuthorization(input: { state: string; co
     if (session.status !== "PENDING") throw fail("DigiLocker session is no longer pending.");
     const payload = read(session);
     let token: string | undefined;
+    let tokenExpiresAt: Date | undefined;
     try {
       if (input.denied || !input.code) {
-        await prisma.digiLockerConsentSession.update({ where: { id: session.id }, data: { status: "CONSENT_DENIED", ...seal(session, {}) } });
+        await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: "PENDING", cancelledAt: null }, data: { status: "CONSENT_DENIED", ...seal(session, {}) } });
         return { id: session.id, status: "CONSENT_DENIED" };
       }
       if (!payload.verifier) throw fail("DigiLocker authorization expired.");
       const result = await exchangeCode(input.code, payload.verifier);
       token = result.accessToken;
+      tokenExpiresAt = new Date(Date.now() + result.expiresIn * 1000);
       const documents = await issuedDocuments(token);
-      const tokenExpiresAt = new Date(Date.now() + result.expiresIn * 1000);
-      const updated = await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: "PENDING", cancelledAt: null }, data: {
+      const updated = await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: "PENDING", cancelledAt: null, expiresAt: { gt: new Date() } }, data: {
         status: "AUTHENTICATED", authenticatedAt: new Date(), expiresAt: tokenExpiresAt,
         ...seal({ ...session, expiresAt: tokenExpiresAt }, { accessToken: token, documents, consents: [], progress: [] }),
       } });
       if (updated.count !== 1) throw fail("DigiLocker connection was cancelled.");
       return { id: session.id, status: "AUTHENTICATED" };
     } catch {
-      if (token) await revokeToken(token).catch(() => undefined);
+      let revoked = true;
+      if (token) try { await revokeToken(token); } catch { revoked = false; }
       await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: "PENDING" }, data: { status: "FAILED", ...seal(session, {}) } });
+      if (token && !revoked) {
+        // A cancellation may win while code exchange is in flight. Retain the
+        // token only in terminal credentials so maintenance can revoke it.
+        await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: { in: ["FAILED", "CANCELLED", "EXPIRED"] }, encryptedCredentials: null },
+          data: { expiresAt: tokenExpiresAt ?? session.expiresAt, encryptedCredentials: seal({ ...session, expiresAt: tokenExpiresAt ?? session.expiresAt }, { accessToken: token }).encryptedCredentials } });
+      }
       return { id: session.id, status: "FAILED" };
     }
   });
@@ -130,11 +153,10 @@ export async function completeDigiLockerAuthorization(input: { state: string; co
 export async function refreshDigiLockerSession(userId: string, id: string) { return statusResponse(await expire(await owned(userId, id))); }
 export async function cancelDigiLockerSession(userId: string, id: string) {
   const session = await owned(userId, id);
-  if (session.status === "IMPORTING") throw fail("Wait for the current import to finish before closing the connection.");
-  const payload = read(session);
-  if (payload.accessToken) await revokeToken(payload.accessToken).catch(() => undefined);
-  delete payload.accessToken; delete payload.verifier;
-  return statusResponse(await prisma.digiLockerConsentSession.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: new Date(), ...seal(session, payload) } }));
+  await prisma.digiLockerConsentSession.updateMany({ where: { id, userId, status: { in: ["PENDING", "AUTHENTICATED", "IMPORTING"] } },
+    data: { status: "CANCELLED", cancelledAt: new Date(), importLeaseToken: null, importLeaseUntil: null } });
+  await revokeSessionCredentials(session);
+  return statusResponse(await owned(userId, id));
 }
 export async function listDigiLockerDocuments(userId: string, id: string) {
   const session = await expire(await owned(userId, id));
@@ -148,7 +170,7 @@ export function validateSelection(payload: Payload, references: string[], versio
 }
 export async function importDigiLockerDocuments(input: { userId: string; sessionId: string; references: string[]; consentVersion: string; consent: boolean }) {
   assertConfigured();
-  let session = await expire(await owned(input.userId, input.sessionId));
+  const session = await expire(await owned(input.userId, input.sessionId));
   if (session.status !== "AUTHENTICATED") throw fail("DigiLocker connection is expired, cancelled, or already importing.");
   const payload = read(session);
   validateSelection(payload, input.references, input.consentVersion, input.consent);
@@ -156,34 +178,8 @@ export async function importDigiLockerDocuments(input: { userId: string; session
   const consent: Consent = { id: randomUUID(), timestamp: new Date().toISOString(), version: COPY_CONSENT_VERSION, purpose: COPY_CONSENT_PURPOSE, references: input.references };
   payload.consents = [...(payload.consents ?? []), consent];
   // Claim and record explicit consent before fetching any file bytes. Concurrent requests cannot double-import.
-  const claimed = await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, userId: input.userId, status: "AUTHENTICATED" },
-    data: { status: "IMPORTING", ...seal(session, payload) } });
+  const claimed = await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, userId: input.userId, status: "AUTHENTICATED", cancelledAt: null, expiresAt: { gt: new Date() } },
+    data: { status: "IMPORTING", importNextAttemptAt: new Date(), importAttempts: 0, importLeaseToken: null, importLeaseUntil: null, ...seal(session, payload) } });
   if (claimed.count !== 1) throw fail("An import is already running.");
-  const updateProgress = async (reference: string, progress: Omit<Progress, "reference">) => {
-    payload.progress = [...(payload.progress ?? []).filter(p => p.reference !== reference), { reference, ...progress }];
-    await prisma.digiLockerConsentSession.update({ where: { id: session.id }, data: { ...seal(session, payload), lastCheckedAt: new Date() } });
-  };
-  try {
-    for (const reference of input.references) {
-      if (payload.progress?.some(p => p.reference === reference && p.phase === "Completed")) continue;
-      let content: Buffer | undefined;
-      let stage: ImportPhase = "Importing";
-      try {
-        if (!session.expiresAt || session.expiresAt <= new Date()) throw Object.assign(fail("DigiLocker session expired. Reconnect to retry."), { code: "DIGILOCKER_ACCESS_EXPIRED" });
-        await updateProgress(reference, { phase: "Importing" });
-        const document = payload.documents!.find(doc => doc.reference === reference)!;
-        content = await downloadDocument(payload.accessToken, reference);
-        const result = await storeLockerDocument(input.userId, document, content, { sessionId: session.id, id: consent.id, timestamp: consent.timestamp, version: consent.version },
-          phase => { stage = phase; return updateProgress(reference, { phase }); });
-        await updateProgress(reference, { phase: "Completed", ...result });
-      } catch (error) {
-        const failure = importFailure(error);
-        console.warn({ event: "digilocker_import_failed", stage, code: failure.code, ...(failure.providerStatus ? { providerStatus: failure.providerStatus } : {}) });
-        await updateProgress(reference, { phase: "Failed", code: failure.code, message: failure.message });
-      } finally { content?.fill(0); }
-    }
-  } finally {
-    session = await prisma.digiLockerConsentSession.update({ where: { id: session.id }, data: { status: session.expiresAt && session.expiresAt <= new Date() ? "EXPIRED" : "AUTHENTICATED", ...seal(session, payload) } });
-  }
-  return statusResponse(session);
+  return statusResponse(await owned(input.userId, session.id));
 }

@@ -1,0 +1,68 @@
+{
+  "environment": "Local disposable PostgreSQL; synthetic provider; AI disabled. No production baseline or serverless equivalence claimed.",
+  "queueAdmission": {
+    "samples": 23,
+    "p95Ms": 22.293499999999767,
+    "p99Ms": 54.99224999999933
+  },
+  "smallPdfWorker": {
+    "samples": 20,
+    "p95Ms": 189.9197919999997,
+    "p99Ms": 221.06874999999945
+  },
+  "largePdfs": {
+    "count": 3,
+    "bytesEach": 9437184,
+    "maximumDownloads": 1,
+    "before": {
+      "rss": 119570432,
+      "heapTotal": 110346240,
+      "heapUsed": 33119232,
+      "external": 9476378,
+      "arrayBuffers": 4098407,
+      "maxRssBytes": 138133504
+    },
+    "afterImports": {
+      "rss": 225640448,
+      "heapTotal": 103759872,
+      "heapUsed": 43117392,
+      "external": 55613527,
+      "arrayBuffers": 51542541,
+      "maxRssBytes": 248020992
+    },
+    "afterGc": {
+      "rss": 225656832,
+      "heapTotal": 103759872,
+      "heapUsed": 28910568,
+      "external": 55613527,
+      "arrayBuffers": 41917883,
+      "maxRssBytes": 248020992
+    }
+  },
+  "rateLimits": [
+    {
+      "clients": 1,
+      "connections": 2,
+      "samples": 20,
+      "p95Ms": 5.759750000000167,
+      "p99Ms": 6.009042000000591,
+      "failures": 0
+    },
+    {
+      "clients": 8,
+      "connections": 9,
+      "samples": 160,
+      "p95Ms": 3.5068750000000364,
+      "p99Ms": 6.7749159999993935,
+      "failures": 0
+    },
+    {
+      "clients": 32,
+      "connections": 33,
+      "samples": 640,
+      "p95Ms": 11.00066699999934,
+      "p99Ms": 32.546291999999994,
+      "failures": 0
+    }
+  ]
+}

@@ -19,5 +19,11 @@
       "src": "/(.*)",
       "dest": "api/index.ts"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/integrations/digilocker/worker",
+      "schedule": "* * * * *"
+    }
   ]
 }

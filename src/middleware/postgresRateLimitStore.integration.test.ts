@@ -9,7 +9,7 @@ test("rate limits share atomic counters across clients, isolate scopes and expir
   try{
     const increments=await Promise.all(Array.from({length:40},(_,i)=>(i%2?a:b).increment(key)));assert.deepEqual(increments.map(r=>r.totalHits).sort((a,b)=>a-b),Array.from({length:40},(_,i)=>i+1));
     assert.equal((await c.increment(key)).totalHits,1);
-    await one.$executeRaw`UPDATE "WaitlistRateLimit" SET "expiresAt" = NOW() - INTERVAL '1 second' WHERE "key" LIKE 'api:%'`;
+    await one.$executeRaw`UPDATE "WaitlistRateLimit" SET "expiresAt" = timezone('UTC', CURRENT_TIMESTAMP) - INTERVAL '1 second' WHERE "key" LIKE 'api:%'`;
     assert.equal((await b.increment(key)).totalHits,1);
     const rows=await one.$queryRaw<Array<{key:string}>>`SELECT "key" FROM "WaitlistRateLimit" WHERE "key" LIKE 'api:%'`;assert(rows.every(row=>!row.key.includes(key)));
     await a.resetKey(key);assert.equal((await b.increment(key)).totalHits,1);

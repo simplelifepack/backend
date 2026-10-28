@@ -110,6 +110,7 @@ export function buildErrorResponse(input: {
 
 export function errorHandler(error: unknown, req: Request, res: Response, _next: NextFunction) {
   if (res.headersSent || res.destroyed) { res.destroy(); return; }
+  if (statusCodeForError(error) === 503) res.setHeader("Retry-After", "2");
   const errorId = crypto.randomUUID();
   const response = buildErrorResponse({
     error,

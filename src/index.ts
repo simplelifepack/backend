@@ -1,3 +1,4 @@
+import { maintainDigiLockerSessions, runDigiLockerWorker } from "./services/digilocker/worker";
 import { assertPrivateDataKeysConfigured } from "./privacy/fieldEncryption";
 import { cleanupExpiredDigiLockerCredentials } from "./services/digilocker/digilocker.service";
 import { app } from "./app";
@@ -22,6 +23,17 @@ async function start() {
     void cleanupExpiredDigiLockerCredentials().catch(() => console.error({ event: "digilocker_cleanup_failed" }));
   }, 60_000);
   digilockerCleanup.unref();
+  let workerRunning = false;
+  const tick = async () => {
+    if (workerRunning) return;
+    workerRunning = true;
+    try { await maintainDigiLockerSessions(); await runDigiLockerWorker(); }
+    catch { console.error({ event: "digilocker_worker_failed" }); }
+    finally { workerRunning = false; }
+  };
+  const workerTimer = setInterval(() => void tick(), 2_000);
+  workerTimer.unref();
+  void tick();
   app.listen(port, () => {
     console.log(`Readiness backend listening on http://localhost:${port}`);
   });

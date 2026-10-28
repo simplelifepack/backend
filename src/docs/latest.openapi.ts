@@ -45,6 +45,11 @@ const job = object({
 
 export const latestOperations: Operation[] = [
   {
+    method: "get", path: "/api/integrations/digilocker/worker", tags: ["DigiLocker"], operationId: "processDigiLockerQueue",
+    summary: "Process durable DigiLocker imports", description: "Scheduler only. Requires the CRON_SECRET bearer credential; user bearer tokens are rejected. Resumes expired worker leases and retries terminal credential revocation.",
+    security: secured, responses: { 200: response("Worker completed", object({ ok: { type: "boolean" } })), ...errors(401, 503) },
+  },
+  {
     method: "get", path: "/api/search", tags: ["Search"], operationId: "globalSearch", summary: "Search the authenticated user's records",
     security: secured, description: "Searches Packages, Documents, Health, Wealth, Family and Trust Center. Results contain navigation paths, not private source payloads. limit is per section (default 5).",
     parameters: [{ name: "q", in: "query", required: true, schema: { ...string, minLength: 1, maxLength: 160 } }, { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 10, default: 5 } }],

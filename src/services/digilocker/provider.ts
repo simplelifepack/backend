@@ -19,7 +19,7 @@ export const providerError = () => new ProviderError();
 export async function providerRequest(endpoint: string, init: RequestInit = {}, maxBytes = 1024 * 1024) {
   try {
     const response = await fetch(`${loadDigiLockerConfig().baseUrl}${endpoint}`, {
-      ...init, redirect: "error", signal: AbortSignal.timeout(45_000),
+      ...init, redirect: "error", signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
     });
     if (!response.ok) {
       await response.body?.cancel();
@@ -39,11 +39,16 @@ export async function providerRequest(endpoint: string, init: RequestInit = {}, 
         const next = await reader.read();
         if (next.done) break;
         length += next.value.length;
-        if (length > maxBytes) throw new ProviderError("FILE_TOO_LARGE");
+        if (length > maxBytes) { next.value.fill(0); throw new ProviderError("FILE_TOO_LARGE"); }
         chunks.push(Buffer.from(next.value));
+        next.value.fill(0);
       }
-    } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
-    return { content: Buffer.concat(chunks), headers: response.headers };
+      return { content: Buffer.concat(chunks, length), headers: response.headers };
+    } finally {
+      for (const chunk of chunks) chunk.fill(0);
+      chunks.length = 0;
+      await reader.cancel().catch(() => undefined); reader.releaseLock();
+    }
   } catch (error) { throw error instanceof ProviderError ? error : providerError(); }
 }
 
@@ -61,7 +66,8 @@ export async function exchangeCode(code: string, verifier: string) {
     body: new URLSearchParams({ code, grant_type: "authorization_code", client_id: config.clientId,
       client_secret: config.clientSecret, redirect_uri: config.redirectUri, code_verifier: verifier }),
   });
-  const data = JSON.parse(response.content.toString());
+  let data;
+  try { data = JSON.parse(response.content.toString()); } finally { response.content.fill(0); }
   if (typeof data.access_token !== "string" || data.token_type?.toLowerCase() !== "bearer" || !Number.isFinite(Number(data.expires_in)) || Number(data.expires_in) <= 0) throw providerError();
   const consentRemaining = data.consent_valid_till === undefined ? 1800 : Number(data.consent_valid_till) - Math.floor(Date.now() / 1000);
   if (!Number.isFinite(consentRemaining) || consentRemaining <= 0) throw providerError();
@@ -86,11 +92,11 @@ export function normalizeIssuedDocuments(items: unknown): LockerDocument[] {
 }
 export async function issuedDocuments(accessToken: string) {
   const response = await providerRequest("/oauth2/2/files/issued", { headers: { Authorization: `Bearer ${accessToken}` } });
-  return normalizeIssuedDocuments(JSON.parse(response.content.toString()).items);
+  try { return normalizeIssuedDocuments(JSON.parse(response.content.toString()).items); } finally { response.content.fill(0); }
 }
-export async function downloadDocument(accessToken: string, reference: string) {
+export async function downloadDocument(accessToken: string, reference: string, signal?: AbortSignal) {
   const response = await providerRequest(`/oauth2/1/file/${encodeURIComponent(reference)}`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/pdf" },
+    signal, headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/pdf" },
   }, MAX_DOCUMENT_UPLOAD_BYTES);
   const expected = createHmac("sha256", loadDigiLockerConfig().clientSecret).update(response.content).digest();
   const actual = Buffer.from(response.headers.get("hmac") ?? "", "base64");
@@ -104,7 +110,7 @@ export async function downloadDocument(accessToken: string, reference: string) {
 }
 export async function revokeToken(token: string) {
   const config = loadDigiLockerConfig();
-  await providerRequest("/oauth2/1/revoke", { method: "POST", headers: {
+  await providerRequest("/oauth2/1/revoke", { signal: AbortSignal.timeout(10_000), method: "POST", headers: {
     Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
     "Content-Type": "application/x-www-form-urlencoded",
   }, body: new URLSearchParams({ token, token_type_hint: "access_token" }) });

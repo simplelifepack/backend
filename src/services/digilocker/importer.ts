@@ -10,7 +10,9 @@ import { documentLookupHash, documentMetadataIntegrityHash, encryptJson, encrypt
 import type { LockerDocument } from "./provider";
 
 export type ImportPhase = "Importing" | "Encrypting" | "Processing with AI" | "Completed" | "Failed";
-export async function storeLockerDocument(userId: string, file: LockerDocument, content: Buffer, consent: { sessionId: string; id: string; timestamp: string; version: string }, phase: (phase: ImportPhase) => Promise<void>) {
+export async function storeLockerDocument(userId: string, file: LockerDocument, content: Buffer, consent: { sessionId: string; id: string; timestamp: string; version: string }, phase: (phase: ImportPhase) => Promise<void>, lease?: { token: string; signal: AbortSignal }) {
+  try {
+  lease?.signal.throwIfAborted();
   const hash = userScopedDocumentHash(userId, createHash("sha256").update(content).digest("hex"))!;
   const findExisting = (db = prisma) => db.document.findFirst({ where: { ownerProfileId: userId, deletedAt: null,
     OR: [{ userScopedDedupHash: hash }, { sourceProvider: "DIGILOCKER", sourceMessageId: file.reference }] } });
@@ -18,17 +20,20 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
   if (existing) return { documentId: existing.id, duplicate: true };
   await phase("Encrypting");
   const filename = `${file.name.replace(/[\\/\r\n]/g, "_").replace(/\.pdf$/i, "")}.pdf`;
+  await validateDecryptedDocument(content, { originalFilename: filename, originalMimeType: "application/pdf", originalSize: content.length });
   const envelope = encryptDocumentOnBackend(content, { filename, mimeType: "application/pdf" });
-  await validateDecryptedDocument(content, envelope);
   await prisma.$transaction(async tx => {
     const tier = await lockAccount(tx, userId);
     enforceStorage(tier, await storedBytes(userId, tx), envelope.ciphertext.length);
   });
   const temporary = await createEncryptedTemporaryUpload(userId, envelope);
+  envelope.ciphertext = Buffer.alloc(0);
   let saved: Awaited<ReturnType<typeof saveEncryptedPermanentFile>> | undefined;
   let committed = false;
   try {
-    const analysis = await withIsolatedPlaintextFile(content, ".pdf", path => analyzeImportedDocument(userId,
+    const analysis = await withIsolatedPlaintextFile(content, ".pdf", path => {
+      content.fill(0);
+      return analyzeImportedDocument(userId,
       { path, originalName: filename, mimeType: "application/pdf", size: content.length }, {
         assertAIProcessingEnabled: async id => {
           await assertAIProcessingEnabled(id);
@@ -37,9 +42,12 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
         analyzeDocument: async files => {
           const { getDocumentAnalyzer } = await import("../documentAnalyzer");
           const analyzer = getDocumentAnalyzer();
-          return analyzer.analyzeDocument(files);
+          lease?.signal.throwIfAborted();
+          return analyzer.analyzeDocument(files, lease?.signal);
         },
-      }));
+      });
+    });
+    lease?.signal.throwIfAborted();
     const id = randomUUID();
     saved = await saveEncryptedPermanentFile(userId, `${id}/imports/${randomUUID()}`, temporary);
     const fields = { ...analysis.extractedFields, reviewFields: analysis.reviewFields, warnings: analysis.warnings,
@@ -47,6 +55,14 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
       digilocker: { reference: file.reference, issuer: file.issuer, importedAt: new Date().toISOString(), consent, processingStatus: analysis.analysisSource === "ai" ? "completed" : "manual_review" } };
     const stored = saved;
     const result = await prisma.$transaction(async tx => {
+      if (lease) {
+        lease.signal.throwIfAborted();
+        // This row lock serializes the document commit with cancel/expiry.
+        const guard = await tx.digiLockerConsentSession.updateMany({ where: { id: consent.sessionId, userId,
+          status: "IMPORTING", cancelledAt: null, expiresAt: { gt: new Date() }, importLeaseToken: lease.token,
+          importLeaseUntil: { gt: new Date() } }, data: { lastCheckedAt: new Date() } });
+        if (guard.count !== 1) throw new Error("Import lease ended.");
+      }
       const tier = await lockAccount(tx, userId);
       const duplicate = await findExisting(tx as typeof prisma);
       if (duplicate) return { documentId: duplicate.id, duplicate: true };
@@ -86,4 +102,5 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
     try { await deleteTemporaryUploadFile(temporary); }
     finally { await prisma.temporaryUpload.delete({ where: { id: temporary.id } }); }
   }
+  } finally { content.fill(0); }
 }

@@ -26,8 +26,11 @@ export function migrationCommands(phase: MigrationPhase) {
   ];
 }
 
-// Preserve ordinary builds exactly; a migration build must select one phase.
+// Preview builds must never inherit a production database migration target.
 export function vercelBuildCommands(env: NodeJS.ProcessEnv) {
+  if (env.VERCEL_ENV === "preview" && env.PREVIEW_DATABASE_MIGRATIONS_APPROVED !== "1") {
+    return [["scripts/prisma-command.mjs", "generate"]];
+  }
   if (env.PRIVACY_MIGRATION_PHASE || env.PRIVACY_MIGRATION_ENABLED === "1") {
     const phase = migrationPhase(env.PRIVACY_MIGRATION_PHASE);
     return [["--import", "tsx", "src/scripts/runVercelPrivateMigration.ts", `--phase=${phase}`]];

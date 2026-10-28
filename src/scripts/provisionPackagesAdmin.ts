@@ -3,7 +3,7 @@ import { provisionPackagesAdminFromEnv } from "../services/adminPackages.service
 
 loadBackendEnv();
 
-provisionPackagesAdminFromEnv()
+provisionPackagesAdminFromEnv({ rotateExisting: process.argv.includes("--rotate-password") })
   .then((_user) => {
     console.info("Provisioned packages admin account.");
   })

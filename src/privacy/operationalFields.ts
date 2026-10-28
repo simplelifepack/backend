@@ -35,7 +35,7 @@ export const operationalFields: Record<string, readonly string[]> = {
   HealthReminder: ["id", "userId", "memberId", "sourceFollowUpId", "sourceDocumentId", "origin", "createdAt", "updatedAt"],
   DocumentFile: ["id", "documentId", "pageIndex", "sourceType", "pageCount", "mimeType", "size", "storageBucket", "storageMimeType", "encryptionVersion", "contentAlgorithm", "keyAlgorithm", "keyId", "keyVersion", "encryptionIv", "encryptedSha256", "encryptedSize", "ciphertextHash", "createdAt", "updatedAt", "storageUsageKey", "privacyOwnerId"],
   TemporaryUpload: ["id", "ownerProfileId", "storagePath", "detectedMimeType", "size", "status", "createdAt", "expiresAt", "consumedAt", "sourceProvider", "externalCandidateId", "encryptionVersion", "contentAlgorithm", "keyAlgorithm", "keyId", "keyVersion", "encryptionIv", "encryptedSha256", "encryptedSize", "scanStatus", "scanCompletedAt"],
-  DigiLockerConsentSession: ["encryptedPayload", "encryptedCredentials", "id", "userId", "environment", "status", "expiresAt", "authenticatedAt", "cancelledAt", "lastCheckedAt", "createdAt", "updatedAt"],
+  DigiLockerConsentSession: ["encryptedProgress", "importLeaseToken", "importLeaseUntil", "importAttempts", "importNextAttemptAt", "encryptedPayload", "encryptedCredentials", "id", "userId", "environment", "status", "expiresAt", "authenticatedAt", "cancelledAt", "lastCheckedAt", "createdAt", "updatedAt"],
   ExternalConnection: ["id", "userId", "provider", "status", "lastScannedAt", "lastSuccessfulSync", "scanStartedAt", "scanProcessed", "scanTotal", "indexedCount", "createdAt", "updatedAt"],
   ExternalOAuthState: ["id", "userId", "provider", "expiresAt", "usedAt", "createdAt"],
   ExternalDocumentCandidate: ["id", "userId", "connectionId", "provider", "mimeType", "size", "status", "createdAt", "updatedAt"],
@@ -56,7 +56,7 @@ export const reviewRequiredModels = ["ReadinessPack", "Requirement"] as const;
 // Never spread the original record, recurse through relations, or decrypt here.
 // Storage/crypto locations are omitted from operator responses even though they
 // may be readable database metadata. No download capabilities are returned.
-const internalOnly = new Set(["encryptedPayload", "encryptedCredentials", "path", "storageKey", "storagePath", "storageBucket", "storedName", "encryptionIv", "keyId", "keyVersion", "metadataIntegrityHash", "userScopedDedupHash", "dedupeKey", "encryptedSha256", "ciphertextHash", "storageUsageKey"]);
+const internalOnly = new Set(["encryptedProgress", "importLeaseToken", "encryptedPayload", "encryptedCredentials", "path", "storageKey", "storagePath", "storageBucket", "storedName", "encryptionIv", "keyId", "keyVersion", "metadataIntegrityHash", "userScopedDedupHash", "dedupeKey", "encryptedSha256", "ciphertextHash", "storageUsageKey"]);
 export function operationalProjection(model: string, row: Record<string, unknown>) {
   const fields = operationalFields[model];
   if (!fields) throw new Error("OPERATIONAL_MODEL_NOT_ALLOWLISTED");
