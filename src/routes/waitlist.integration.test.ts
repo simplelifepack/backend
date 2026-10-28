@@ -8,7 +8,7 @@ import cors from "cors";
 import { prisma } from "../lib/prisma";
 import router from "./waitlist.routes";
 import { corsOptions } from "../middleware/security";
-import { allowedBrowserOrigins, productionDomainAccess } from "../middleware/domainAccess";
+import { allowedBrowserOrigins } from "../middleware/domainAccess";
 import { setEmailProviderForTests, sendWaitlistEmail } from "../services/email/emailService";
 import type { SendEmailInput } from "../services/email/EmailProvider";
 import { deliverWaitlistConfirmation } from "../services/waitlist";
@@ -28,7 +28,7 @@ globals[contextKey] = { get: () => ({ waitUntil: task => { backgroundTasks.push(
 async function flushBackground() { await Promise.all(backgroundTasks.splice(0)); }
 afterEach(flushBackground);
 const app = express();
-app.use(cors(corsOptions), productionDomainAccess, express.json());
+app.use(cors(corsOptions), express.json());
 app.use("/api/waitlist", router);
 app.get("/api/protected", (_req, res) => res.status(401).json({ message: "Authentication required" }));
 app.post("/auth/login", (_req, res) => res.status(401).json({ message: "Authentication required" }));
@@ -49,7 +49,6 @@ async function submission(email: string) {
   return { email, website: "", challenge: token, solution: solve(token) };
 }
 beforeEach(async () => {
-  process.env.PUBLIC_SITE_EARLY_ACCESS_ONLY = "1";
   await prisma.waitlistRegistration.deleteMany();
   await prisma.waitlistProof.deleteMany();
   await prisma.waitlistRateLimit.deleteMany();
@@ -93,7 +92,7 @@ test("unsubscribes idempotently only after explicit POST and never resends on re
   await call("/api/waitlist/register", await submission("consent@example.com"));
   const link = sent[0].text.match(/Unsubscribe: (\S+)/)![1];
   const token = new URL(link).searchParams.get("waitlistUnsubscribe")!;
-  assert.equal((await call(`/api/waitlist/unsubscribe?token=${encodeURIComponent(token)}`)).status, 403);
+  assert.equal((await call(`/api/waitlist/unsubscribe?token=${encodeURIComponent(token)}`)).status, 404);
   assert.equal((await prisma.waitlistRegistration.findFirstOrThrow()).status, "registered");
   assert.equal((await call("/api/waitlist/unsubscribe", { token: `${token}bad` })).status, 400);
   for (let n = 0; n < 2; n++) assert.equal((await call("/api/waitlist/unsubscribe", { token })).status, 200);
@@ -129,12 +128,12 @@ test("database rate limits hold atomically across concurrent callers", async () 
   for (let n = 0; n < 60; n++) await call("/api/waitlist/challenge");
   const denied = await call("/api/waitlist/challenge"); assert.equal(denied.status, 429); assert.equal(denied.headers.get("retry-after"), "3600");
 });
-test("production origins may use waitlist only; approved app origins retain authentication; CORS has no wildcard", async () => {
+test("approved frontend origins retain authentication; CORS has no wildcard", async () => {
   process.env.CORS_PREVIEW_ORIGINS = "https://configured-preview.vercel.app";
   for (const origin of ["https://readines.com", "https://www.readines.com"]) {
     assert.equal((await call("/api/waitlist/challenge", undefined, origin)).status, 200);
-    assert.equal((await call("/api/protected", undefined, origin)).status, 403);
-    assert.equal((await call("/auth/login", {}, origin)).status, 403);
+    assert.equal((await call("/api/protected", undefined, origin)).status, 401);
+    assert.equal((await call("/auth/login", {}, origin)).status, 401);
   }
   for (const origin of ["http://localhost:5173", "https://frontend-web-nine-amber.vercel.app", "https://configured-preview.vercel.app"]) {
     const response = await call("/api/protected", undefined, origin);
@@ -142,15 +141,6 @@ test("production origins may use waitlist only; approved app origins retain auth
   }
   for (const origin of ["https://unconfigured.vercel.app", "http://localhost:9999", "https://readines.com.evil.test"]) assert.equal(allowedBrowserOrigins().has(origin), false);
   assert.equal((await fetch(`${await base()}/api/protected`)).status, 401);
-});
-test("public frontend origins support authentication when early-access-only mode is disabled", async () => {
-  delete process.env.PUBLIC_SITE_EARLY_ACCESS_ONLY;
-  for (const origin of ["https://readines.com", "https://www.readines.com"]) {
-    const response = await call("/auth/login", {}, origin);
-    assert.equal(response.status, 401);
-    assert.equal(response.headers.get("access-control-allow-origin"), origin);
-    assert.equal((await call("/api/protected", undefined, origin)).status, 401);
-  }
 });
 test("provider result reports acceptance and explicit rejection without swallowing outcome", async () => {
   assert.equal((await sendWaitlistEmail("person@example.com", "https://readines.com/")).status, "sent");

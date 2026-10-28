@@ -1,4 +1,3 @@
-import { productionDomainAccess } from "./middleware/domainAccess";
 import { digiLockerCallbackEntry } from "./middleware/digilockerCallbackEntry";
 import cors from "cors";
 import express, { type Router } from "express";
@@ -44,7 +43,6 @@ app.use((req, res, next) => {
 });
 app.use(helmet(securityHeadersOptions));
 app.use(cors(corsOptions));
-app.use(productionDomainAccess);
 app.use(digiLockerCallbackEntry);
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/") || req.path === "/packages" || req.path.startsWith("/packages/")) {

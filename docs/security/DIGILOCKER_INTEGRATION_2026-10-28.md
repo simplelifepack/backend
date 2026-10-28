@@ -51,13 +51,10 @@ Hosted verification confirms the new migration is applied and the Git-connected
 builds succeed. The designated preview host configuration was updated after the
 first build, so a fresh Git build is required to capture those values. Ten real
 PostgreSQL worker tests now pass, including invocation-timeout retries and
-invalid-progress handling. Temporary callback-routing rules are prepared but
-require explicit approval before they can forward OAuth codes to the test
-callback. No callback rule has been staged or published yet.
+invalid-progress handling. The approved temporary callback routing is now published and synthetic invalid-state callbacks were verified.
 
 The user subsequently requested authentication on `readines.com` for live
-DigiLocker testing. Early-access-only API blocking is now opt-in with
-`PUBLIC_SITE_EARLY_ACCESS_ONLY=1`; normal authenticated APIs remain protected.
+DigiLocker testing. The early-access API restriction and its environment flag have been deleted; normal authentication middleware still protects account APIs.
 Frontend domain redirects that forced application paths back to `/` are removed.
 The test backend returns OAuth users to `https://readines.com`. Two explicitly
 approved temporary project rules relay only GET root callbacks on the registered

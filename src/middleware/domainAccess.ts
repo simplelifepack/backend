@@ -1,5 +1,3 @@
-import type { RequestHandler } from "express";
-
 export const productionOrigins = ["https://readines.com", "https://www.readines.com"];
 export function allowedBrowserOrigins() {
   return new Set([
@@ -9,15 +7,3 @@ export function allowedBrowserOrigins() {
     ...["CORS_ORIGINS", "CORS_LOCALHOST_ORIGINS", "CORS_PREVIEW_ORIGINS"].flatMap(name => (process.env[name] ?? "").split(",").map(value => value.trim()).filter(Boolean)),
   ]);
 }
-
-// Origin is a browser policy signal, never an identity or authorization claim.
-// No-Origin server/mobile/webhook requests retain all existing auth requirements.
-export const productionDomainAccess: RequestHandler = (req, res, next) => {
-  const origin = req.get("origin");
-  const publicWaitlist = (req.method === "GET" && req.path === "/api/waitlist/challenge") ||
-    (req.method === "POST" && ["/api/waitlist/register", "/api/waitlist/unsubscribe"].includes(req.path));
-  if (process.env.PUBLIC_SITE_EARLY_ACCESS_ONLY === "1" && origin && productionOrigins.includes(origin) && !publicWaitlist) {
-    return res.status(403).json({ message: "Only early access registration is available on this domain." });
-  }
-  next();
-};
