@@ -14,8 +14,9 @@ export type Consent = { id: string; timestamp: string; version: string; purpose:
 export type Progress = { reference: string; phase: ImportPhase; documentId?: string; duplicate?: boolean; code?: string; message?: string };
 export type Payload = { verifier?: string; accessToken?: string; documents?: LockerDocument[]; consents?: Consent[]; progress?: Progress[] };
 export const binding = (session: Pick<DigiLockerConsentSession, "id" | "userId">) => ({ model: "DigiLockerConsentSession", recordId: session.id, ownerId: session.userId, field: "encryptedPayload" });
+const audit = (session: DigiLockerConsentSession): Payload => session.encryptedPayload ? decryptPrivateValue<Payload>(session.encryptedPayload, binding(session)) : {};
 export const read = (session: DigiLockerConsentSession): Payload => ({
-  ...(session.encryptedPayload ? decryptPrivateValue<Payload>(session.encryptedPayload, binding(session)) : {}),
+  ...audit(session),
   ...(session.encryptedCredentials ? decryptPrivateValue<Payload>(session.encryptedCredentials, { ...binding(session), field: "encryptedCredentials" }) : {}),
 });
 export const seal = (session: Pick<DigiLockerConsentSession, "id" | "userId"> & { expiresAt?: Date | null }, payload: Payload) => {
@@ -59,8 +60,7 @@ export function digilockerStatus() {
 }
 function assertConfigured() { if (!loadDigiLockerConfig().configured) throw new DigiLockerDisabledError(); }
 function statusResponse(session: DigiLockerConsentSession) {
-  const payload = read(session);
-  const progress = session.encryptedProgress ? decryptPrivateValue<Progress[]>(session.encryptedProgress, { ...binding(session), field: "encryptedProgress" }) : payload.progress ?? [];
+  const progress = session.encryptedProgress ? decryptPrivateValue<Progress[]>(session.encryptedProgress, { ...binding(session), field: "encryptedProgress" }) : audit(session).progress ?? [];
   return { id: session.id, status: session.status, expiresAt: session.expiresAt, progress };
 }
 async function owned(userId: string, id: string) {
@@ -166,7 +166,7 @@ export async function cancelDigiLockerSession(userId: string, id: string) {
 export async function listDigiLockerDocuments(userId: string, id: string) {
   const session = await expire(await owned(userId, id));
   if (!["AUTHENTICATED", "IMPORTING"].includes(session.status)) throw fail("DigiLocker consent is not complete or has expired.");
-  return { session: statusResponse(session), documents: read(session).documents ?? [] };
+  return { session: statusResponse(session), documents: audit(session).documents ?? [] };
 }
 export function validateSelection(payload: Payload, references: string[], version: string, consent: boolean) {
   if (!consent || version !== COPY_CONSENT_VERSION) throw fail("Explicit copy consent is required.", 400);

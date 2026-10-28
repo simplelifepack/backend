@@ -64,7 +64,7 @@ export const securityHeadersOptions: HelmetOptions = {
 
 export const corsOptions: CorsOptions = {
   credentials: true,
-  exposedHeaders: ["Content-Disposition", "Content-Length"],
+  exposedHeaders: ["Content-Disposition", "Content-Length", "Retry-After"],
   origin(origin, callback) {
     if (!origin) return callback(null, true);
 
