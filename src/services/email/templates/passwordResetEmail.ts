@@ -20,7 +20,7 @@ export function renderPasswordResetEmail({ resetUrl }: { resetUrl: string }): Em
       <td style="font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:30px;line-height:1.16;font-weight:700;color:${EMAIL_STYLE.ink};padding:0 0 12px 0;">Reset your password</td>
     </tr>
     <tr>
-      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 16px 0;">We received a request to reset the password for your Readiness account.</td>
+      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 16px 0;">We received a request to reset the password for your Readines account.</td>
     </tr>
     <tr>
       <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0;">This link expires in 30 minutes. If you did not request this, you can ignore this email.</td>
@@ -29,13 +29,13 @@ export function renderPasswordResetEmail({ resetUrl }: { resetUrl: string }): Em
       <td>${action}</td>
     </tr>
     <tr>
-      <td style="padding-top:2px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security message - Readiness</td>
+      <td style="padding-top:2px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security message - Readines</td>
     </tr>`);
 
   return {
-    subject: "Reset your Readiness password",
+    subject: "Reset your Readines password",
     html,
-    text: `Reset your Readiness password\n\nUse this link within 30 minutes:\n${resetUrl}\n\nIf you did not request this, you can ignore this email.`,
+    text: `Reset your Readines password\n\nUse this link within 30 minutes:\n${resetUrl}\n\nIf you did not request this, you can ignore this email.`,
   };
 }
 
@@ -46,7 +46,7 @@ export function renderPasswordResetOtpEmail({ otp }: { otp: string }): EmailRend
       <td style="font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:30px;line-height:1.16;font-weight:700;color:${EMAIL_STYLE.ink};padding:0 0 12px 0;">Reset your password</td>
     </tr>
     <tr>
-      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 16px 0;">Use this 6-digit code to reset the password for your Readiness account.</td>
+      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 16px 0;">Use this 6-digit code to reset the password for your Readines account.</td>
     </tr>
     <tr>
       <td style="padding:8px 0 20px 0;">
@@ -54,15 +54,15 @@ export function renderPasswordResetOtpEmail({ otp }: { otp: string }): EmailRend
       </td>
     </tr>
     <tr>
-      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0;">This code expires in 30 minutes. If you did not request this, contact support@readiness.com.</td>
+      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0;">This code expires in 30 minutes. If you did not request this, contact support@readines.info.</td>
     </tr>
     <tr>
-      <td style="padding-top:22px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security code - Readiness</td>
+      <td style="padding-top:22px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security code - Readines</td>
     </tr>`);
 
   return {
-    subject: "Your Readiness password reset code",
+    subject: "Your Readines password reset code",
     html,
-    text: `Your Readiness password reset code is ${otp}.\n\nThis code expires in 30 minutes. If you did not request this, contact support@readiness.com.`,
+    text: `Your Readines password reset code is ${otp}.\n\nThis code expires in 30 minutes. If you did not request this, contact support@readines.info.`,
   };
 }

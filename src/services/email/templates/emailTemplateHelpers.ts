@@ -4,20 +4,17 @@ export type EmailRenderResult = {
   text: string;
 };
 
+// Email clients need literal colors and inline styles; these mirror the web light theme.
 export const EMAIL_STYLE = {
-  paper: "#F3EBDA",
+  paper: "#F2F3F5",
   panel: "#FFFFFF",
-  panelSoft: "#FAF3E7",
-  border: "#E3D8C2",
-  borderDeep: "#D8C8AA",
-  ink: "#221E17",
-  body: "#4C443A",
-  muted: "#897E6D",
-  gold: "#A87C22",
-  goldFill: "#D8B25A",
-  goldSoft: "#F0E4C6",
-  emerald: "#1F9D66",
-  clay: "#B85C42",
+  panelSoft: "#F7F7FA",
+  border: "#E3E6EA",
+  borderDeep: "#D5D9E0",
+  ink: "#1B2431",
+  body: "#39424F",
+  muted: "#5E6674",
+  primary: "#633CA6",
 };
 
 export function escapeHtml(value: string) {
@@ -57,8 +54,8 @@ export function brandHeader() {
             <td style="vertical-align:middle;">
               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="width:36px;height:36px;border-radius:10px;background:${EMAIL_STYLE.goldFill};text-align:center;vertical-align:middle;color:#3A2E12;font-weight:800;font-size:13px;font-family:Arial,Helvetica,sans-serif;">LP</td>
-                  <td style="padding-left:11px;font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:17px;font-weight:700;color:${EMAIL_STYLE.ink};">Readiness</td>
+                  <td style="width:36px;vertical-align:middle;"><img src="https://readines.com/readiness-logo.png" width="36" height="36" alt="" style="display:block;border:0;width:36px;height:36px;"></td>
+                  <td style="padding-left:11px;font-family:Inter,Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:${EMAIL_STYLE.ink};">Readines</td>
                 </tr>
               </table>
             </td>
@@ -72,8 +69,8 @@ export function ctaButton(label: string, href: string) {
   return `
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:26px 0;">
       <tr>
-        <td style="border-radius:12px;background:${EMAIL_STYLE.goldFill};">
-          <a href="${appHref(href)}" style="display:inline-block;padding:13px 18px;border-radius:12px;color:#3A2E12;text-decoration:none;font-family:Inter,Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;">${escapeHtml(label)}</a>
+        <td style="border-radius:12px;background:${EMAIL_STYLE.primary};">
+          <a href="${appHref(href)}" style="display:inline-block;padding:13px 18px;border-radius:12px;color:#FFFFFF;text-decoration:none;font-family:Inter,Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;">${escapeHtml(label)}</a>
         </td>
       </tr>
     </table>`;
@@ -85,19 +82,20 @@ export function appAccessBlock(label: string, appUrl: string) {
 
 export function renderShell(content: string) {
   return `<!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Readiness</title>
+    <title>Readines</title>
+    <style>@media only screen and (max-width:480px){.email-content{padding:24px 18px !important;}}a{overflow-wrap:anywhere;}td{overflow-wrap:break-word;}</style>
   </head>
   <body style="margin:0;padding:0;background:${EMAIL_STYLE.paper};">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${EMAIL_STYLE.paper};">
       <tr>
         <td align="center" style="padding:28px 12px;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;border:1px solid ${EMAIL_STYLE.border};border-radius:24px;background:${EMAIL_STYLE.panel};box-shadow:0 18px 42px rgba(80,60,30,.12);overflow:hidden;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;border:1px solid ${EMAIL_STYLE.border};border-radius:24px;background:${EMAIL_STYLE.panel};overflow:hidden;">
             <tr>
-              <td style="background:${EMAIL_STYLE.panelSoft};padding:32px 28px;font-family:Inter,Arial,Helvetica,sans-serif;color:${EMAIL_STYLE.body};">
+              <td class="email-content" style="background:${EMAIL_STYLE.panel};padding:32px 28px;font-family:Inter,Arial,Helvetica,sans-serif;color:${EMAIL_STYLE.body};">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                   ${brandHeader()}
                   ${content}

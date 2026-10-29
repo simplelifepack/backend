@@ -108,13 +108,13 @@ function summaryLines(records: RecordWithAttachments[], type: HandoffType) {
 async function buildPackage(userId: string, type: HandoffType) {
   const records = await getRecords(userId);
   const files: ArchiveFile[] = [{
-    name: "Readiness-Wealth-Handoff/Wealth-Summary.pdf",
+    name: "Readines-Wealth-Handoff/Wealth-Summary.pdf",
     data: createSummaryPdf(summaryLines(records, type)),
   }];
 
   try {
   for (const record of records) {
-    const prefix = `Readiness-Wealth-Handoff/${folders[record.type]}/${sanitizeArchiveName(record.title)}-${record.id}`;
+    const prefix = `Readines-Wealth-Handoff/${folders[record.type]}/${sanitizeArchiveName(record.title)}-${record.id}`;
     files.push({
       name: `${prefix}/record.json`,
       data: Buffer.from(JSON.stringify({
@@ -140,7 +140,7 @@ async function buildPackage(userId: string, type: HandoffType) {
   }
 
   return {
-    fileName: `Readiness-Wealth-${type === "family" ? "Family" : "Emergency"}-Handoff.zip`,
+    fileName: `Readines-Wealth-${type === "family" ? "Family" : "Emergency"}-Handoff.zip`,
     zip: createStoredZip(files),
     counts: counts(records),
   };

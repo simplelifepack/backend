@@ -37,6 +37,7 @@ function run() {
     MAIL_FROM: "Readiness <support@readines.info>",
   } as NodeJS.ProcessEnv);
   assert.equal(configured.provider, "smtp");
+  assert.equal(configured.mailFrom, "Readines <support@readines.info>");
 
   const forgotPasswordStyle = loadEmailConfig({
     APP_ENV: "production",
@@ -51,7 +52,21 @@ function run() {
   } as NodeJS.ProcessEnv);
   assert.equal(forgotPasswordStyle.provider, "smtp");
   assert.equal(forgotPasswordStyle.smtpPass, "secret");
-  assert.equal(forgotPasswordStyle.mailFrom, "Readiness <support@readines.info>");
+  assert.equal(forgotPasswordStyle.mailFrom, "Readines <support@readines.info>");
+
+  for (const sender of [
+    ["LifePack AI Team <support@readiness.com>", "Readines Team <support@readiness.com>"],
+    ["Readiness <support@readines.info>", "Readines <support@readines.info>"],
+    ["support@readines.info", "Readines <support@readines.info>"],
+    ["Readines <support@readines.info>", "Readines <support@readines.info>"],
+  ]) {
+    const result = loadEmailConfig({
+      SMTP_HOST: "smtp.example.com", SMTP_PORT: "465", SMTP_SECURE: "true",
+      SMTP_USER: "support@readines.info", SMTP_PASS: "test-only", MAIL_FROM: sender[0],
+    });
+    assert.equal(result.provider, "smtp");
+    assert.equal(result.mailFrom, sender[1], "normalize display names without changing mailbox addresses");
+  }
 
   console.log("Email config tests passed.");
 }

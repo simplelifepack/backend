@@ -23,6 +23,7 @@
     "test:auth-email": "tsx -r dotenv/config src/services/authEmail.test.ts",
     "test:auth-cookie": "tsx src/auth/refreshCookie.test.ts",
     "test:auth-session": "tsx src/services/authSession.test.ts",
+    "test:email-branding": "node --import tsx src/services/email/templates/emailBranding.test.ts",
     "test:email-config": "tsx src/config/email.test.ts",
     "test:gmail": "tsx src/services/gmail/gmail.test.ts",
     "test:drive": "tsx src/services/drive/drive.test.ts",

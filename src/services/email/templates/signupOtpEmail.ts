@@ -7,7 +7,7 @@ export function renderSignupOtpEmail({ otp }: { otp: string }): EmailRenderResul
       <td style="font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:30px;line-height:1.16;font-weight:700;color:${EMAIL_STYLE.ink};padding:0 0 12px 0;">Verify your email</td>
     </tr>
     <tr>
-      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 16px 0;">Use this 6-digit code to finish creating your Readiness account.</td>
+      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 16px 0;">Use this 6-digit code to finish creating your Readines account.</td>
     </tr>
     <tr>
       <td style="padding:8px 0 20px 0;">
@@ -18,12 +18,12 @@ export function renderSignupOtpEmail({ otp }: { otp: string }): EmailRenderResul
       <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0;">This code expires in 30 minutes. If you did not request this, you can ignore this email.</td>
     </tr>
     <tr>
-      <td style="padding-top:22px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Signup code - Readiness</td>
+      <td style="padding-top:22px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Signup code - Readines</td>
     </tr>`);
 
   return {
-    subject: "Your Readiness signup code",
+    subject: "Your Readines signup code",
     html,
-    text: `Your Readiness signup code is ${otp}.\n\nThis code expires in 30 minutes. If you did not request this, you can ignore this email.`,
+    text: `Your Readines signup code is ${otp}.\n\nThis code expires in 30 minutes. If you did not request this, you can ignore this email.`,
   };
 }

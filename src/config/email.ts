@@ -42,18 +42,22 @@ function resolveSmtpPass(env: NodeJS.ProcessEnv) {
   return env.SMTP_PASS?.trim() || env.SMTP_APP_PASSWORD?.trim() || "";
 }
 
+function normalizeSenderName(name: string) {
+  return name.replace(/life[-_ ]?pack(?: ai)?|readiness|readines/ig, "Readines");
+}
+
 function resolveMailFrom(env: NodeJS.ProcessEnv) {
   const mailFrom = env.MAIL_FROM?.trim();
   if (mailFrom) {
     // Compatibility: rebrand display names only; external mailbox addresses remain unchanged.
     const boundary = mailFrom.indexOf("<");
-    return boundary < 0 ? mailFrom : mailFrom.slice(0, boundary).replace(/life[-_ ]?pack(?: ai)?/ig, "Readiness") + mailFrom.slice(boundary);
+    return boundary < 0 ? `Readines <${mailFrom}>` : normalizeSenderName(mailFrom.slice(0, boundary)) + mailFrom.slice(boundary);
   }
 
   const fromAddress = env.EMAIL_FROM_ADDRESS?.trim();
   if (!fromAddress) return "";
 
-  const fromName = env.EMAIL_FROM_NAME?.trim().replace(/life[-_ ]?pack(?: ai)?/ig, "Readiness");
+  const fromName = normalizeSenderName(env.EMAIL_FROM_NAME?.trim() || "Readines");
   return fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 }
 

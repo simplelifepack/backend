@@ -8,11 +8,11 @@ export type LoginAlertEmailInput = {
 };
 
 export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderResult {
-  const subject = "New login to your Readiness account";
+  const subject = "New login to your Readines account";
   const text = [
     "New login detected",
     "",
-    "A new login to your Readiness account was recorded.",
+    "A new login to your Readines account was recorded.",
     "",
     `Time: ${input.loginTime}`,
     `Device: ${input.deviceSummary}`,
@@ -21,9 +21,9 @@ export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderR
     "If this was you, no action is required.",
     "If this was not you, change your password and review active sessions.",
     "",
-    `Open Readiness: ${input.appUrl}`,
+    `Open Readines: ${input.appUrl}`,
     "",
-    "This security message was sent by Readiness.",
+    "This security message was sent by Readines.",
   ].join("\n");
 
   const rows = [
@@ -37,10 +37,10 @@ export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderR
       <td style="font-family:'Space Grotesk',Inter,Arial,Helvetica,sans-serif;font-size:30px;line-height:1.16;font-weight:700;color:${EMAIL_STYLE.ink};padding:0 0 12px 0;">New login detected</td>
     </tr>
     <tr>
-      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 20px 0;">A new login to your Readiness account was recorded.</td>
+      <td style="font-size:15px;line-height:1.7;color:${EMAIL_STYLE.body};padding:0 0 20px 0;">A new login to your Readines account was recorded.</td>
     </tr>
     <tr>
-      <td style="border:1px solid ${EMAIL_STYLE.gold}33;border-radius:16px;background:${EMAIL_STYLE.goldSoft};padding:4px 18px;">
+      <td style="border:1px solid ${EMAIL_STYLE.border};border-radius:16px;background:${EMAIL_STYLE.panelSoft};padding:4px 18px;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
           ${rows.map(([label, value]) => `
             <tr>
@@ -57,10 +57,10 @@ export function renderLoginAlertEmail(input: LoginAlertEmailInput): EmailRenderR
       <td style="font-size:14px;line-height:1.7;color:${EMAIL_STYLE.body};padding:6px 0 0 0;">If this was not you, change your password and review active sessions.</td>
     </tr>
     <tr>
-      <td>${appAccessBlock("Open Readiness", input.appUrl)}</td>
+      <td>${appAccessBlock("Open Readines", input.appUrl)}</td>
     </tr>
     <tr>
-      <td style="padding-top:2px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security notice - Readiness</td>
+      <td style="padding-top:2px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;letter-spacing:1.4px;text-transform:uppercase;color:${EMAIL_STYLE.muted};">Security notice - Readines</td>
     </tr>`);
 
   return { subject, html, text };
