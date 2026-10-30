@@ -194,7 +194,7 @@ export function toDocumentResponseDto(document: Document & { files?: EncryptedDo
     mimeType: decrypted.mimeType,
     size: decrypted.size,
     documentType: decrypted.documentType,
-    normalizedType: decrypted.normalizedType,
+    normalizedType: metadata.documentType,
     category: decrypted.category,
     analysisSource: decrypted.analysisSource,
     confidence: decrypted.confidence,

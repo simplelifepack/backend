@@ -44,3 +44,9 @@ test("unlisted types retain exact matching without acquiring unrelated identity 
   const result = toDocumentResponseDto(document({ documentType: "custom_farm_certificate", normalizedType: "custom_farm_certificate" }));
   assert.deepEqual(result.capabilities, ["custom_farm_certificate"]);
 });
+
+test("legacy aliases expose canonical type codes for exact package matching on every client", () => {
+  for (const [alias, canonical] of [["driver_license", "driving_licence"], ["pan_verification_record", "pan"], ["FD Certificate", "fixed_deposit"], ["Tax Receipt", "property_tax_receipt"]]) {
+    assert.equal(toDocumentResponseDto(document({ normalizedType: alias, documentType: alias })).normalizedType, canonical);
+  }
+});
