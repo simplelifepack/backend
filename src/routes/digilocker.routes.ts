@@ -31,7 +31,7 @@ router.use(requireAuth);
 const userId = (req: unknown) => (req as AuthenticatedRequest).authUser.id;
 router.get("/status", (_req, res) => res.json(digilockerStatus()));
 router.post("/sessions", uploadLimiter, async (req, res, next) => {
-  try { const payload = z.object({ redirectUrl: z.string().optional() }).strict().parse(req.body ?? {}); res.status(201).json(await startDigiLockerSession({ userId: userId(req), ...payload })); }
+  try { const payload = z.object({ redirectUrl: z.string().optional(), returnFormat: z.literal("session-v1").optional() }).strict().parse(req.body ?? {}); res.status(201).json(await startDigiLockerSession({ userId: userId(req), ...payload })); }
   catch (error) { next(error); }
 });
 router.get("/sessions/:id/status", async (req, res, next) => {

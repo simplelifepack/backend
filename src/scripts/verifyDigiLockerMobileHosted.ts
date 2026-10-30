@@ -46,7 +46,7 @@ async function main() {
       const response = await request(prefix + "/sessions", 0, { redirectUrl });
       check("non-allow-listed return rejected: " + redirectUrl, response.status === 400);
     }
-    const mobile = await start({ redirectUrl: "readiness://digilocker" });
+    const mobile = await start({ redirectUrl: "readiness://digilocker", returnFormat: "session-v1" });
     check("mobile session creation succeeds", mobile.status === "PENDING");
     const authorization = new URL(mobile.authorizationUrl);
     check("mobile retains registered backend callback and PKCE", authorization.searchParams.get("redirect_uri") === config.redirectUri && authorization.searchParams.get("code_challenge_method") === "S256");
@@ -68,7 +68,7 @@ async function main() {
     const entryLocation = entry.headers.get("location") ?? "";
     check("registered root callback forwards to fixed backend handler", entry.status === 303 && entryLocation.startsWith(prefix + "/callback?"));
     const returned = await request(entryLocation);
-    check("state-bound denial returns securely to mobile", returned.status === 303 && returned.headers.get("location") === `readiness://digilocker?digilocker=${mobile.id}&result=CONSENT_DENIED`);
+    check("state-bound denial returns securely to mobile", returned.status === 303 && returned.headers.get("location") === `readiness://digilocker?error=consent_denied`);
     const denied = await request(`${prefix}/sessions/${mobile.id}/status`);
     check("mobile retrieves denied session from production", denied.status === 200 && (await denied.json()).status === "CONSENT_DENIED");
     const replay = await request(entryLocation);
@@ -77,12 +77,12 @@ async function main() {
     const webState = new URL(web.authorizationUrl).searchParams.get("state")!;
     const webCallback = await request(`${prefix}/callback?${new URLSearchParams({ state: webState, error: "access_denied" })}`);
     check("existing web return fragment preserved", webCallback.status === 303 && webCallback.headers.get("location") === `${new URL("/documents", process.env.FRONTEND_URL).toString()}#digilocker=${web.id}&result=CONSENT_DENIED`);
-    const cancelled = await start({ redirectUrl: "readiness://digilocker" });
+    const cancelled = await start({ redirectUrl: "readiness://digilocker", returnFormat: "session-v1" });
     const cancellation = await request(`${prefix}/sessions/${cancelled.id}/cancel`, 0, {});
     check("mobile disconnect succeeds", cancellation.status === 200 && (await cancellation.json()).status === "CANCELLED");
     const raw = await withPrivateUser(ids[0], () => prisma.digiLockerConsentSession.findFirstOrThrow({ where: { id: cancelled.id, userId: ids[0] } }));
     check("disconnect clears pending PKCE credentials", raw.encryptedCredentials === null);
-    const expired = await start({ redirectUrl: "readiness://digilocker" });
+    const expired = await start({ redirectUrl: "readiness://digilocker", returnFormat: "session-v1" });
     await withPrivateUser(ids[0], () => prisma.digiLockerConsentSession.update({ where: { id: expired.id }, data: { expiresAt: new Date(Date.now() - 60_000) } }));
     const expiry = await request(`${prefix}/sessions/${expired.id}/status`);
     check("expired mobile session becomes EXPIRED", expiry.status === 200 && (await expiry.json()).status === "EXPIRED");

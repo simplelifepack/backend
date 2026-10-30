@@ -76,6 +76,9 @@ export function buildErrorResponse(input: {
     "TRUST_ACCESS_DENIED",
     "TRUST_MEMBER_REVOKED",
     "AI_PROCESSING_DISABLED",
+    "DIGILOCKER_SESSION_NOT_FOUND",
+    "DIGILOCKER_INVALID_REQUEST",
+    "DIGILOCKER_SESSION_CONFLICT",
     "DIGILOCKER_NOT_CONFIGURED",
     "DIGILOCKER_CONSENT_INCOMPLETE",
     "DIGILOCKER_PROVIDER_ERROR",
@@ -110,7 +113,7 @@ export function buildErrorResponse(input: {
 
 export function errorHandler(error: unknown, req: Request, res: Response, _next: NextFunction) {
   if (res.headersSent || res.destroyed) { res.destroy(); return; }
-  if (statusCodeForError(error) === 503) res.setHeader("Retry-After", "2");
+  if ([429, 503].includes(statusCodeForError(error)) && !res.getHeader("Retry-After")) res.setHeader("Retry-After", "2");
   const errorId = crypto.randomUUID();
   const response = buildErrorResponse({
     error,

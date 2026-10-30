@@ -138,22 +138,7 @@ async function suite() {
     global.fetch = async () => new Response("12345");
     await assert.rejects(providerRequest("/test", {}, 4));
   });
-  await test("return targets are exact, state-bound, and do not change the registered provider callback", async () => {
-    const { digiLockerReturnTarget, digiLockerReturnUrl } = await import("./returnTarget");
-    const web = digiLockerReturnTarget();
-    for (const redirectUrl of ["https://evil.example", "readiness://documents", "readiness://digilocker/", "readiness://digilocker?next=evil", "readiness://digilocker#x", "READINESS://digilocker", "readiness://user@digilocker", `${web}?next=evil`]) {
-      await assert.rejects(service.startDigiLockerSession({ userId: "owner-a", redirectUrl }), { statusCode: 400 });
-    }
-    const mobile = await service.startDigiLockerSession({ userId: "owner-a", redirectUrl: "readiness://digilocker" });
-    assert.equal(records.get(mobile.id)!.redirectUrl, "readiness://digilocker");
-    const authorization = new URL(mobile.authorizationUrl);
-    assert.equal(authorization.searchParams.get("redirect_uri"), process.env.DIGILOCKER_REDIRECT_URI);
-    const result = await service.completeDigiLockerAuthorization({ state: authorization.searchParams.get("state")!, denied: true });
-    assert.equal(digiLockerReturnUrl(result), `readiness://digilocker?digilocker=${mobile.id}&result=CONSENT_DENIED`);
-    assert.equal(digiLockerReturnUrl({ id: "web", status: "AUTHENTICATED", redirectUrl: web }), `${web}#digilocker=web&result=AUTHENTICATED`);
-    assert.throws(() => digiLockerReturnUrl({ id: "bad", status: "FAILED", redirectUrl: "https://evil.example" }));
-  });
-  const start = () => service.startDigiLockerSession({ userId: "owner-a" });
+  const start = () => service.startDigiLockerSession({ userId: "owner-a", redirectUrl: "readiness://digilocker", returnFormat: "session-v1" });
   const callbackState = (session: any) => new URL(session.authorizationUrl).searchParams.get("state")!;
   await test("invalid, expired and replayed OAuth state is rejected before token exchange", async () => {
     global.fetch = async () => { throw new Error("must not exchange"); };
@@ -161,7 +146,9 @@ async function suite() {
     const expired = await start(); states.get(createHash("sha256").update(callbackState(expired)).digest("hex"))!.expiresAt = new Date(0);
     await assert.rejects(service.completeDigiLockerAuthorization({ state: callbackState(expired), code: "code" }));
     const denied = await start();
-    assert.equal((await service.completeDigiLockerAuthorization({ state: callbackState(denied), denied: true })).status, "CONSENT_DENIED");
+    const deniedResult = await service.completeDigiLockerAuthorization({ state: callbackState(denied), denied: true });
+    assert.equal(deniedResult.status, "CONSENT_DENIED");
+    assert.equal(deniedResult.returnFormat, "session-v1");
     await assert.rejects(service.completeDigiLockerAuthorization({ state: callbackState(denied), code: "code" }));
   });
   await test("authorization exchanges verifier on backend, encrypts credentials, and exposes only granted provider metadata", async () => {

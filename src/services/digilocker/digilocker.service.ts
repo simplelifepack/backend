@@ -14,7 +14,7 @@ export const COPY_CONSENT_VERSION = "digilocker-copy-v1";
 export const COPY_CONSENT_PURPOSE = "Copy selected DigiLocker documents to encrypted ReadiNes storage and process using the existing AI preference.";
 export type Consent = { id: string; timestamp: string; version: string; purpose: string; references: string[] };
 export type Progress = { reference: string; phase: ImportPhase; documentId?: string; duplicate?: boolean; code?: string; message?: string };
-export type Payload = { verifier?: string; accessToken?: string; documents?: LockerDocument[]; consents?: Consent[]; progress?: Progress[] };
+export type Payload = { returnFormat?: "session-v1"; verifier?: string; accessToken?: string; documents?: LockerDocument[]; consents?: Consent[]; progress?: Progress[] };
 export const binding = (session: Pick<DigiLockerConsentSession, "id" | "userId">) => ({ model: "DigiLockerConsentSession", recordId: session.id, ownerId: session.userId, field: "encryptedPayload" });
 const audit = (session: DigiLockerConsentSession): Payload => session.encryptedPayload ? decryptPrivateValue<Payload>(session.encryptedPayload, binding(session)) : {};
 export const read = (session: DigiLockerConsentSession): Payload => ({
@@ -48,7 +48,11 @@ export async function cleanupExpiredDigiLockerCredentials() {
     throw error;
   }
 }
-const fail = (message: string, statusCode = 409) => Object.assign(new Error(message), { statusCode });
+const fail = (message: string, statusCode = 409) => Object.assign(new Error(message), {
+  statusCode,
+  code: statusCode === 404 ? "DIGILOCKER_SESSION_NOT_FOUND"
+    : statusCode === 400 ? "DIGILOCKER_INVALID_REQUEST" : "DIGILOCKER_SESSION_CONFLICT",
+});
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 export class DigiLockerDisabledError extends Error {
   statusCode = 503;
@@ -92,7 +96,7 @@ export async function revokeSessionCredentials(session: DigiLockerConsentSession
   catch { if (session.expiresAt && session.expiresAt > new Date()) return; }
   await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, encryptedCredentials: session.encryptedCredentials }, data: { encryptedCredentials: null } });
 }
-export async function startDigiLockerSession(input: { userId: string; redirectUrl?: string }) {
+export async function startDigiLockerSession(input: { userId: string; redirectUrl?: string; returnFormat?: "session-v1" }) {
   const redirectUrl = digiLockerReturnTarget(input.redirectUrl);
   assertConfigured();
   const state = randomBytes(32).toString("base64url");
@@ -104,7 +108,7 @@ export async function startDigiLockerSession(input: { userId: string; redirectUr
     await tx.externalOAuthState.create({ data: { stateHash: hash(state), userId: input.userId, provider: `digilocker:${id}`, expiresAt } });
     return tx.digiLockerConsentSession.create({ data: { id, userId: input.userId, verificationId: id,
       environment: "production", status: "PENDING", redirectUrl, requestedDocuments: [],
-      expiresAt, ...seal({ id, userId: input.userId }, { verifier }) } });
+      expiresAt, ...seal({ id, userId: input.userId }, { verifier, returnFormat: input.returnFormat }) } });
   });
   return { ...statusResponse(session), authorizationUrl: authorizationUrl(state, createHash("sha256").update(verifier).digest("base64url")) };
 }
@@ -126,7 +130,7 @@ export async function completeDigiLockerAuthorization(input: { state: string; co
     try {
       if (input.denied || !input.code) {
         await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: "PENDING", cancelledAt: null }, data: { status: "CONSENT_DENIED", ...seal(session, {}) } });
-        return { id: session.id, status: "CONSENT_DENIED", redirectUrl: session.redirectUrl };
+        return { id: session.id, status: "CONSENT_DENIED", redirectUrl: session.redirectUrl, returnFormat: payload.returnFormat };
       }
       if (!payload.verifier) throw fail("DigiLocker authorization expired.");
       const result = await exchangeCode(input.code, payload.verifier);
@@ -138,7 +142,7 @@ export async function completeDigiLockerAuthorization(input: { state: string; co
         ...seal({ ...session, expiresAt: tokenExpiresAt }, { accessToken: token, documents, consents: [], progress: [] }),
       } });
       if (updated.count !== 1) throw fail("DigiLocker connection was cancelled.");
-      return { id: session.id, status: "AUTHENTICATED", redirectUrl: session.redirectUrl };
+      return { id: session.id, status: "AUTHENTICATED", redirectUrl: session.redirectUrl, returnFormat: payload.returnFormat };
     } catch {
       let revoked = true;
       if (token) try { await revokeToken(token); } catch { revoked = false; }
@@ -149,7 +153,7 @@ export async function completeDigiLockerAuthorization(input: { state: string; co
         await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: { in: ["FAILED", "CANCELLED", "EXPIRED"] }, encryptedCredentials: null },
           data: { expiresAt: tokenExpiresAt ?? session.expiresAt, encryptedCredentials: seal({ ...session, expiresAt: tokenExpiresAt ?? session.expiresAt }, { accessToken: token }).encryptedCredentials } });
       }
-      return { id: session.id, status: "FAILED", redirectUrl: session.redirectUrl };
+      return { id: session.id, status: "FAILED", redirectUrl: session.redirectUrl, returnFormat: payload.returnFormat };
     }
   });
 }

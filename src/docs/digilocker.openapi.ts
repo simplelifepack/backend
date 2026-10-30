@@ -8,12 +8,12 @@ const object = (properties: Record<string, Schema>, required: string[] = [], str
 const array = (items: Schema) => ({ type: "array", items });
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 const response = (description: string, schema?: Schema, example?: unknown) => ({ description, ...(schema ? { content: { "application/json": { schema, ...(example ? { example } : {}) } } } : {}) });
-const errors = (...codes: number[]) => Object.fromEntries(codes.map(code => [code, response(`${code} error`, ref("ErrorResponse"))]));
+const errors = (...codes: number[]) => Object.fromEntries(codes.map(code => [code, { ...response(`${code} error`, ref("ErrorResponse")), ...([429, 503].includes(code) ? { headers: { "Retry-After": { description: "Seconds before retrying. Rate-limit responses use the remaining window; busy responses use 2 seconds.", schema: { type: "integer", minimum: 1 } } } } : {}) }]));
 const body = (schema: Schema, example?: unknown) => ({ required: true, content: { "application/json": { schema, ...(example ? { example } : {}) } } });
 const param = (name: string) => ({ name, in: "path", required: true, schema: { type: "string", minLength: 1 } });
 const secured = [{ bearerAuth: [] as string[] }];
 const lockerDocument = object({ reference: string, name: string, type: string, issuer: nullable(string), issueDate: nullable(string), modifiedAt: nullable(string), mimeType: string, available: { type: "boolean" }, reason: nullable(string) });
-const session = object({ id: string, status: string, expiresAt: nullable(dateTime), progress: array(object({ reference: string, phase: { ...string, enum: ["Importing", "Encrypting", "Processing with AI", "Completed", "Failed"] }, documentId: string, duplicate: { type: "boolean" }, message: string })) });
+const session = object({ id: string, status: { ...string, enum: ["PENDING", "AUTHENTICATED", "IMPORTING", "CONSENT_DENIED", "FAILED", "CANCELLED", "EXPIRED"] }, expiresAt: nullable(dateTime), progress: array(object({ reference: string, phase: { ...string, enum: ["Importing", "Encrypting", "Processing with AI", "Completed", "Failed"] }, documentId: string, duplicate: { type: "boolean" }, message: string, code: string })) });
 const sessionPath = "/api/integrations/digilocker/sessions/{id}";
 
 export const digiLockerOperations: Operation[] = [
@@ -24,12 +24,12 @@ export const digiLockerOperations: Operation[] = [
   },
   {
     method: "post", path: "/api/integrations/digilocker/sessions", tags: ["DigiLocker"], operationId: "startDigilockerSession", summary: "Start direct DigiLocker authorization with PKCE", security: secured,
-    description: "Returns a backend-generated authorization URL. No document bytes are fetched. Requires configured production requester credentials.", requestBody: { ...body(object({ redirectUrl: { ...string, description: "Optional exact return target: readiness://digilocker or the configured frontend Documents URL. Omit for web." } }, [], true)), required: false },
+    description: "Pending authorization expires after 10 minutes. Authenticated access is limited to 30 minutes or earlier provider expiry. Returns a backend-generated authorization URL. No document bytes are fetched. Requires configured production requester credentials.", requestBody: { ...body(object({ redirectUrl: { ...string, description: "Optional exact return target: readiness://digilocker or the configured frontend Documents URL. Omit for web." }, returnFormat: { ...string, enum: ["session-v1"], description: "Opt in to session/error native returns. Omit to preserve older native clients." } }, [], true)), required: false },
     responses: { 201: response("Created session", object({ id: string, status: string, expiresAt: dateTime, progress: array({}), authorizationUrl: { ...string, format: "uri" } })), ...errors(400, 401, 403, 429, 503) },
   },
   {
     method: "get", path: "/api/integrations/digilocker/callback", tags: ["DigiLocker"], operationId: "completeDigilockerAuthorization", summary: "Complete DigiLocker authorization", security: [],
-    description: "Validates and consumes one-time state, exchanges the authorization code server-side with PKCE, and lists provider-authorized issued metadata. Redirects to the state-bound allow-listed mobile or web return target. Never returns tokens or provider error descriptions.",
+    description: "Validates and consumes one-time state, exchanges the authorization code server-side with PKCE, and lists provider-authorized issued metadata. Redirects to the state-bound allow-listed target: readiness://digilocker?session=<id> on success or ?error=consent_denied|authorization_failed|session_expired|cancelled on failure. Invalid or replayed state uses a safe web error because no mobile target can be trusted. Never returns tokens or provider error descriptions.",
     parameters: [{ name: "state", in: "query", required: true, schema: string }, { name: "code", in: "query", schema: string }, { name: "error", in: "query", schema: string }],
     responses: { 303: { description: "Redirect to Documents with session reference or generic error in fragment", headers: { Location: { schema: string } } } },
   },
@@ -48,7 +48,7 @@ export const digiLockerOperations: Operation[] = [
   },
   {
     method: "post", path: `${sessionPath}/import`, tags: ["DigiLocker"], operationId: "importDigilockerDocuments", summary: "Copy selected documents with explicit consent", security: secured, parameters: [param("id")],
-    description: "Records encrypted consent before fetching selected files. Applies normal validation, encryption, storage allowance, AI preference and usage accounting. Poll session status for per-document progress. Partial successes persist; retry failed references without duplicating successful copies.",
+    description: "Records encrypted consent before fetching selected files. Accepts 1–50 distinct references, at most 10 MiB per file. Applies validation, encryption, storage allowance and account AI preference without consuming package-search allowance. Worker attempts are bounded to 240 seconds; total completion time depends on queue, retries and session expiry. Poll session status for per-document progress. Partial successes persist; retry failed references without duplicating successful copies.",
     requestBody: body(object({ references: { ...array({ ...string, minLength: 1, maxLength: 1024 }), minItems: 1, maxItems: 50, uniqueItems: true }, consent: { type: "boolean", enum: [true] }, consentVersion: { ...string, enum: ["digilocker-copy-v1"] } }, ["references", "consent", "consentVersion"], true)),
     responses: { 202: response("Queued import", session), ...errors(400, 401, 403, 404, 409, 429, 503) },
   },

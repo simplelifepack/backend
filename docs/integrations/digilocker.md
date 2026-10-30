@@ -1,141 +1,94 @@
-# DigiLocker document import — local delivery report
+# DigiLocker integration contract
 
-Implemented for **direct DigiLocker / API Setu requester credentials**, confirmed by the user. No deployment, production database changes, real authorization, or real document download was performed.
+Current source contract, 30 October 2026. Source implementation and deployment are separate: the latest contract changes below are local until explicitly released. Historical runtime evidence is recorded in the mobile QA report.
 
-## Flow and architecture
+## Environment and registration
 
-Documents now has a DigiLocker button immediately after Upload. The existing design-system Button, Checkbox, modal, Card, Text, Row, Stack and ScrollRegion handle typography, theme and responsive layout. No new CSS classes, colors, spacing values or fonts were introduced.
+The direct requester integration supports production only. `DIGILOCKER_ENVIRONMENT=production`, client ID, client secret and the exact registered HTTPS `DIGILOCKER_REDIRECT_URI` are required; hosted operation also requires the scheduler secret. Sandbox fails closed. No sandbox/test credentials are bundled or provisioned.
 
-The dialog explains metadata access before redirecting to the official authorization page. The backend creates a random single-use OAuth state and S256 PKCE verifier, exchanges the code server-side, and lists issued-document metadata returned by the provider. Requested types are never synthesized into available documents. Denial, interrupted authorization, expired state, replay, cancellation, and failed exchange are handled without returning provider descriptions or credentials.
+The provider callback stays on the backend domain. The backend redirects to the app as a second hop; the native scheme must not replace the registered provider callback. The existing registration has been exercised by real iOS OAuth. Provider portal settings were not independently inspected.
 
-Users select documents, optionally select all available documents (up to 50 per batch), and see **Copy documents to ReadiNes?** with the requested copy-consent text. Only **Allow & Import** invokes import. The backend independently requires the current consent version and explicit true consent, verifies every reference against the owned authorized session, and saves an encrypted audit before downloading any file.
+## Mobile return and security
 
-Imports reuse `encryptDocumentOnBackend`, `validateDecryptedDocument`, `createEncryptedTemporaryUpload`, `saveEncryptedPermanentFile`, `withIsolatedPlaintextFile` and `analyzeImportedDocument`. They create normal Document and DocumentFile records with `sourceProvider=DIGILOCKER`. Provider reference, issuer, import timestamp, consent reference and analysis outcome are encrypted in normal document metadata; existing private sourceMessageId stores the external reference. No parallel extraction/storage system or PDF fabricated from API fields was added.
+Start mobile authorization with `POST /api/integrations/digilocker/sessions` and body `{"redirectUrl":"readiness://digilocker","returnFormat":"session-v1"}`. Web sends `{}`. No `client`, mobile session type or arbitrary `returnTo` is needed.
 
-The import uses normal 10 MiB file validation and malware-scan configuration, account storage limits under the account lock, duplicate checks for both source reference and user-scoped content hash, and the existing original-file AI analyzer. Disabled AI does not run. Enabled AI is charged through existing account usage immediately before analyzer invocation; exhausted allowance or unavailable AI preserves the encrypted document for manual review. No additional document-analysis provider is introduced.
+Only the exact `readiness://digilocker` and configured frontend `/documents` URL are accepted. Extra paths, queries, fragments, credentials, alternate casing and origins are rejected. The target is stored in an owner-bound session, revalidated, and selected only after consuming one-time OAuth state. Callback input cannot override it.
 
-Each document has Importing, Encrypting, Processing with AI (only when enabled), Completed or Failed progress. Partial successes remain saved. Retries skip completed references and deduplicate committed files, including across a replacement authorization session. Concurrent import requests on the same session are rejected; account locking serializes final duplicate and quota checks across sessions. Plaintext buffers are cleared and isolated plaintext paths are removed by the existing helper. Encrypted temporary files and rows are removed in failure and success paths; uncommitted permanent objects are removed on persistence failure.
+- Success: `readiness://digilocker?session=<UUID>`.
+- Failure: `readiness://digilocker?error=<code>`, with `consent_denied`, `authorization_failed`, `session_expired` or `cancelled`.
+- Invalid, expired or replayed OAuth state goes to the fixed web `/documents#digilocker_error=invalid_state` error. There is no trusted mobile destination in that case; callback-supplied targets are never trusted.
+- Web keeps `/documents#digilocker=<UUID>&result=<status>`.
 
-## Backend configuration
+Mobile accepts the new return format and the earlier `?digilocker=<UUID>&result=<status>` format. Error-only returns reopen the account's locally stored pending session and read its authenticated API status. Query values are navigation hints, never proof of authorization. Success UUIDs must match the account-scoped pending connection. Tokens and provider descriptions never enter return links.
 
-Set these in the backend's local environment, never in Vite variables or source control:
+Compatibility: `returnFormat:"session-v1"` explicitly opts a session into session/error returns. Omission retains the earlier digilocker/result format, including already pending sessions. The choice is stored in the encrypted session payload and cannot be overridden by callback input. Backend deployment does not require simultaneous app release.
 
-```dotenv
-DIGILOCKER_CLIENT_ID=<direct requester client ID>
-DIGILOCKER_CLIENT_SECRET=<direct requester client secret>
-DIGILOCKER_REDIRECT_URI=http://localhost:4000/api/integrations/digilocker/callback
-DIGILOCKER_ENVIRONMENT=production
-FRONTEND_URL=http://localhost:5173
-```
+## Authentication and response shapes
 
-Register the **exact** `DIGILOCKER_REDIRECT_URI` in the direct provider console. It must point to the backend callback, not the frontend. For a hosted test callback, use HTTPS and the same exact registered URL. The final frontend redirect is fixed by backend configuration; clients cannot supply redirect destinations. Callback status/session references use a URL fragment and the frontend removes that fragment after reading it.
+All six endpoints below require the normal bearer token and owner context. Responses are uncached (`Cache-Control: no-store`). Unknown IDs and IDs owned by someone else both return 404.
 
-The existing private-data keyring, document encryption keyring, storage settings and AI configuration remain required for the corresponding existing pipelines. No new AI API credentials were provisioned or exercised. `configured=true` means the required fields are present and valid in shape; it does not certify that the credentials are accepted or have the required requester permissions.
+Base path: `/api/integrations/digilocker`.
 
-Only the verified production direct-provider contract is enabled. Setting `sandbox` or another environment fails closed; intermediary credentials and unverified sandbox endpoints are not accepted automatically.
-
-## APIs
-
-All paths below are under `/api/integrations/digilocker`:
-
-| Method | Path | Purpose |
+| Method/path | Request | Success response |
 | --- | --- | --- |
-| GET | `/status` | Safe configuration status; authenticated |
-| POST | `/sessions` | Create owned OAuth state/session and authorization URL; empty object body |
-| GET | `/callback` | Public OAuth callback; single-use state is mandatory |
-| GET | `/sessions/:id/status` | Owned session status and per-document progress |
-| GET | `/sessions/:id/documents` | Provider-returned metadata for the owned authorized session |
-| POST | `/sessions/:id/import` | Explicit consent plus selected references; partial-success result |
-| POST | `/sessions/:id/cancel` | Revoke token where possible, remove credentials and close session |
+| `GET /status` | None | 200 `{configured, environment, provider:"direct", consentVersion:"digilocker-copy-v1", message:string|null}` |
+| `POST /sessions` | `{}` or `{redirectUrl:"readiness://digilocker"}` | 201 session plus `authorizationUrl` |
+| `GET /sessions/{id}/status` | None | 200 session |
+| `GET /sessions/{id}/documents` | None | 200 `{session, documents: LockerDocument[]}` |
+| `POST /sessions/{id}/cancel` | No body required | 200 session |
+| `POST /sessions/{id}/import` | `{references:string[], consent:true, consentVersion:"digilocker-copy-v1"}` | 202 session; poll status |
 
-Import body:
+Session: `{id:string, status:string, expiresAt:ISO8601|null, progress:Progress[]}`.
 
-```json
-{
-  "references": ["a-reference-returned-by-the-provider"],
-  "consent": true,
-  "consentVersion": "digilocker-copy-v1"
-}
-```
+Session status values: `PENDING`, `AUTHENTICATED`, `IMPORTING`, `CONSENT_DENIED`, `FAILED`, `CANCELLED`, `EXPIRED`. A completed batch returns the connection to `AUTHENTICATED`. There is no session-level `COMPLETED`; inspect progress for each selected reference. Terminal failure requires reconnecting; successful copies remain saved.
 
-Only `/callback` is public. Every other operation requires the existing bearer authentication and private owner context. Responses use `Cache-Control: no-store`; the callback also uses a no-referrer policy. Status responses contain no OAuth tokens. Import-start and authorization-start routes use the existing upload rate limiter. Swagger/OpenAPI includes the new callback and revised contracts.
+Progress: `{reference:string, phase:string, documentId?:string, duplicate?:boolean, code?:string, message?:string}`. Phase values, with exact case: `Importing`, `Encrypting`, `Processing with AI`, `Completed`, `Failed`. Failure messages are safe descriptions. `code` is optional; clients must not require it. `Completed` with `duplicate:true` means an existing copy, not a new import or new AI analysis.
 
-## Database migration
+LockerDocument: `{reference, name, type, issuer:string|null, issueDate:string|null, modifiedAt:string|null, mimeType, available:boolean, reason:string|null}`. Other unannotated fields are strings. `modifiedAt` is provider last-modified, not an issue date. Only available PDF documents may be selected. XML-only and restricted Aadhaar records are unavailable; no file is fabricated from metadata.
 
-`prisma/migrations/20261025100000_digilocker_import_payload/migration.sql` adds two nullable fields to the existing DigiLockerConsentSession model:
+Machine-readable operation schemas are in `src/docs/digilocker.openapi.ts`.
 
-- `encryptedPayload`: provider metadata, immutable-by-application copy-consent history, and progress.
-- `encryptedCredentials`: short-lived access token or pending PKCE verifier.
+## Errors, limits and retries
 
-Both use the existing contextual AES-GCM privacy keyring, bound to owner, session and field. SQL constraints accept only contextual ciphertext or NULL. Generic operator projections omit both fields. No Document model change, user-data backfill, reseeding or new storage bucket is required.
+| HTTP | Meaning / codes |
+| --- | --- |
+| 400 | Schema validation, invalid selection/consent/return URL. Service validation uses `DIGILOCKER_INVALID_REQUEST`; Zod validation may have no code. |
+| 401 / 403 | Normal authentication/account-access failure. |
+| 404 | Missing or foreign session: `DIGILOCKER_SESSION_NOT_FOUND`. |
+| 409 | Incompatible session state: `DIGILOCKER_SESSION_CONFLICT`. |
+| 429 | API rate limit; includes `Retry-After` seconds. |
+| 502 | Provider failure, e.g. `DIGILOCKER_PROVIDER_ERROR`. |
+| 503 | Unconfigured (`DIGILOCKER_NOT_CONFIGURED`), unavailable rate-limit store, or admission busy. Includes `Retry-After: 2`. |
 
-The migration was subsequently applied to the verified normal local development database `localhost:5434/lifepack` on 2026-10-25. Both nullable columns, both ciphertext constraints and the Prisma migration checksum were verified. The credential cleanup SQL completed successfully. No other pending migration or remote database was changed. Fresh environments still require this migration before DigiLocker use. Startup cleanup now tolerates the specific missing-column error and other cleanup failures cannot terminate backend startup.
+Error responses may include `{code?, message, errorId?}`; normal rate-limit responses use `{message}`. Do not parse messages or expect a code on every error. Raw provider/database diagnostics are not exposed.
 
-Credentials expire after at most 10 minutes while pending and at most 30 minutes after authentication, further limited by provider access-token and consent expiry. Refresh tokens and identity claims are discarded. Closing the connection removes local credentials and attempts provider revocation. The local server removes expired credential ciphertext every minute and on startup; route traffic also triggers cleanup at most once per minute. Consent audits remain encrypted. On serverless hosts without continuous execution, cleanup runs on the next route invocation; a deployment-time scheduled cleanup would be required for a strict wall-clock deletion guarantee while idle.
+Known per-file diagnostics are defined in `src/services/digilocker/importFailure.ts`: storage, file-size/type/signature/password/security/corruption/malware failures; `DIGILOCKER_ACCESS_EXPIRED`, `DIGILOCKER_ACCESS_DENIED`, `DIGILOCKER_FILE_UNAVAILABLE`, `DIGILOCKER_INTEGRITY_FAILED`, `DIGILOCKER_PROVIDER_ERROR`, `DIGILOCKER_RATE_LIMITED`, `DOCUMENT_SAVE_FAILED`, and fallback `IMPORT_FAILED`. Provider 429s become per-file failures with durable retries, not necessarily an HTTP 429 from the import-start request.
 
-## Supported documents and provider limitations
+The existing PostgreSQL-backed API limiter emits `Retry-After` for 429 responses. Central error handling supplies a 2-second fallback for thrown 429/503 errors while preserving an existing header. Infrastructure outside this application can impose its own behavior.
 
-- Imports only **issued documents for which the provider advertises a downloadable PDF** and grants access to the file endpoint.
-- Each file must pass the existing 10 MiB, PDF-content and optional malware scanner checks.
-- XML-only records are displayed as unavailable. No XML-to-PDF conversion is attempted.
-- Aadhaar/UIDAI/ADHAR records are unavailable pending separate permission and handling verification. No e-Aadhaar endpoint is called.
-- Other unavailable or revoked provider permissions fail the individual import rather than claiming success.
-- The provider `date` field is **last modified**, not an issue date. The UI does not label it as an issue date.
-- Self-uploaded locker folders/files, document pull APIs and long-lived offline access are outside this implementation.
-- File downloads use only the fixed provider origin, reject redirects, enforce a bounded body read, and require a matching SHA-256 HMAC using the backend client secret and a PDF response MIME type.
-- Batches are synchronous HTTP operations with durable per-file progress, not detached background jobs. A server restart or host request timeout may interrupt a batch; existing successful copies are deduplicated on a new connection. Confirm hosting execution limits before deploying large batches.
+Defaults (environment variables can override rate limits):
 
-Provider contract reference: [API Setu Authorized Partner specification v2.2](https://cf-media.api-setu.in/resources/DigitalLocker-AuthorizedPartnerAPI-Specificationv2.2.pdf). The direct provider host is `https://digilocker.meripehchaan.gov.in/public`, using authorize `/oauth2/1/authorize`, token `/oauth2/2/token`, issued list `/oauth2/2/files/issued`, file `/oauth2/1/file/{uri}`, and revoke `/oauth2/1/revoke`. Real credential acceptance and permissions must still be verified against the user's requester application.
+- 1–50 distinct references per batch, each at most 1,024 characters.
+- File limit: 10 MiB, validated downloadable PDF with provider HMAC, bounded reads and no redirects.
+- Session-start and import-start share the upload limiter: 30 requests per 60 minutes per client IP. General API limiter: 300 requests per 15 minutes per client IP. Polling counts toward the general limiter.
+- Pending OAuth lifetime: 10 minutes. Authenticated access: at most 30 minutes from exchange, bounded by provider token and consent expiry. No refresh token is retained.
+- Import-start is asynchronous (202). At most three durable workers are active; 90-second renewable leases fence cancelled/stale workers. A worker invocation processes at most one document, with a 240-second attempt deadline. Queue drain budget is 270 seconds; scheduled recovery resumes abandoned work.
+- Retryable failures have up to five attempts for the current work item, exponential delays capped at 60 seconds, and remain bounded by session expiry. A whole batch has no fixed completion-time guarantee. Honor `Retry-After`; back off polling on errors.
 
-## Local verification
+## Consent, AI and saved documents
 
-Provider responses in automated tests are explicitly synthetic fixtures; they are not evidence of real DigiLocker connectivity. Database delegates are in memory. File encryption, content validation, isolated plaintext handling, local encrypted storage, quota policy and retry code execute normally in the import test.
+The same consent version and disclosure are used by web and mobile:
 
-- `npm run test:digilocker`: 8 tests covering missing-migration cleanup regression, configuration, PKCE, actual-list normalization, restrictions, HMAC/MIME/body limits, invalid/expired/replayed state, denied authorization, backend-only exchange, encrypted credentials, ownership rejection, no fetch without consent, cancellation, safe exchange failure, partial success, duplicate-safe retry, encrypted file round trip, quota enforcement, AI preference opt-out/package-search allowance independence and temporary cleanup.
-- Existing hybrid encryption suite: passed.
-- Existing document security validation suite: passed.
-- Existing import-analysis, privacy and error-handling suites: 18 tests passed.
-- Frontend DigiLocker, manual-upload and encryption suites: 12 tests passed across 3 files, including declining copy consent and retrying only failures. The final run used `--testTimeout=20000` after an RSA-generation test exceeded its default 5-second timeout under concurrent checks.
-- Backend and frontend TypeScript checks: passed.
-- Targeted ESLint and production frontend build: passed (the build retains its existing large-chunk advisory).
-- OpenAPI validation: the mounted operations, matching coverage and valid schemas.
+> Readines will securely copy your selected DigiLocker documents into your account. These copies will be encrypted. Your existing AI processing preference applies.
 
-Remaining verification: registered live callback, real authorization/denial, actual requester scopes and HMAC download responses, full PostgreSQL import transaction checks, authenticated browser verification in light/dark themes on desktop/mobile, and hosted request duration/idle credential-cleanup behavior. No deployment was requested or performed.
+Import requires explicit `consent:true` and `digilocker-copy-v1`, and records encrypted copy-consent audit before downloading. The Import action supplies consent; no second toggle is required. Original-file AI analysis follows the account's current AI processing setting, with no import-specific override. Document analysis does not consume AI package-search allowance. Existing encrypted copies are deduplicated before analysis. Storage quotas still apply.
 
-## Modified files
+Normal `GET /api/documents` records expose `sourceProvider`; DigiLocker copies use `DIGILOCKER`. Mobile rows, details and filters retain that source.
 
-Backend:
+## Disconnect, abandoned sessions and reset
 
-- `.env.example`, `package.json`, `prisma/schema.prisma`, the migration above.
-- `src/config/digilocker.ts`.
-- `src/services/digilocker/{digilocker.service,provider,importer,digilocker.test}.ts`.
-- `src/routes/digilocker.routes.ts`.
-- `src/privacy/operationalFields.ts`, `src/index.ts`, `src/middleware/errorHandling.ts`.
-- `src/docs/digilocker.openapi.ts`, `src/docs/openapi.ts`, `src/docs/openapi.check.ts`.
-- This delivery report.
+`POST /sessions/{id}/cancel` fences active work, attempts provider revocation, and removes local credentials on success. On provider revocation failure, encrypted credentials are retained only for durable revocation retries until their expiry; cancellation is not proof of successful provider revocation. Imported copies and encrypted consent audits remain. There is no separate account-wide connection or revoke endpoint.
 
-Frontend (`/Users/ranjith/code/frontend-web`):
+Expired credentials are cleared by maintenance/scheduled recovery and opportunistic route cleanup. Idle browser tabs cannot extend session access. Cleanup runs when the scheduler/host executes; do not promise instantaneous deletion during an infrastructure outage.
 
-- `src/lib/digilocker-api.ts`.
-- `src/pages/documents/digilocker-dialog.tsx` and `digilocker-dialog.test.tsx`.
-- `src/pages/documents/documents-overview.tsx`.
-
-## AI usage policy
-
-DigiLocker document processing does not consume the AI package-search allowance. Explicit application consent and AI preferences still apply; storage quotas still apply. The import regression exercises document processing with an exhausted package-search allowance.
-
-
-## Native mobile return contract (30 October 2026)
-
-- `POST /api/integrations/digilocker/sessions` accepts `{}` for the existing web flow or `{ "redirectUrl": "readiness://digilocker" }` for native mobile. The only accepted targets are that exact native URL and the configured frontend `/documents` URL. Variants, arbitrary origins, paths, query strings and fragments are rejected before session creation.
-- The target is stored in the owner-bound session. The public callback chooses it only after consuming one-time state. Callback query parameters cannot override it. No tokens, codes or provider descriptions appear in the return URL.
-- The provider still redirects to `DIGILOCKER_REDIRECT_URI`, the existing HTTPS backend callback registered with DigiLocker. `readiness://digilocker` is the second, backend-to-app hop; it must not replace the registered provider callback. iOS already registers the `readiness` URL scheme and forwards URLs through `RCTLinkingManager`.
-- Mobile receives `readiness://digilocker?digilocker=<session UUID>&result=<status>`, matches the UUID against its account-scoped pending connection, and retrieves authenticated session state and issued metadata from the API. The result parameter is a navigation hint, never proof of authentication. Cold and warm returns route to the Documents tab after login and any app-lock checks.
-- The existing web return remains `/documents#digilocker=<id>&result=<status>` and web session creation remains `{}`.
-- Issued metadata includes reference, name, type, issuer, MIME, availability/reason, issueDate and modifiedAt. Provider date is displayed as Updated, never fabricated as an issue date. Unsupported/restricted documents cannot be selected; selection is bounded to the API maximum of 50.
-- Copying records explicit consent through the import action and the existing `digilocker-copy-v1` contract. Import returns HTTP 202; mobile polls progress, refreshes the library and shows duplicates. The server respects AI processing preferences and does not consume the package-search allowance. No per-import AI override is introduced.
-- Disconnect uses the existing owned cancel endpoint. It stops work cooperatively, revokes credentials (with durable retries if provider revocation fails), and keeps imported copies and encrypted consent audit. Expiry clears credentials. No account-wide provider connection is created.
-- Production-only direct-provider configuration is deliberate. Sandbox configuration fails closed; changing environment or replacing credentials is not part of mobile enablement.
-- Immediate queue eligibility uses a null next-attempt timestamp so small application/database clock differences cannot hide freshly queued work from the first worker invocation. Retry deadlines remain durable.
-
-Live OAuth/list/import acceptance must be completed with an approved DigiLocker account and documents. No account was provided for this pass; the user will log in and validate. Historical successful web OAuth is not proof of this native flow.
+Reset by cancelling the owned session and creating a new one. Mobile Start over performs this sequence. There is no production session-reset backdoor or test-account bypass. QA uses an approved real account with user-completed provider login; credentials must not be shared in source or logs.
