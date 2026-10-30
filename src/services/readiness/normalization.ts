@@ -6,6 +6,8 @@ const explicitTypeMap: Record<string, string> = {
   pan: "pan",
   pan_card: "pan",
   permanent_account_number: "pan",
+  permanent_account_number_card: "pan",
+  pan_verification_record: "pan",
   passport: "passport",
   driving_license: "driving_licence",
   driving_licence: "driving_licence",

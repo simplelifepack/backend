@@ -24,7 +24,7 @@ test("explicit relationships, unknown profile targets and ownership mismatches a
   assert.equal(toDocumentResponseDto(document({ ownershipStatus: "mismatch" })).owner, "unknown");
 });
 test("canonical capabilities are provided for all supported document types", () => {
-  for (const type of ["aadhaar", "pan", "passport", "driving_licence", "voter_id"]) {
+  for (const type of ["aadhaar", "pan", "pan_verification_record", "passport", "driving_licence", "voter_id"]) {
     assert(toDocumentResponseDto(document({ documentType: type, normalizedType: type })).capabilities.includes("identity_proof"), type);
   }
 });
