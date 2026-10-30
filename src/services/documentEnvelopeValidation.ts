@@ -28,7 +28,6 @@ const envelopeFieldsSchema = z.object({
   originalSize: z.coerce.number().int().positive().max(MAX_DOCUMENT_UPLOAD_BYTES),
   originalSha256: sha256Schema,
   encryptedSha256: sha256Schema,
-  aiAnalysisConsent: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 }).strict();
 
 export class DocumentEnvelopeError extends Error {
@@ -94,7 +93,10 @@ export function validateEncryptedDocumentEnvelope(
   if (typeof input.originalMimeType === "string" && !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(input.originalMimeType)) {
     throw new DocumentEnvelopeError("UNSUPPORTED_FILE_TYPE", documentValidationMessages.UNSUPPORTED_FILE_TYPE!, 415);
   }
-  const parsed = envelopeFieldsSchema.safeParse(fields);
+  // Older clients may send this field; the account setting is authoritative.
+  const metadata = { ...input };
+  delete metadata.aiAnalysisConsent;
+  const parsed = envelopeFieldsSchema.safeParse(metadata);
   if (!parsed.success) {
     throw new DocumentEnvelopeError(
       "INVALID_ENCRYPTION_ENVELOPE",
@@ -151,7 +153,7 @@ export function validateEncryptedDocumentEnvelopes(fields: unknown, files: Expre
   if (!Array.isArray(metadata) || !files?.length || metadata.length !== files.length || files.length > 50) {
     throw new DocumentEnvelopeError("INVALID_ENCRYPTION_ENVELOPE", "One to fifty encrypted document pages are required.");
   }
-  const envelopes = metadata.map((item, index) => validateEncryptedDocumentEnvelope({ ...(item as object), aiAnalysisConsent: input.aiAnalysisConsent }, { ...files[index]!, fieldname: "encryptedFile" }));
+  const envelopes = metadata.map((item, index) => validateEncryptedDocumentEnvelope({ ...(item as object) }, { ...files[index]!, fieldname: "encryptedFile" }));
   assertImageUploadBatchWithinLimit(envelopes);
   return envelopes;
 }

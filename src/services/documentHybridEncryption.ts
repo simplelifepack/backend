@@ -144,7 +144,6 @@ export function encryptDocumentOnBackend(
       originalSize: plaintext.length,
       originalSha256: crypto.createHash("sha256").update(plaintext).digest("hex"),
       encryptedSha256: crypto.createHash("sha256").update(ciphertext).digest("hex"),
-      aiAnalysisConsent: false,
       ciphertext,
     } satisfies ValidatedEncryptedEnvelope;
   } finally {

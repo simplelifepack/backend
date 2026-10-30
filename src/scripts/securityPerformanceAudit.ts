@@ -69,9 +69,9 @@ async function run() {
       checks.push({name:`unauthenticated ${operation}`,status:[401,403].includes(response.status)?"Pass":"Fail",http:response.status});
     }
     assert(checks.every(check=>(check as {status:string}).status==="Pass"),"Unauthenticated endpoint inventory failed");
-    const multipart=()=>{const body=new FormData();const {ciphertext,...metadata}=envelope;body.append("encryptedFiles",new Blob([new Uint8Array(ciphertext)],{type:"application/octet-stream"}),"encrypted.bin");body.append("envelopes",JSON.stringify([metadata]));body.append("aiAnalysisConsent","false");return body;};
-    let analyzerCalls=0;setDocumentAnalyzerForTests({analyzeDocument:async()=>{analyzerCalls++;throw new Error("AI must not run without consent");}});
-    const noConsent=await fetch(`${base}/documents/analyze`,{method:"POST",headers:headers(2),body:multipart()});assert.equal(noConsent.status,200,await noConsent.text());assert.equal(analyzerCalls,0);checks.push({name:"no-consent upload never calls AI",status:"Pass"});
+    const multipart=()=>{const body=new FormData();const {ciphertext,...metadata}=envelope;body.append("encryptedFiles",new Blob([new Uint8Array(ciphertext)],{type:"application/octet-stream"}),"encrypted.bin");body.append("envelopes",JSON.stringify([metadata]));return body;};
+    let analyzerCalls=0;setDocumentAnalyzerForTests({analyzeDocument:async()=>{analyzerCalls++;throw new Error("AI must not run when disabled in settings");}});
+    const noConsent=await fetch(`${base}/documents/analyze`,{method:"POST",headers:headers(2),body:multipart()});assert.equal(noConsent.status,200,await noConsent.text());assert.equal(analyzerCalls,0);checks.push({name:"settings-disabled upload never calls AI",status:"Pass"});
     async function load(name:string,count:number,work:(index:number)=>Promise<Response>){
       // Establish transport connections with idempotent health requests first.
       // macOS somaxconn=128 resets cold bursts before Express sees requests.

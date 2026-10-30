@@ -38,6 +38,5 @@ export type ValidatedEncryptedEnvelope = {
   originalSize: number;
   originalSha256: string;
   encryptedSha256: string;
-  aiAnalysisConsent: boolean;
   ciphertext: Buffer;
 };

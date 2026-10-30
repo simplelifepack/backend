@@ -132,7 +132,7 @@ These are the only provider input fields. Top-level unknown fields and document 
 | `OpenAIDocumentAnalyzer.analyzeDocument` | B: document-content AI | Uploaded image bytes as image inputs, for classification/name/number/expiry extraction | Separate; no package quota |
 | Gmail/Drive (future) | Routes disabled | Stored records and decryption readers retained | No active import flow |
 
-Category B deliberately remains separate. The upload UI discloses that analysis sends document content to OpenAI; the backend invokes it when upload analysis consent is selected. Original PDFs and all image pages are sent directly to AI when enabled and authorized. Disabled or failed AI offers manual entry/retry without local OCR or text extraction. The package proxy does not receive OCR images, document text, decrypted fields, or document/database objects. The application as a whole must **not** be described as never sending document contents to OpenAI.
+Category B deliberately remains separate. The upload UI discloses that analysis sends document content to OpenAI; the backend invokes it only when the account AI processing switch in Settings is enabled; there is no per-upload AI consent flag. Original PDFs and all image pages are sent directly to AI when enabled and authorized. Disabled or failed AI offers manual entry/retry without local OCR or text extraction. The package proxy does not receive OCR images, document text, decrypted fields, or document/database objects. The application as a whole must **not** be described as never sending document contents to OpenAI.
 
 ## 18. Validation
 

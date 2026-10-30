@@ -34,7 +34,9 @@ test("document and Health processing do not consume or depend on package search 
       await response.arrayBuffer(); return response.status;
     };
     for (let i = 0; i < 4; i++) assert.equal(await upload(true), 200);
-    assert.equal(calls, 4); assert.equal(await upload(false), 200); assert.equal(calls, 4);
+    assert.equal(calls, 4); assert.equal(await upload(false), 200); assert.equal(calls, 5);
+    await raw.user.update({ where: { id }, data: { aiProcessingEnabled: false } });
+    assert.equal(await upload(true), 200); assert.equal(calls, 5);
     setHealthExtractionRequestForTests(async () => ({ output_text: JSON.stringify({ documentType: "lab_report", measurements: [], medications: [], followUps: [] }) }));
     await extractHealthDocument({ files: [{ name: "synthetic.png", mimeType: "image/png", bytes }] });
     assert.equal((await raw.userAIUsage.findUniqueOrThrow({ where: { userId_period: { userId: id, period } } })).actionCount, 3);

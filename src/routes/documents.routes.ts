@@ -229,9 +229,8 @@ async function analyzeEncryptedUpload(
         return analyzer.analyzeDocument(paths.map((path, i) => ({ path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize })), controller.signal);
       })().then((result) => ({ result })).catch((error) => ({ result: error as Error }))
       : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), (path) => analyzePaths(index + 1, [...paths, path]));
-    const wantsAI = envelopes.some((item) => item.aiAnalysisConsent);
     let analysis: { result: Awaited<ReturnType<typeof analyzeDocument>> | Error } = { result: fallbackDocumentAIResult };
-    if (wantsAI) {
+    {
       try {
         await assertAIProcessingEnabled(authUser.id);
         analysis = await analyzePaths(0, []);
