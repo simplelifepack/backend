@@ -6,7 +6,7 @@ import { performance } from "node:perf_hooks";
 
 import { prisma } from "../lib/prisma";
 import { activeRequirementsWhere } from "./readiness/activeRequirements";
-import { normalizeDocumentType, normalizeRequirementDocumentTypes, slugify } from "./readiness/normalization";
+import { acceptedRequirementTypes, normalizeRequirementDocumentTypes, slugify } from "./readiness/normalization";
 import { scorePackDetailed } from "./readiness/readinessScoring";
 import type { PackScore } from "./readiness/readinessScoring";
 
@@ -174,6 +174,7 @@ export async function listPackageSummaries(options: PackageListOptions, timing?:
       select: {
         id: true,
         title: true,
+        documentType: true,
         required: true,
         owner: true,
         metadata: true,
@@ -208,6 +209,7 @@ export async function listPackageSummaries(options: PackageListOptions, timing?:
         id: true,
         title: true,
         description: true,
+        documentType: true,
         required: true,
         group: true,
         owner: true,
@@ -373,6 +375,7 @@ export async function getReadinessPackDefinitionBySlugForUser(slug: string, user
     ...pack,
     requirements: pack.requirements.map((requirement) => ({
       ...requirement,
+      acceptedDocumentTypes: acceptedRequirementTypes(requirement),
       ...assignmentPayload(assignments, requirement.id),
     })),
   };
@@ -490,6 +493,7 @@ function toPaginatedPackageResponse<T extends {
     id: string;
     title: string;
     description?: string;
+    documentType?: string;
     required: boolean;
     group?: string;
     owner: string;
@@ -537,7 +541,7 @@ function toPaginatedPackageResponse<T extends {
         required: requirement.required,
         ...(requirement.group ? { group: requirement.group } : {}),
         ...(requirement.owner !== "self" ? { owner: requirement.owner } : {}),
-        acceptedDocumentTypes: [...new Set(requirement.acceptedDocumentTypes.map((type) => normalizeDocumentType(type)))],
+        acceptedDocumentTypes: acceptedRequirementTypes(requirement),
         ...(requirement.metadata && typeof requirement.metadata === "object" && Object.keys(requirement.metadata as object).length ? { metadata: requirement.metadata } : {}),
         ...assignmentPayload(assignments, requirement.id),
       })),

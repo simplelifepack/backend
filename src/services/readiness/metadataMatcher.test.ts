@@ -3,12 +3,14 @@ import type { NormalizedDocumentMetadata, ReadinessRequirementMetadata } from ".
 import { validateDocumentMetadata } from "../documents/fieldValidation";
 import { matchRequirementMetadata } from "./metadataMatcher";
 import { buildDocumentMetadata } from "./documentMetadata";
-import { normalizeDocumentType, normalizeRequirementDocumentTypes } from "./normalization";
+import { acceptedRequirementTypes, normalizeDocumentType, normalizeRequirementDocumentTypes } from "./normalization";
 import { resolveRequirementCapabilities } from "./capabilityResolver";
 
 const selfPan = document("self-pan", "PAN Card", "self");
 const selfAadhaar = document("self-aadhaar", "Aadhaar", "self");
 
+assert.equal(normalizeDocumentType("identity_document"), "identity_proof");
+assert.deepEqual(normalizeRequirementDocumentTypes("identity_document", "Permanent Account Number"), ["pan"]);
 assert.equal(normalizeDocumentType("PAN Card"), "pan");
 assert.equal(normalizeDocumentType("Permanent Account Number"), "pan");
 assert.equal(normalizeDocumentType("PAN"), "pan");
@@ -80,3 +82,7 @@ function document(documentId: string, documentType: string, owner: NormalizedDoc
 function requirement(id: string, documentType: string, owner: ReadinessRequirementMetadata["owner"], title: string, acceptedDocumentTypes = [documentType]): ReadinessRequirementMetadata {
   return { id, documentType, acceptedDocumentTypes, requiredCapabilities: resolveRequirementCapabilities(documentType, acceptedDocumentTypes), owner, title, category: "Identity", required: true };
 }
+
+assert.deepEqual(acceptedRequirementTypes({ title: "Identity Proof", documentType: "identity_proof", acceptedDocumentTypes: [] }), ["identity_proof"]);
+assert.deepEqual(acceptedRequirementTypes({ title: "Passport", documentType: "passport", acceptedDocumentTypes: [] }), ["passport"]);
+assert.deepEqual(acceptedRequirementTypes({ title: "Identity Proof", documentType: "identity_proof", acceptedDocumentTypes: ["pan"] }), ["pan"]);

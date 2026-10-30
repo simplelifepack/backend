@@ -92,6 +92,7 @@ const explicitTypeMap: Record<string, string> = {
   cancelled_cheque: "cancelled_cheque",
   address_proof: "address_proof",
   identity_proof: "identity_proof",
+  identity_document: "identity_proof",
   income_proof: "income_proof",
   application_form: "application_form",
   affidavit: "affidavit",
@@ -175,7 +176,7 @@ const genericRequirementTypes = new Set([
 
 export function normalizeRequirementDocumentTypes(documentType: string, title: string) {
   const primary = normalizeDocumentType(documentType);
-  if (!genericRequirementTypes.has(primary)) return [primary];
+  if (!genericRequirementTypes.has(primary) && documentType.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_") !== "identity_document") return [primary];
   const inferred = textSignals.filter(([pattern]) => pattern.test(title)).map(([, type]) => normalizeDocumentType(type));
   return [...new Set(inferred.length ? inferred : [primary])];
 }
@@ -226,3 +227,9 @@ const publicDocumentLabelSet = new Set([
   ...Object.keys(documentDefinitions),
   ...Object.values(documentDefinitions).flatMap((definition) => definition.supportedReadinessCapabilities),
 ]);
+
+/** Legacy catalogue rows can omit alternatives; their primary type still applies. */
+export function acceptedRequirementTypes(requirement: { documentType?: string; title: string; acceptedDocumentTypes: string[] }) {
+  const explicit = requirement.acceptedDocumentTypes.filter(type => type.trim());
+  return [...new Set(explicit.length ? explicit.map(type => normalizeDocumentType(type)) : normalizeRequirementDocumentTypes(requirement.documentType || requirement.title, requirement.title))];
+}
