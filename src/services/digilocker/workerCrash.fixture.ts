@@ -11,4 +11,4 @@ global.fetch = async (_input, init) => {
   });
 };
 void runDigiLockerWorker()
-  .then(() => process.exit(0)).catch(() => process.exit(1));
+  .then(worked => { process.send?.({ event: "worker-ended", worked }); process.exit(0); }).catch(error => { process.send?.({ event: "worker-failed", name: error?.name, code: error?.code }); process.exit(1); });

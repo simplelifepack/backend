@@ -123,3 +123,19 @@ Frontend (`/Users/ranjith/code/frontend-web`):
 ## AI usage policy
 
 DigiLocker document processing does not consume the AI package-search allowance. Explicit application consent and AI preferences still apply; storage quotas still apply. The import regression exercises document processing with an exhausted package-search allowance.
+
+
+## Native mobile return contract (30 October 2026)
+
+- `POST /api/integrations/digilocker/sessions` accepts `{}` for the existing web flow or `{ "redirectUrl": "readiness://digilocker" }` for native mobile. The only accepted targets are that exact native URL and the configured frontend `/documents` URL. Variants, arbitrary origins, paths, query strings and fragments are rejected before session creation.
+- The target is stored in the owner-bound session. The public callback chooses it only after consuming one-time state. Callback query parameters cannot override it. No tokens, codes or provider descriptions appear in the return URL.
+- The provider still redirects to `DIGILOCKER_REDIRECT_URI`, the existing HTTPS backend callback registered with DigiLocker. `readiness://digilocker` is the second, backend-to-app hop; it must not replace the registered provider callback. iOS already registers the `readiness` URL scheme and forwards URLs through `RCTLinkingManager`.
+- Mobile receives `readiness://digilocker?digilocker=<session UUID>&result=<status>`, matches the UUID against its account-scoped pending connection, and retrieves authenticated session state and issued metadata from the API. The result parameter is a navigation hint, never proof of authentication. Cold and warm returns route to the Documents tab after login and any app-lock checks.
+- The existing web return remains `/documents#digilocker=<id>&result=<status>` and web session creation remains `{}`.
+- Issued metadata includes reference, name, type, issuer, MIME, availability/reason, issueDate and modifiedAt. Provider date is displayed as Updated, never fabricated as an issue date. Unsupported/restricted documents cannot be selected; selection is bounded to the API maximum of 50.
+- Copying uses a separate explicit consent switch and the existing `digilocker-copy-v1` contract. Import returns HTTP 202; mobile polls progress, refreshes the library and shows duplicates. The server respects AI processing preferences and does not consume the package-search allowance. No per-import AI override is introduced.
+- Disconnect uses the existing owned cancel endpoint. It stops work cooperatively, revokes credentials (with durable retries if provider revocation fails), and keeps imported copies and encrypted consent audit. Expiry clears credentials. No account-wide provider connection is created.
+- Production-only direct-provider configuration is deliberate. Sandbox configuration fails closed; changing environment or replacing credentials is not part of mobile enablement.
+- Immediate queue eligibility uses a null next-attempt timestamp so small application/database clock differences cannot hide freshly queued work from the first worker invocation. Retry deadlines remain durable.
+
+Live OAuth/list/import acceptance must be completed with an approved DigiLocker account and documents. No account was provided for this pass; the user will log in and validate. Historical successful web OAuth is not proof of this native flow.

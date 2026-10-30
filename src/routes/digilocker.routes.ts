@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { uploadLimiter } from "../middleware/security";
 import { cleanupExpiredDigiLockerCredentials, cancelDigiLockerSession, completeDigiLockerAuthorization, digilockerStatus, importDigiLockerDocuments, listDigiLockerDocuments, refreshDigiLockerSession, startDigiLockerSession } from "../services/digilocker/digilocker.service";
+import { digiLockerReturnUrl } from "../services/digilocker/returnTarget";
 const router = Router();
 router.use(async (_req, res, next) => {
   try { await cleanupExpiredDigiLockerCredentials(); } catch (error) { return next(error); }
@@ -17,7 +18,7 @@ router.get("/callback", async (req, res) => {
   try {
     const query = z.object({ state: z.string().min(32).max(256), code: z.string().min(1).max(4096).optional(), error: z.string().max(256).optional() }).parse(req.query);
     const result = await completeDigiLockerAuthorization({ state: query.state, code: query.code, denied: Boolean(query.error) });
-    target.hash = new URLSearchParams({ digilocker: result.id, result: result.status }).toString();
+    return res.redirect(303, digiLockerReturnUrl(result));
   } catch { target.hash = "digilocker_error=invalid_state"; }
   return res.redirect(303, target.toString());
 });
@@ -30,7 +31,7 @@ router.use(requireAuth);
 const userId = (req: unknown) => (req as AuthenticatedRequest).authUser.id;
 router.get("/status", (_req, res) => res.json(digilockerStatus()));
 router.post("/sessions", uploadLimiter, async (req, res, next) => {
-  try { z.object({}).strict().parse(req.body ?? {}); res.status(201).json(await startDigiLockerSession({ userId: userId(req) })); }
+  try { const payload = z.object({ redirectUrl: z.string().optional() }).strict().parse(req.body ?? {}); res.status(201).json(await startDigiLockerSession({ userId: userId(req), ...payload })); }
   catch (error) { next(error); }
 });
 router.get("/sessions/:id/status", async (req, res, next) => {

@@ -24,12 +24,12 @@ export const digiLockerOperations: Operation[] = [
   },
   {
     method: "post", path: "/api/integrations/digilocker/sessions", tags: ["DigiLocker"], operationId: "startDigilockerSession", summary: "Start direct DigiLocker authorization with PKCE", security: secured,
-    description: "Returns a backend-generated authorization URL. No document bytes are fetched. Requires configured production requester credentials.", requestBody: { ...body(object({}, [], true)), required: false },
+    description: "Returns a backend-generated authorization URL. No document bytes are fetched. Requires configured production requester credentials.", requestBody: { ...body(object({ redirectUrl: { ...string, description: "Optional exact return target: readiness://digilocker or the configured frontend Documents URL. Omit for web." } }, [], true)), required: false },
     responses: { 201: response("Created session", object({ id: string, status: string, expiresAt: dateTime, progress: array({}), authorizationUrl: { ...string, format: "uri" } })), ...errors(400, 401, 403, 429, 503) },
   },
   {
     method: "get", path: "/api/integrations/digilocker/callback", tags: ["DigiLocker"], operationId: "completeDigilockerAuthorization", summary: "Complete DigiLocker authorization", security: [],
-    description: "Validates and consumes one-time state, exchanges the authorization code server-side with PKCE, and lists provider-authorized issued metadata. Redirects to the configured frontend Documents page. Never returns tokens or provider error descriptions.",
+    description: "Validates and consumes one-time state, exchanges the authorization code server-side with PKCE, and lists provider-authorized issued metadata. Redirects to the state-bound allow-listed mobile or web return target. Never returns tokens or provider error descriptions.",
     parameters: [{ name: "state", in: "query", required: true, schema: string }, { name: "code", in: "query", schema: string }, { name: "error", in: "query", schema: string }],
     responses: { 303: { description: "Redirect to Documents with session reference or generic error in fragment", headers: { Location: { schema: string } } } },
   },
@@ -40,7 +40,7 @@ export const digiLockerOperations: Operation[] = [
   },
   {
     method: "post", path: `${sessionPath}/cancel`, tags: ["DigiLocker"], operationId: "cancelDigilockerSession", summary: "Cancel connection and remove credentials", security: secured, parameters: [param("id")],
-    description: "Attempts provider token revocation, removes local credentials and retains encrypted copy-consent audit. Active imports must finish first.", responses: { 200: response("Cancelled session", session), ...errors(401, 403, 404, 409) },
+    description: "Attempts provider token revocation, removes local credentials and retains encrypted copy-consent audit. Stops active work cooperatively; retained encrypted credentials are retried for revocation until expiry. Copies and consent audits are retained.", responses: { 200: response("Cancelled session", session), ...errors(401, 403, 404, 409) },
   },
   {
     method: "get", path: `${sessionPath}/documents`, tags: ["DigiLocker"], operationId: "listDigilockerDocuments", summary: "List issued documents returned by DigiLocker", security: secured, parameters: [param("id")],
@@ -50,6 +50,6 @@ export const digiLockerOperations: Operation[] = [
     method: "post", path: `${sessionPath}/import`, tags: ["DigiLocker"], operationId: "importDigilockerDocuments", summary: "Copy selected documents with explicit consent", security: secured, parameters: [param("id")],
     description: "Records encrypted consent before fetching selected files. Applies normal validation, encryption, storage allowance, AI preference and usage accounting. Poll session status for per-document progress. Partial successes persist; retry failed references without duplicating successful copies.",
     requestBody: body(object({ references: { ...array({ ...string, minLength: 1, maxLength: 1024 }), minItems: 1, maxItems: 50, uniqueItems: true }, consent: { type: "boolean", enum: [true] }, consentVersion: { ...string, enum: ["digilocker-copy-v1"] } }, ["references", "consent", "consentVersion"], true)),
-    responses: { 200: response("Per-document results", session), ...errors(400, 401, 403, 404, 409, 429, 503) },
+    responses: { 202: response("Queued import", session), ...errors(400, 401, 403, 404, 409, 429, 503) },
   },
 ];

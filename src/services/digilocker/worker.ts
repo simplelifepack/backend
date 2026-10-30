@@ -105,7 +105,7 @@ export async function runDigiLockerWorker(deadlineMs = 240_000) {
         await prisma.digiLockerConsentSession.updateMany({ where: { id: session.id, status: "IMPORTING", importLeaseToken: lease.token, cancelledAt: null,
             expiresAt: { gt: new Date() }, importLeaseUntil: { gt: new Date() } },
           data: { status: finished ? "AUTHENTICATED" : "IMPORTING", importLeaseToken: null, importLeaseUntil: null,
-            importAttempts: 0, importNextAttemptAt: new Date() } });
+            importAttempts: 0, importNextAttemptAt: null } });
       } catch (error) {
         const diagnostic = importFailure(error);
         const retryable = ["DIGILOCKER_PROVIDER_ERROR", "DIGILOCKER_RATE_LIMITED", "DOCUMENT_SAVE_FAILED", "IMPORT_FAILED"].includes(diagnostic.code);
