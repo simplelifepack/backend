@@ -50,7 +50,7 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
     lease?.signal.throwIfAborted();
     const id = randomUUID();
     saved = await saveEncryptedPermanentFile(userId, `${id}/imports/${randomUUID()}`, temporary);
-    const fields = { ...analysis.extractedFields, reviewFields: analysis.reviewFields, warnings: analysis.warnings,
+    const fields = { ...analysis.extractedFields, owner: "self", capabilities: analysis.validation.capabilities, reviewFields: analysis.reviewFields, warnings: analysis.warnings,
       validation: analysis.validation, extraction: analysis.extraction,
       digilocker: { reference: file.reference, issuer: file.issuer, importedAt: new Date().toISOString(), consent, processingStatus: analysis.analysisSource === "ai" ? "completed" : "manual_review" } };
     const stored = saved;

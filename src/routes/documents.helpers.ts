@@ -2,6 +2,7 @@ import type { Document, DocumentFile } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
+import { buildDocumentMetadata } from "../services/readiness/documentMetadata";
 import { validateDocumentMetadata } from "../services/documents/fieldValidation";
 import {
   decryptJson,
@@ -132,6 +133,8 @@ export function decryptDocumentRecord<T extends EncryptedDocumentRecord>(documen
 export type DocumentResponseDto = {
   id: string;
   ownerProfileId: string | null;
+  owner: string;
+  capabilities: string[];
   title: string | null;
   displayName: string | null;
   uniqueIdentifier: string | null;
@@ -162,6 +165,13 @@ export type DocumentResponseDto = {
 
 export function toDocumentResponseDto(document: Document & { files?: EncryptedDocumentFileRecord[] }): DocumentResponseDto {
   const decrypted = decryptDocumentRecord(document);
+  const fields = (decrypted.fields ?? {}) as Record<string, unknown>;
+  // Filing under the account profile supplies the matching relationship.
+  // This does not change the separate ownership verification status.
+  const metadata = buildDocumentMetadata({ ...decrypted, fields: {
+    ...fields,
+    owner: fields.owner ?? (decrypted.targetProfileId && decrypted.targetProfileId === decrypted.ownerProfileId && decrypted.ownershipStatus !== "mismatch" ? "self" : "unknown"),
+  } });
   const pages = [...(document.files ?? [])]
     .sort((a, b) => a.pageIndex - b.pageIndex)
     .map((file) => toDocumentPageDto(file, document.normalizedType ?? document.documentType));
@@ -173,6 +183,8 @@ export function toDocumentResponseDto(document: Document & { files?: EncryptedDo
   return {
     id: decrypted.id,
     ownerProfileId: decrypted.ownerProfileId,
+    owner: metadata.owner,
+    capabilities: metadata.capabilities,
     title: decrypted.title,
     displayName: decrypted.displayName,
     uniqueIdentifier: decrypted.uniqueIdentifier,
