@@ -70,7 +70,7 @@ export const corsOptions: CorsOptions = {
 
     if (allowedBrowserOrigins().has(origin)) return callback(null, true);
 
-    return callback(new Error("Origin is not allowed by CORS."));
+    return callback(Object.assign(new Error("Origin is not allowed by CORS."), { statusCode: 403 }));
   },
 };
 

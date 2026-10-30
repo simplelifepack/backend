@@ -32,7 +32,7 @@ async function run() {
     const table = modelDefinitions.get(model)!.dbName!;
     await raw.$executeRawUnsafe(`ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${table}_private_v2"`);
   }
-  const outcomeConstraint = await raw.$queryRaw<Array<{ present: boolean }>>`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='health_document_outcome_private_v2') AS present`;
+  const outcomeConstraint = await raw.$queryRaw<Array<{ present: boolean }>>`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='health_document_outcome_private_v2' AND connamespace=current_schema()::regnamespace) AS present`;
   if (!outcomeConstraint[0].present) {
     const outcome = await fs.readFile("prisma/migrations/20261016120000_private_health_extraction_outcomes/migration.sql", "utf8");
     for (const statement of outcome.split(";").filter(value => value.includes("ADD CONSTRAINT"))) await raw.$executeRawUnsafe(statement);

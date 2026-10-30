@@ -44,6 +44,13 @@ export async function createHealthMember(userId: string, input: unknown) {
         relation: data.relation,
         bloodGroup: data.bloodGroup || null,
         dateOfBirth: parseBirthDate(data.dateOfBirth),
+        conditions: data.conditions || null,
+        allergies: data.allergies || null,
+        emergencyContactName: data.emergencyContactName || null,
+        emergencyContactPhone: data.emergencyContactPhone || null,
+        primaryDoctor: data.primaryDoctor || null,
+        insuranceProvider: data.insuranceProvider || null,
+        insurancePolicyNumber: data.insurancePolicyNumber || null,
       },
     }),
   );
