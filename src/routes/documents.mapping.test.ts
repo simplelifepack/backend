@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Document } from "@prisma/client";
+import { documentDefinitions } from "../services/documents/fieldDefinitions";
 import { toDocumentResponseDto } from "./documents.helpers";
 const document = (overrides: Partial<Document> = {}) => ({
   id: "synthetic-document", ownerProfileId: "account", targetProfileId: "account",
@@ -27,4 +28,17 @@ test("canonical capabilities are provided for all supported document types", () 
   for (const type of ["aadhaar", "pan", "pan_verification_record", "passport", "driving_licence", "voter_id"]) {
     assert(toDocumentResponseDto(document({ documentType: type, normalizedType: type })).capabilities.includes("identity_proof"), type);
   }
+});
+
+for (const [type, definition] of Object.entries(documentDefinitions)) {
+  test(`catalogue mapping: ${type}`, () => {
+    const result = toDocumentResponseDto(document({ documentType: type, normalizedType: type }));
+    assert.equal(result.owner, "self");
+    assert.equal(result.normalizedType, type);
+    for (const capability of definition.supportedReadinessCapabilities) assert(result.capabilities.includes(capability), `${type}: ${capability}`);
+  });
+}
+test("unlisted types retain exact matching without acquiring unrelated identity capabilities", () => {
+  const result = toDocumentResponseDto(document({ documentType: "custom_farm_certificate", normalizedType: "custom_farm_certificate" }));
+  assert.deepEqual(result.capabilities, ["custom_farm_certificate"]);
 });

@@ -57,11 +57,11 @@ const explicitTypeMap: Record<string, string> = {
   headshot: "passport_photo",
   utility_bill: "utility_bill",
   rental_agreement: "rental_agreement",
-  sale_deed: "sale_deed",
-  registered_sale_deed: "sale_deed",
-  conveyance_deed: "sale_deed",
-  title_deed: "sale_deed",
-  property_sale_deed: "sale_deed",
+  sale_deed: "property_sale_deed",
+  registered_sale_deed: "property_sale_deed",
+  conveyance_deed: "property_sale_deed",
+  title_deed: "property_sale_deed",
+  property_sale_deed: "property_sale_deed",
   property_tax_receipt: "property_tax_receipt",
   degree_certificate: "degree_certificate",
   marks_memo: "marksheet",
@@ -132,7 +132,7 @@ const textSignals: Array<[RegExp, string]> = [
   [/\bincome tax return|itr acknowledgement\b/i, "itr"],
   [/\butility bill|electricity bill|water bill|gas bill\b/i, "utility_bill"],
   [/\brental agreement|lease agreement\b/i, "rental_agreement"],
-  [/\bsale deed|title deed|conveyance deed\b/i, "sale_deed"],
+  [/\bsale deed|title deed|conveyance deed\b/i, "property_sale_deed"],
   [/\bproperty tax receipt\b/i, "property_tax_receipt"],
   [/\bdegree certificate|convocation|(?:provisional|provision) certificate\b/i, "degree_certificate"],
   [/\bschool certificate|school leaving certificate\b/i, "school_certificate"],
@@ -161,6 +161,9 @@ export function normalizeDocumentType(input?: string | null, text?: string | nul
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+
+  // Canonical catalogue types must keep their own fields and capabilities.
+  if (documentDefinitions[normalizedInput]) return normalizedInput;
 
   if (explicitTypeMap[normalizedInput]) {
     return explicitTypeMap[normalizedInput];

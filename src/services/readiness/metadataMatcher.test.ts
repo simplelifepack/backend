@@ -14,8 +14,8 @@ assert.deepEqual(normalizeRequirementDocumentTypes("identity_document", "Permane
 assert.equal(normalizeDocumentType("PAN Card"), "pan");
 assert.equal(normalizeDocumentType("Permanent Account Number"), "pan");
 assert.equal(normalizeDocumentType("PAN"), "pan");
-assert.equal(normalizeDocumentType("Registered Sale Deed"), "sale_deed");
-assert.equal(normalizeDocumentType("Conveyance Deed"), "sale_deed");
+assert.equal(normalizeDocumentType("Registered Sale Deed"), "property_sale_deed");
+assert.equal(normalizeDocumentType("Conveyance Deed"), "property_sale_deed");
 assert.equal(normalizeDocumentType("Statement"), "bank_statement");
 assert.equal(normalizeDocumentType("passport size"), "passport_photo");
 assert.equal(normalizeDocumentType("Passport Size Photo"), "passport_photo");
@@ -68,7 +68,7 @@ assert.equal(stale.state, "partial");
 assert.match(stale.reason ?? "", /older than 180 days/);
 
 const missingPages = { ...document("deed", "Sale Deed", "self"), attributes: { pagesComplete: false } };
-const incomplete = matchRequirementMetadata(requirement("deed", "sale_deed", "self", "Sale Deed"), [missingPages]);
+const incomplete = matchRequirementMetadata(requirement("deed", "property_sale_deed", "self", "Sale Deed"), [missingPages]);
 assert.equal(incomplete.state, "partial");
 assert.match(incomplete.reason ?? "", /missing pages/);
 
