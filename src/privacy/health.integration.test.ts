@@ -32,6 +32,11 @@ async function run() {
     const table = modelDefinitions.get(model)!.dbName!;
     await raw.$executeRawUnsafe(`ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${table}_private_v2"`);
   }
+  const outcomeConstraint = await raw.$queryRaw<Array<{ present: boolean }>>`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='health_document_outcome_private_v2') AS present`;
+  if (!outcomeConstraint[0].present) {
+    const outcome = await fs.readFile("prisma/migrations/20261016120000_private_health_extraction_outcomes/migration.sql", "utf8");
+    for (const statement of outcome.split(";").filter(value => value.includes("ADD CONSTRAINT"))) await raw.$executeRawUnsafe(statement);
+  }
   try {
     await withPrivateMigration("synthetic user fixtures", () => prisma.user.createMany({ data: [{ id: userId, email: `${userId}@example.test`, name: "Owner", aiProcessingEnabled: false }, { id: anotherUserId, email: `${anotherUserId}@example.test`, name: "Other", aiProcessingEnabled: false }] }));
     const legacy = await raw.healthMember.create({ data: { userId, name: sample, relation: "Myself", bloodGroup: "A+", dateOfBirth: new Date("1988-03-14"), conditions: sample } });

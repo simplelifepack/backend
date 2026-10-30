@@ -43,7 +43,7 @@ async function run(){
   try{await assert.rejects(auth.loginWithPin({email,pin:"999999"}),/Invalid email or PIN/);}finally{await raw.user.update({where:{id},data:{private_name:validName}});}
 
   await withPrivateUser(otherId,async()=>{await assert.rejects(prisma.user.findUnique({where:{id}}),/not found/);await assert.rejects(prisma.externalIdentity.findUnique({where:{id:identity.id}}),/not found/);});
-  const google=await auth.googleLogin({credential:"synthetic-verified-token"},async()=>({sub:sample,email,email_verified:true,aud:"synthetic",iss:"https://accounts.google.com",iat:1,exp:9999999999}));assert.equal(google.user.id,id);
+  const google=await auth.googleLogin({credential:"synthetic-verified-token"},async()=>({sub:sample,email,email_verified:true,aud:process.env.GOOGLE_CLIENT_ID!,iss:"https://accounts.google.com",iat:1,exp:9999999999}));assert.equal(google.user.id,id);
   const emailService=await import("../services/email/emailService");let deliveredOtp="";
   emailService.setEmailProviderForTests({sendEmail:async input=>{const match=input.text.match(/\b[0-9]{6}\b/);if(match)deliveredOtp=match[0];return {messageId:"synthetic-no-delivery"};}});
   try{
