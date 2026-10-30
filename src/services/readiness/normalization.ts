@@ -164,6 +164,9 @@ export function normalizeDocumentType(input?: string | null, text?: string | nul
 
   // Canonical catalogue types must keep their own fields and capabilities.
   if (documentDefinitions[normalizedInput]) return normalizedInput;
+  const namedDefinition = Object.values(documentDefinitions).find(definition =>
+    definition.displayName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") === normalizedInput);
+  if (namedDefinition) return namedDefinition.normalizedType;
 
   if (explicitTypeMap[normalizedInput]) {
     return explicitTypeMap[normalizedInput];

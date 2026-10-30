@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Document } from "@prisma/client";
+import { normalizeDocumentType } from "../services/readiness/normalization";
 import { documentDefinitions } from "../services/documents/fieldDefinitions";
 import { toDocumentResponseDto } from "./documents.helpers";
 const document = (overrides: Partial<Document> = {}) => ({
@@ -35,6 +36,7 @@ for (const [type, definition] of Object.entries(documentDefinitions)) {
     const result = toDocumentResponseDto(document({ documentType: type, normalizedType: type }));
     assert.equal(result.owner, "self");
     assert.equal(result.normalizedType, type);
+    assert.equal(normalizeDocumentType(definition.displayName), type);
     for (const capability of definition.supportedReadinessCapabilities) assert(result.capabilities.includes(capability), `${type}: ${capability}`);
   });
 }
