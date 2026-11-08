@@ -1,5 +1,5 @@
 import { encryptedCleanupLocator } from "../privacy/storageLocator";
-import { healthDocumentType } from "../services/healthDocumentTypes";
+import { classifiedHealthDocumentType, healthDocumentType } from "../services/healthDocumentTypes";
 import { savedUpload, boundUploadAnalysis, markUploadSaved, saveReviewedHealth, savedUploadHealth } from "../services/documentUploadReview";
 import { resolveHealthMember } from "../services/healthSchemas";
 import { memberDto } from "../services/healthDtos";
@@ -258,6 +258,15 @@ async function analyzeDocumentEnvelopes(
         if (!expired && existing.status !== "active") return { unavailable: true } as const;
         if (!expired && receipt?.status === "processing" && Date.now() - (receipt.startedAt ?? existing.createdAt.getTime()) < 180_000) return null;
 
+        if (!expired && receipt?.status === "analyzed" && receipt.result) {
+          const uploads = await tx.temporaryUpload.findMany({
+            where: { id: { in: receipt.tempFileIds }, ownerProfileId: authUser.id, status: "active", expiresAt: { gt: new Date() } },
+          });
+          if (uploads.length === receipt.tempFileIds.length) {
+            return { receipt, uploads: receipt.tempFileIds.map(id => uploads.find(upload => upload.id === id)!), reused: true } as const;
+          }
+        }
+
         const oldUploads = {
           id: { in: receipt?.tempFileIds ?? [uploadId] },
           ownerProfileId: authUser.id,
@@ -289,30 +298,39 @@ async function analyzeDocumentEnvelopes(
     } } as const;
 
     let receipt = claim.receipt;
-    const analyzePaths = async (index: number, paths: string[]): Promise<DocumentAIResult> => index === plaintexts.length
-      ? (analyze ?? (files => getDocumentAnalyzer().analyzeDocument(files, AbortSignal.timeout(100_000))))(paths.map((path, i) => ({
-        path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize,
-      })))
-      : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), path => analyzePaths(index + 1, [...paths, path]));
-    let completed: Receipt;
-    try {
-      await assertAIProcessingEnabled(authUser.id);
-      const result = await analyzePaths(0, []);
-      completed = { ...receipt, result, healthExtraction: result.healthExtraction ?? null, status: "analyzed" };
-    } catch (error) {
-      const warningCode = warningCodeForAnalysisError(error);
-      completed = { ...receipt, result: fallbackDocumentAIResult, warningCode, status: warningCode === "AI_PROCESSING_DISABLED" ? "ai_processing_disabled" : "failed" };
+    if (!("reused" in claim)) {
+      const analyzePaths = async (index: number, paths: string[]): Promise<DocumentAIResult> => index === plaintexts.length
+        ? (analyze ?? (files => getDocumentAnalyzer().analyzeDocument(files, AbortSignal.timeout(100_000))))(paths.map((path, i) => ({
+          path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize,
+        })))
+        : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), path => analyzePaths(index + 1, [...paths, path]));
+      let completed: Receipt;
+      try {
+        await assertAIProcessingEnabled(authUser.id);
+        const analysis = await analyzePaths(0, []);
+        const result = { ...analysis, healthExtraction: classifiedHealthDocumentType(analysis) ? analysis.healthExtraction ?? null : null };
+        completed = { ...receipt, result, healthExtraction: result.healthExtraction ?? null, status: "analyzed" };
+      } catch (error) {
+        const warningCode = warningCodeForAnalysisError(error);
+        completed = { ...receipt, result: fallbackDocumentAIResult, warningCode, status: warningCode === "AI_PROCESSING_DISABLED" ? "ai_processing_disabled" : "failed" };
+      }
+      receipt = await prisma.$transaction(async tx => {
+        await lockAccount(tx, authUser.id);
+        const current = await tx.temporaryUpload.findFirstOrThrow({ where: { id: uploadId, ownerProfileId: authUser.id } });
+        const stored = current.analysis as Receipt;
+        if (stored.status !== "processing" || stored.attemptId !== completed.attemptId) return stored;
+        await writeReceipt(tx, completed);
+        return completed;
+      });
+      console.info({ event: "document_analysis_completed", outcome: receipt.status, warningCode: receipt.warningCode, fileCount: envelopes.length });
     }
-    receipt = await prisma.$transaction(async tx => {
-      await lockAccount(tx, authUser.id);
-      const current = await tx.temporaryUpload.findFirstOrThrow({ where: { id: uploadId, ownerProfileId: authUser.id } });
-      const stored = current.analysis as Receipt;
-      if (stored.status !== "processing" || stored.attemptId !== completed.attemptId) return stored;
-      await writeReceipt(tx, completed);
-      return completed;
-    });
-    console.info({ event: "document_analysis_completed", outcome: receipt.status, warningCode: receipt.warningCode, fileCount: envelopes.length });
-    const aiResult = receipt.result ?? fallbackDocumentAIResult;
+    const result = receipt.result ?? fallbackDocumentAIResult;
+    const clinicalType = classifiedHealthDocumentType(result);
+    const aiResult = {
+      ...result,
+      category: result.category === "Medical" && !clinicalType ? "Other" as const : result.category,
+      healthExtraction: clinicalType ? result.healthExtraction ?? null : null,
+    };
     const user = await prisma.user.findUnique({ where: { id: authUser.id }, select: { name: true } });
     const ownership = !aiResult.nameOnDocument ? "unknown" : user?.name && namesReasonablyMatch(user.name, aiResult.nameOnDocument) ? "mine" : "other";
     const response = buildAnalyzeResponse({ analysis: aiResult, ownership, files: claim.uploads.map((item) => ({ tempFileId: item.id, originalName: item.originalName, mimeType: item.detectedMimeType, size: item.size })), ...(receipt.warningCode ? { warning: analysisWarningMessage(receipt.warningCode), warningCode: receipt.warningCode } : {}) });

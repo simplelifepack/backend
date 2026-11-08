@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { extractionSchema, fallbackHealthExtraction, type HealthExtraction } from "./healthExtraction.service";
 import { memberSchema } from "./healthSchemas";
-import { healthDocumentType } from "./healthDocumentTypes";
+import { classifiedHealthDocumentType, healthDocumentType } from "./healthDocumentTypes";
 import { createHealthRecord } from "./healthRecordCreation";
 import { getHealthRecord } from "./healthMembers";
 import { pendingProfileResponse } from "./healthDtos";
@@ -28,6 +28,7 @@ export const healthReviewSchema = z.object({
 export const uploadAnalysisSchema = z.object({
   tempFileIds: z.array(z.string().uuid()).min(1).max(50),
   healthExtraction: extractionSchema.nullable(),
+  result: z.object({ category: z.string(), documentType: z.string() }).optional(),
   status: z.enum(["analyzed", "failed", "ai_processing_disabled"]),
 });
 
@@ -66,7 +67,11 @@ export function boundUploadAnalysis(ids: string[], uploads: Array<{ analysis: un
 export async function saveReviewedHealth(tx: Prisma.TransactionClient, userId: string,
   document: { id: string; documentType: string | null; category: string | null },
   analysis: z.infer<typeof uploadAnalysisSchema> | null, review?: z.infer<typeof healthReviewSchema>) {
-  const type = healthDocumentType(document) ?? analysis?.healthExtraction?.documentType;
+  const type = healthDocumentType(document);
+  if (analysis?.status === "analyzed" && (!analysis.result || !classifiedHealthDocumentType(analysis.result))) {
+    if (type || review) throw Object.assign(new Error("Clinical review requires a document classified as medical."), { statusCode: 422 });
+    return null;
+  }
   if (!type) {
     if (review) throw Object.assign(new Error("Clinical review requires a medical document."), { statusCode: 422 });
     return null;

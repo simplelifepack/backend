@@ -142,7 +142,7 @@ async function run() {
     const replay = await scan();
     assert.equal(replay.status, 200, JSON.stringify(replay.body));
     const replacement = await prisma.temporaryUpload.findUniqueOrThrow({ where: { id: aiUploadId }, select: { storagePath: true } });
-    assert.notEqual(replacement.storagePath, previousUpload.storagePath);
+    assert.equal(replacement.storagePath, previousUpload.storagePath);
     assert.equal(replay.body.files[0].tempFileId, aiUploadId);
     assert.deepEqual(replay.body.document, firstScan.body.document);
     await prisma.temporaryUpload.update({ where: { id: aiUploadId }, data: { expiresAt: new Date(0) } });
@@ -155,7 +155,7 @@ async function run() {
     assert.deepEqual(saves.map(result => result.status).sort(), [200, 201], JSON.stringify(saves));
     assert.equal(saves[0]!.result.document.id, saves[1]!.result.document.id);
     const ai = saves.find(result => result.status === 201)!;
-    assert.equal(analysisCalls, 4);
+    assert.equal(analysisCalls, 3);
     assert.equal(ai.result.healthRecord.measurements[0].value, 102);
     const profile = await prisma.healthMember.findFirstOrThrow({ where: { id: ai.result.healthRecord.memberId, userId } });
     assert.equal(profile.relation, 'Unknown');
@@ -176,7 +176,7 @@ async function run() {
     });
     assert.equal(records.status, 200);
     assert.equal((await records.json()).length, 2);
-    assert.equal(analysisCalls, 5);
+    assert.equal(analysisCalls, 4);
     patientDob = null;
     pdf.setTitle('Report without patient DOB');
     const ambiguousScan = await scan(Buffer.from(await pdf.save()));
@@ -188,7 +188,7 @@ async function run() {
     assert.equal(ambiguous.result.healthRecord.memberId, profile.id);
     assert.equal(ambiguous.result.healthRecord.createdMember, undefined);
     assert.equal(await prisma.healthMember.count({ where: { userId, name: 'Synthetic Patient' } }), 1);
-    assert.equal(analysisCalls, 6);
+    assert.equal(analysisCalls, 5);
     let batchCalls = 0;
     const patientNames = ['Batch Patient A', 'Batch Patient B', 'Batch Patient A'];
     setDocumentAnalyzerForTests(new OpenAIDocumentAnalyzer(undefined, 'synthetic', async body => {
@@ -237,6 +237,29 @@ async function run() {
     assert.equal(batchMembers[0], batchMembers[2]);
     assert.notEqual(batchMembers[0], batchMembers[1]);
     assert.equal(batchCalls, 1);
+    setDocumentAnalyzerForTests({ analyzeDocument: async () => ({
+      category: 'Employment', documentType: 'Resume', uniqueNumber: null, nameOnDocument: 'Resume Applicant', expiryDate: null,
+      healthExtraction: { documentType: 'medical_report', patient: { name: 'Resume Applicant' }, measurements: [], medications: [], followUps: [] },
+    }) });
+    pdf.setTitle('Resume');
+    const resume = await scan(Buffer.from(await pdf.save()));
+    assert.equal(resume.status, 200, JSON.stringify(resume.body));
+    assert.equal(resume.body.document.healthExtraction, null);
+    assert.equal(resume.body.healthProfileMatch, undefined);
+    const resumeId = resume.body.files[0].tempFileId as string;
+    pendingIds.push(resumeId);
+    const override = await save({ ...aiPayload, tempFileIds: [resumeId] });
+    assert.equal(override.status, 422);
+    const resumeSave = await save({ ...aiPayload, tempFileIds: [resumeId], category: 'Employment', documentType: 'Resume' });
+    assert.equal(resumeSave.status, 201, JSON.stringify(resumeSave.result));
+    assert.equal(resumeSave.result.healthRecord, null);
+    const resumeRecord = await fetch(`http://127.0.0.1:${address.port}/health/records`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentId: resumeSave.result.document.id, newMember: { name: 'Resume Applicant', relation: 'Unknown' } }),
+    });
+    assert.equal(resumeRecord.status, 422);
+    assert.equal(await prisma.healthMember.count({ where: { userId, name: 'Resume Applicant' } }), 0);
+
     const zipResponse = await fetch(`http://127.0.0.1:${address.port}/documents/bulk-download`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

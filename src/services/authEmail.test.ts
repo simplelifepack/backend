@@ -1,14 +1,13 @@
-import { withPrivateMigration } from "../privacy/access";
+import { withPrivateMigration, withPrivateUser } from "../privacy/access";
 import "dotenv/config";
 /* eslint-disable max-lines */
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
 import { prisma } from "../lib/prisma";
-import type { TokenPayload } from "google-auth-library";
 
 import {
   forgotPassword as forgotPasswordRequest,
-  googleLogin as googleLoginRequest,
   login as loginRequest,
   requestPasswordResetOtp,
   requestSignupOtp,
@@ -22,7 +21,6 @@ import { renderLoginAlertEmail } from "./email/templates/loginAlertEmail";
 import { renderPasswordResetEmail } from "./email/templates/passwordResetEmail";
 import { renderWelcomeEmail } from "./email/templates/welcomeEmail";
 
-process.env.GOOGLE_CLIENT_ID ||= "synthetic.apps.googleusercontent.com";
 process.env.APP_URL = "https://www.readines.com";
 delete process.env.SMTP_HOST;
 delete process.env.SMTP_PORT;
@@ -33,18 +31,6 @@ delete process.env.MAIL_FROM;
 
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const email = (label: string) => `auth-email-${label}-${runId}@example.com`;
-const googlePayload = (label: string, overrides: Partial<TokenPayload> = {}): TokenPayload => ({
-  iss: "accounts.google.com",
-  aud: process.env.GOOGLE_CLIENT_ID || "test-google-client-id",
-  sub: `auth-email-${label}-${runId}`,
-  email: email(label),
-  email_verified: true,
-  name: "Google Email User",
-  iat: Math.floor(Date.now() / 1000) - 5,
-  exp: Math.floor(Date.now() / 1000) + 300,
-  ...overrides,
-});
-
 class MockEmailProvider {
   sent: SendEmailInput[] = [];
   shouldFail = false;
@@ -70,7 +56,6 @@ async function settleAuthMail() {
 }
 async function signup(...args: Parameters<typeof signupRequest>) { const result = await signupRequest(...args); await settleAuthMail(); return result; }
 async function login(...args: Parameters<typeof loginRequest>) { const result = await loginRequest(...args); await settleAuthMail(); return result; }
-async function googleLogin(...args: Parameters<typeof googleLoginRequest>) { const result = await googleLoginRequest(...args); await settleAuthMail(); return result; }
 async function forgotPassword(...args: Parameters<typeof forgotPasswordRequest>) { const result = await forgotPasswordRequest(...args); await settleAuthMail(); return result; }
 
 async function run() {
@@ -232,29 +217,21 @@ async function run() {
   await login({ email: email("new"), password: "Newer-password-123!" });
   assert.equal(failingLoginProvider.sent.length, 0, "SMTP failure does not fail successful login");
 
-  const googleProvider = new MockEmailProvider();
-  setEmailProviderForTests(googleProvider);
-  await googleLogin({ credential: "google-new" }, async () => googlePayload("google-new"));
-  assert.equal(googleProvider.sent.length, 1, "new Google-created user sends one welcome email");
-  assert.equal(googleProvider.sent[0].subject, "Welcome to Readines");
-
-  await googleLogin(
-    { credential: "google-existing" },
-    async () => googlePayload("google-new"),
-    { userAgent: "Mozilla/5.0 Firefox/126.0", ip: "198.51.100.12" },
-  );
-  assert.equal(googleProvider.sent.length, 2, "existing Google login sends one alert");
-  assert.equal(googleProvider.sent[1].subject, "New login to your Readines account");
-
-  await forgotPassword({ email: email("google-new") });
-  assert.equal(googleProvider.sent.length, 3, "forgot password sends reset email for Google-created account");
-  assert.equal(googleProvider.sent[2].subject, "Reset your Readines password");
-  const googleResetUrl = googleProvider.sent[2].text.match(/http[^\s]+/)?.[0];
-  assert.ok(googleResetUrl, "Google reset email includes reset URL");
-  const googleResetToken = new URL(googleResetUrl).searchParams.get("token");
-  assert.ok(googleResetToken, "Google reset URL includes token");
-  await resetPassword({ token: googleResetToken, password: "google-password-123" });
-  await login({ email: email("google-new"), password: "google-password-123" });
+  const legacyProvider = new MockEmailProvider();
+  setEmailProviderForTests(legacyProvider);
+  const legacyId = randomUUID();
+  const legacyEmail = email("legacy");
+  await withPrivateUser(legacyId, () => prisma.user.create({
+    data: { id: legacyId, name: "Legacy account", email: legacyEmail, passwordHash: null },
+  }));
+  await forgotPassword({ email: legacyEmail });
+  assert.equal(legacyProvider.sent.length, 1, "password reset supports accounts without a password");
+  const legacyResetUrl = legacyProvider.sent[0].text.match(/http[^\s]+/)?.[0];
+  assert.ok(legacyResetUrl);
+  const legacyToken = new URL(legacyResetUrl).searchParams.get("token");
+  assert.ok(legacyToken);
+  await resetPassword({ token: legacyToken, password: "legacy-password-123" });
+  assert.equal((await login({ email: legacyEmail, password: "legacy-password-123" })).user.id, legacyId);
 
   const welcome = renderWelcomeEmail({ name: `<script>alert("x")</script>`, appUrl: "http://localhost:5173" });
   assert.ok(welcome.html.length > 0 && welcome.text.length > 0);

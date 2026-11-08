@@ -2,13 +2,12 @@ import { withCredentialLookup, withPrivateUser } from "../privacy/access";
 /* eslint-disable max-lines */
 import bcrypt from "bcrypt";
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
-import { Prisma, type User } from "@prisma/client";
+import { type User } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma";
 import { signAccessToken } from "../utils/jwt";
 import * as emailService from "./email/emailService";
-import { verifyGoogleCredential, type GoogleCredentialVerifier } from "./googleIdentity.service";
 import { acceptTrustInvitationsForUser } from "./trustCenter.service";
 import { cancelPendingDeletion } from "./accountDeletion.service";
 import { noteAuthVersion } from "./authRevocationCache";
@@ -559,39 +558,6 @@ export async function resetPin(userId: string, input: unknown) {
   });
 
   return { message: "PIN updated." };
-}
-
-export async function googleLogin(
-  input: unknown,
-  verifier?: GoogleCredentialVerifier,
-  context?: emailService.LoginAlertContext,
-): Promise<AuthResult> {
-  const google = await verifyGoogleCredential(input, verifier);
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const identity = await withCredentialLookup(() => prisma.externalIdentity.findUnique({
-        where: { provider_providerAccountId: { provider: "google", providerAccountId: google.subject } }, select: { userId: true },
-      }));
-      const existing = identity ? { id: identity.userId } : await findUserByEmail(google.email);
-      const userId = existing?.id ?? randomUUID();
-      return await withPrivateUser(userId, async () => {
-        const user = await prisma.$transaction(async tx => {
-          const linked = existing ? await tx.user.findUniqueOrThrow({ where: { id: userId } }) : await tx.user.create({ data: {
-            id: userId, email: google.email, name: google.name || google.givenName || google.email.split("@")[0], passwordHash: null,
-          } });
-          if (!identity) await tx.externalIdentity.create({ data: { userId, provider: "google", providerAccountId: google.subject, avatarUrl: google.picture } });
-          return linked;
-        }, { isolationLevel: "Serializable" });
-        const result = await buildAuthResult(selectAuthUser(user));
-        await acceptTrustInvitationsForUser(user.id, user.email);
-        dispatchAuthEmail(() => existing ? emailService.sendLoginAlertEmail(user, context) : emailService.sendWelcomeEmail(user));
-        return result;
-      });
-    } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || !["P2002", "P2034"].includes(error.code) || attempt === 2) throw error;
-    }
-  }
-  throw new Error("Unable to authenticate with Google.");
 }
 
 export async function refresh(input: unknown): Promise<AuthResult> {

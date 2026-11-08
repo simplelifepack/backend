@@ -1,4 +1,5 @@
 import { analyzeDocument, fallbackDocumentAIResult, type UploadedFile } from "./documentAnalyzer";
+import { classifiedHealthDocumentType } from "./healthDocumentTypes";
 import { assertAIProcessingEnabled } from "./aiProcessing.service";
 import { getDocumentDefinition, validateDocumentMetadata } from "./documents/fieldValidation";
 
@@ -24,7 +25,7 @@ export async function analyzeImportedDocument(userId: string, file: UploadedFile
   const validation = validateDocumentMetadata({ documentType: result.documentType, fields, confidence });
   const extractedText = result.extractedText ?? "";
   return {
-    healthExtraction: result.healthExtraction ?? null,
+    healthExtraction: classifiedHealthDocumentType(result) ? result.healthExtraction ?? null : null,
     success: true, analysisSource, documentType: validation.normalizedType, confidence,
     suggestedCategory: result.category.toLowerCase(), extractedFields: fields,
     reviewFields: validation.reviewFields, validation,

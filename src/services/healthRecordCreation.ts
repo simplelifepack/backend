@@ -1,3 +1,4 @@
+import { healthDocumentType } from "./healthDocumentTypes";
 import { matchHealthPatient, validPatientDob } from "./healthPatientIdentity";
 import { lockAccount } from "./accountUsage.service";
 import { createConfirmedHealthMember } from "./healthMembers";
@@ -31,13 +32,15 @@ export async function createHealthRecord(userId: string, input: unknown, transac
     where: { userId, documentId: data.documentId },
   });
   if (existing?.memberId) return getHealthRecord(userId, existing.id, db);
+  const type = healthDocumentType(document);
+  if (!type) throw Object.assign(new Error("Health records require a medical document."), { statusCode: 422 });
   const cached = extractionSchema.safeParse(existing?.pendingExtraction);
   if (existing?.processingStatus === "awaiting_profile_match" && !data.memberId && !data.newMember) {
     const resolution = await resolveHealthMember(userId, cached.success ? cached.data.patient : null, cached.success ? cached.data.documentDate : null, db);
     if (resolution.status !== "matched") return pendingProfileResponse(userId, existing, db);
   }
 
-  const extracted: HealthExtraction = cached.success ? cached.data : fallbackHealthExtraction(data.type ?? "medical_report");
+  const extracted: HealthExtraction = cached.success ? cached.data : fallbackHealthExtraction(data.type ?? type);
   let processingStatus = cached.success
     ? extracted.pendingProcessingStatus ?? prescriptionProcessingStatus(extracted.documentType, extracted)
     : aiProcessingEnabled ? "failed" : "ai_processing_disabled";

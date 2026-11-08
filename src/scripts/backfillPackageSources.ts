@@ -7,7 +7,7 @@ import { normalizeSearchText, slugify } from "../services/readiness/normalizatio
 
 const DEFAULT_BATCH_SIZE = 10;
 
-type SourceMetadata = {
+export type SourceMetadata = {
   sourceName: string;
   sourceTitle: string;
   sourceUrl: string;
@@ -17,7 +17,7 @@ type SourceMetadata = {
   verificationStatus: "verified";
 };
 
-type PackageForBackfill = {
+export type PackageForBackfill = {
   id: string;
   slug: string;
   title: string;
@@ -105,9 +105,10 @@ async function main() {
   console.info("[Readiness Package Source Backfill] complete", summary);
 }
 
-async function findMissingSourcePackages(limit: number, cursor?: string) {
+export async function findMissingSourcePackages(limit: number, cursor?: string, publicOnly = false) {
   return prisma.readinessPack.findMany({
     where: {
+      ...(publicOnly ? { createdBy: "seed", deletedAt: null } : {}),
       OR: [
         { sourceName: null },
         { sourceTitle: null },
@@ -151,7 +152,7 @@ async function findMissingSourcePackages(limit: number, cursor?: string) {
   });
 }
 
-async function resolveSourceMetadata(pack: PackageForBackfill, useAi: boolean): Promise<SourceMetadata | null> {
+export async function resolveSourceMetadata(pack: PackageForBackfill, useAi: boolean): Promise<SourceMetadata | null> {
   if (!useAi) return null;
   // Operator-only catalogue maintenance, not an end-user operation.
   const provider = createAIProvider().provider;
@@ -184,7 +185,7 @@ function metadataFromGenerated(generated: AIReadinessPackage): SourceMetadata {
   };
 }
 
-function sourceUpdateForPack(pack: PackageForBackfill, metadata: SourceMetadata) {
+export function sourceUpdateForPack(pack: PackageForBackfill, metadata: SourceMetadata) {
   const update: Record<string, unknown> = {};
   const hasPlaceholder = isPlaceholder(pack.sourceName) || isPlaceholder(pack.sourceTitle);
 
@@ -217,7 +218,7 @@ function normalizeVerificationSources(
   }];
 }
 
-function cacheKeyForPack(pack: PackageForBackfill) {
+export function cacheKeyForPack(pack: PackageForBackfill) {
   const requirementTypes = pack.requirements
     .map((requirement) => requirement.documentType)
     .sort()
@@ -258,11 +259,13 @@ function log(status: "dry-run" | "updated" | "skipped" | "failed", _pack: Packag
   });
 }
 
-void main()
-  .catch(() => {
-    console.error("[Readiness Package Source Backfill] failed.");
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (require.main === module) {
+  void main()
+    .catch(() => {
+      console.error("[Readiness Package Source Backfill] failed.");
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

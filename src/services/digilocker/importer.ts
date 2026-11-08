@@ -1,3 +1,4 @@
+import { classifiedHealthDocumentType } from "../healthDocumentTypes";
 import { saveReviewedHealth } from "../documentUploadReview";
 import { randomUUID, createHash } from "node:crypto";
 import { prisma } from "../../lib/prisma";
@@ -94,9 +95,10 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
         originalSha256: stored.originalSha256, encryptedSha256: stored.encryptedSha256,
         encryptedSize: stored.encryptedSize, ciphertextHash: stored.encryptedSha256,
       } });
-      await saveReviewedHealth(tx, userId, record, {
+      if (classifiedHealthDocumentType({ category: analysis.suggestedCategory, documentType: analysis.documentType })) await saveReviewedHealth(tx, userId, record, {
         tempFileIds: [temporary.id],
         healthExtraction: analysis.healthExtraction,
+        result: { category: analysis.suggestedCategory, documentType: analysis.documentType },
         status: analysis.analysisSource === "ai" ? "analyzed" : analysis.warnings.some(warning => warning.code === "AI_PROCESSING_DISABLED") ? "ai_processing_disabled" : "failed",
       });
       return { documentId: record.id, duplicate: false };

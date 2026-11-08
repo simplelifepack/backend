@@ -66,18 +66,6 @@ router.post("/login/pin", authLimiter, loginAccountLimiter, async (req, res, nex
   }
 });
 
-router.post("/google", authLimiter, async (req, res, next) => {
-  try {
-    const result = await authService.googleLogin(req.body, undefined, {
-      userAgent: req.get("user-agent"),
-      ip: req.ip,
-    });
-    return sendAuthResult(res, result);
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.post("/refresh", tokenRefreshLimiter, async (req, res, next) => {
   try {
     const refreshToken = readRefreshCookie(req);
