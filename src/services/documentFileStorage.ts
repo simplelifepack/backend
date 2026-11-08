@@ -27,7 +27,7 @@ import {
   type ValidatedEncryptedEnvelope,
 } from "./documentHybridEncryption";
 
-const TEMP_UPLOAD_TTL_MS = 30 * 60 * 1000;
+export const TEMP_UPLOAD_TTL_MS = 30 * 60 * 1000;
 const TEMP_STATUS_ACTIVE = "active";
 const TEMP_STATUS_CONSUMED = "consumed";
 const ENCRYPTED_FILE_EXTENSION = ".bin";
@@ -180,13 +180,14 @@ export async function createTemporaryUpload(ownerProfileId: string, file: Expres
 export async function createEncryptedTemporaryUpload(
   ownerProfileId: string,
   envelope: ValidatedEncryptedEnvelope,
+  db: Prisma.TransactionClient = prisma,
+  id = crypto.randomUUID() as string,
 ) {
   await fsp.mkdir(temporaryUploadsDir, { recursive: true, mode: 0o700 });
-  const id = crypto.randomUUID();
-  const storagePath = path.join(temporaryUploadsDir, `${id}.bin`);
+  const storagePath = path.join(temporaryUploadsDir, `${crypto.randomUUID()}.bin`);
   try {
     await fsp.writeFile(storagePath, envelope.ciphertext, { flag: "wx", mode: 0o600 });
-    return await prisma.temporaryUpload.create({
+    return await db.temporaryUpload.create({
       data: {
         id,
         ownerProfileId,
@@ -503,19 +504,17 @@ export async function cleanupTemporaryUploads() {
     where: {
       // A consumed row may still be copying to permanent encrypted storage.
       expiresAt: { lte: now },
+      savedDocumentId: null,
     },
     take: 100,
     select: { id: true, storagePath: true },
   });
 
   for (const upload of staleUploads) {
-    await safeUnlink(upload.storagePath);
-  }
-
-  if (staleUploads.length) {
-    await prisma.temporaryUpload.deleteMany({
-      where: { id: { in: staleUploads.map((upload) => upload.id) } },
+    const deleted = await prisma.temporaryUpload.deleteMany({
+      where: { id: upload.id, storagePath: upload.storagePath, expiresAt: { lte: now }, savedDocumentId: null },
     });
+    if (deleted.count) await safeUnlink(upload.storagePath);
   }
 
   const known = await prisma.temporaryUpload.findMany({

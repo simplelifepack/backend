@@ -1,3 +1,5 @@
+import { pendingProfileResponse } from "../services/healthDtos";
+import { prisma } from "../lib/prisma";
 import { Router } from "express";
 
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
@@ -99,6 +101,24 @@ router.post("/records", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.status(201).json(await createHealthRecord(authUser.id, req.body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/records/pending", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const records = await prisma.healthDocument.findMany({
+      where: { userId: authUser.id, memberId: null, processingStatus: "awaiting_profile_match" },
+      orderBy: { createdAt: "asc" },
+    });
+    const documents = await prisma.document.findMany({
+      where: { id: { in: records.map(record => record.documentId) }, ownerProfileId: authUser.id, deletedAt: null },
+      select: { id: true },
+    });
+    const owned = new Set(documents.map(document => document.id));
+    return res.json(await Promise.all(records.filter(record => owned.has(record.documentId)).map(record => pendingProfileResponse(authUser.id, record))));
   } catch (error) {
     return next(error);
   }

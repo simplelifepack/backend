@@ -24,6 +24,7 @@ export async function analyzeImportedDocument(userId: string, file: UploadedFile
   const validation = validateDocumentMetadata({ documentType: result.documentType, fields, confidence });
   const extractedText = result.extractedText ?? "";
   return {
+    healthExtraction: result.healthExtraction ?? null,
     success: true, analysisSource, documentType: validation.normalizedType, confidence,
     suggestedCategory: result.category.toLowerCase(), extractedFields: fields,
     reviewFields: validation.reviewFields, validation,

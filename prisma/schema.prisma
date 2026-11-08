@@ -325,6 +325,7 @@ model AccountChangeOtp {
 }
 
 model Document {
+  uploadReceipts TemporaryUpload[] @relation("UploadReceipt")
   private_title String?
   private_displayName String?
   private_uniqueIdentifier String?
@@ -441,6 +442,12 @@ model Document {
 }
 
 model HealthMember {
+  gender String?
+  age Int?
+  ageRecordedAt DateTime?
+  private_gender String?
+  private_age String?
+  private_ageRecordedAt String?
   private_name String?
   private_relation String?
   private_bloodGroup String?
@@ -722,6 +729,12 @@ model DocumentFile {
 }
 
 model TemporaryUpload {
+  analysis Json?
+  private_analysis String?
+  savedDocumentId String?
+  savedDocument Document? @relation("UploadReceipt", fields: [savedDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([savedDocumentId])
   private_originalName String?
   private_contentHash String?
   private_sourceMessageId String?

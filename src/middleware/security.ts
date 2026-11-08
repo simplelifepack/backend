@@ -160,41 +160,6 @@ export const adminLimiter = buildRateLimiter({
   message: "Too many admin requests. Please try again later.",
 });
 
-export const gmailAuthorizeLimiter = buildRateLimiter({
-  scope: "gmailAuthorizeLimiter",
-  windowMinutes: 15,
-  max: 10,
-  message: "Too many Gmail connection attempts. Please try again later.",
-});
-
-export const gmailScanLimiter = buildRateLimiter({
-  scope: "gmailScanLimiter",
-  windowMinutes: 60,
-  max: 6,
-  message: "Too many Gmail scans. Please try again later.",
-});
-
-export const gmailImportLimiter = buildRateLimiter({
-  scope: "gmailImportLimiter",
-  windowMinutes: 60,
-  max: 30,
-  message: "Too many Gmail imports. Please try again later.",
-});
-
-export const driveAuthorizeLimiter = buildRateLimiter({
-  scope: "driveAuthorizeLimiter",
-  windowMinutes: 15,
-  max: 10,
-  message: "Too many Google Drive connection attempts. Please try again later.",
-});
-
-export const driveScanLimiter = buildRateLimiter({
-  scope: "driveScanLimiter",
-  windowMinutes: 60,
-  max: 6,
-  message: "Too many Google Drive scans. Please try again later.",
-});
-
 export function requireAdminSeedToken(req: Request, res: Response, next: NextFunction) {
   const configuredToken = process.env.ADMIN_SEED_TOKEN?.trim();
 

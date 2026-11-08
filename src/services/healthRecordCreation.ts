@@ -1,23 +1,22 @@
+import { matchHealthPatient, validPatientDob } from "./healthPatientIdentity";
+import { lockAccount } from "./accountUsage.service";
+import { createConfirmedHealthMember } from "./healthMembers";
 import { Prisma } from "@prisma/client";
-import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { drainStorageCleanup, queueStorageCleanup } from "./storageCleanup.service";
-import { readDecryptedDocumentLocation } from "./documentFileStorage";
-import { decryptString } from "../utils/documentEncryption";
-import type { OriginalDocumentFile } from "./documentAnalyzer/fileInput";
-import { extractHealthDocument, extractionSchema, fallbackHealthExtraction, type HealthDocumentType, type HealthExtraction } from "./healthExtraction.service";
-import { metricSearchTerms, normalizeMetricName } from "./healthMetricRegistry";
-import { assertAIProcessingEnabled } from "./aiProcessing.service";
-import { recordCreateSchema, aiProcessingEnabledForUser, requireManualHealthType, parseDate, resolveHealthMember, inferWhenToTake, inferMealTiming } from "./healthSchemas";
-import { pendingProfileResponse, prescriptionProcessingStatus, prescriptionProcessingMessage, healthSource, assertMember, addDuration, memberDto } from "./healthDtos";
+import { extractionSchema, fallbackHealthExtraction, type HealthExtraction } from "./healthExtraction.service";
+import { normalizeMetricName } from "./healthMetricRegistry";
+import { recordCreateSchema, aiProcessingEnabledForUser, parseDate, resolveHealthMember, inferWhenToTake, inferMealTiming } from "./healthSchemas";
+import { pendingProfileResponse, prescriptionProcessingStatus, prescriptionProcessingMessage, assertMember, addDuration, memberDto } from "./healthDtos";
 import { getHealthRecord } from "./healthMembers";
 
 
-export async function createHealthRecord(userId: string, input: unknown) {
+export async function createHealthRecord(userId: string, input: unknown, transaction?: Prisma.TransactionClient) {
+  const db = transaction ?? prisma;
+  const transact = <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) => transaction ? work(transaction) : prisma.$transaction(work);
   const data = recordCreateSchema.parse(input);
-  const aiProcessingEnabled = await aiProcessingEnabledForUser(userId);
-  if (!aiProcessingEnabled) requireManualHealthType(data.type);
-  const document = await prisma.document.findFirst({
+  const aiProcessingEnabled = await aiProcessingEnabledForUser(userId, db);
+
+  const document = await db.document.findFirst({
     where: { id: data.documentId, ownerProfileId: userId, deletedAt: null },
     include: { files: true },
   });
@@ -28,135 +27,99 @@ export async function createHealthRecord(userId: string, input: unknown) {
       code: "UNSUPPORTED_FILE_TYPE",
     });
   }
-  const existing = await prisma.healthDocument.findFirst({
+  const existing = await db.healthDocument.findFirst({
     where: { userId, documentId: data.documentId },
   });
-  if (existing?.memberId) return getHealthRecord(userId, existing.id);
-  if (existing && !data.memberId) return pendingProfileResponse(userId, existing);
+  if (existing?.memberId) return getHealthRecord(userId, existing.id, db);
+  const cached = extractionSchema.safeParse(existing?.pendingExtraction);
+  if (existing?.processingStatus === "awaiting_profile_match" && !data.memberId && !data.newMember) {
+    const resolution = await resolveHealthMember(userId, cached.success ? cached.data.patient : null, cached.success ? cached.data.documentDate : null, db);
+    if (resolution.status !== "matched") return pendingProfileResponse(userId, existing, db);
+  }
 
-  let originalFiles: OriginalDocumentFile[] = [];
-  let extractionError: string | null = null;
-  let extraction: HealthExtraction | null = null;
-  let processingStatus = "processing";
-  if (existing?.pendingExtraction && data.memberId) {
-    extraction = extractionSchema.parse(existing.pendingExtraction);
-    processingStatus = prescriptionProcessingStatus(extraction.documentType, extraction);
-    extractionError = prescriptionProcessingMessage(processingStatus, extraction);
-  } else if (!aiProcessingEnabled) {
-    const manualType = requireManualHealthType(data.type);
-    extraction = fallbackHealthExtraction(manualType);
-    processingStatus = "ai_processing_disabled";
-    extractionError = "AI processing is turned off. Turn on AI processing in Preferences to automatically extract medications from prescriptions, or enter the medications manually.";
-  } else
-    try {
-      originalFiles = await healthSource(document);
-    } catch (error) {
-      // The record remains available for review, but never pretends extraction
-      // succeeded when its encrypted source could not be read.
-      extractionError = "The original document could not be read. Retry or enter the information manually.";
-    }
-  if (!extraction)
-    try {
-      if (!originalFiles.length) throw new Error("The original document could not be read.");
-      extraction = await extractHealthDocument({
-        type: data.type,
-        files: originalFiles,
-      });
-      const extractedType = extraction.documentType;
-      const suspiciousLabExtraction = extractedType === "lab_report" && extraction.measurements.length === 0 && !extraction.provider && !extraction.doctor;
-      if (suspiciousLabExtraction) throw new Error("No structured data could be extracted from this lab report.");
-      processingStatus = prescriptionProcessingStatus(extractedType, extraction);
-      extractionError = prescriptionProcessingMessage(processingStatus, extraction);
-    } catch (error) {
-      extraction = fallbackHealthExtraction(data.type ?? "medical_report");
-      if ((error as { code?: unknown })?.code === "AI_PROCESSING_DISABLED") {
-        processingStatus = "ai_processing_disabled";
-        extractionError = "AI processing is turned off. Turn on AI processing in Preferences to automatically extract medications from prescriptions, or enter the medications manually.";
-      } else {
-        processingStatus = "failed";
-        extractionError = "AI could not extract this health document. Retry or enter the information manually.";
-      }
-    } finally { originalFiles.forEach(file => file.bytes.fill(0)); }
-
-  const extracted = extraction ?? fallbackHealthExtraction(data.type ?? "medical_report");
+  const extracted: HealthExtraction = cached.success ? cached.data : fallbackHealthExtraction(data.type ?? "medical_report");
+  let processingStatus = cached.success
+    ? extracted.pendingProcessingStatus ?? prescriptionProcessingStatus(extracted.documentType, extracted)
+    : aiProcessingEnabled ? "failed" : "ai_processing_disabled";
+  let extractionError = existing?.processingError ?? prescriptionProcessingMessage(processingStatus, extracted);
+  if (processingStatus === "ai_processing_disabled") extractionError = "AI processing is turned off. Enter the details manually or enable AI in Preferences.";
+  else if (processingStatus === "failed") extractionError = "No usable analysis is available. Enter the details manually or reanalyze the saved record.";
+  if (extracted.patient?.identityConflicting) {
+    extracted.measurements = []; extracted.medications = []; extracted.followUps = [];
+    processingStatus = "patient_identity_conflict";
+    extractionError = "Patient information conflicts across pages. Review the original document before processing.";
+  }
   const recordType = extracted.documentType;
   const documentDate = parseDate(extracted.documentDate) ?? document.createdAt;
-  let memberId = data.memberId;
+  let createdMember: Awaited<ReturnType<typeof assertMember>> | undefined;
   let matchedMember: Awaited<ReturnType<typeof assertMember>> | undefined;
-  if (memberId) {
-    await assertMember(userId, memberId);
-  } else if (processingStatus !== "failed" && processingStatus !== "ai_processing_disabled") {
-    const resolution = await resolveHealthMember(userId, extracted.patient);
-    if (resolution.status !== "matched") {
-      const pending = await prisma.healthDocument.upsert({
-        where: { userId_documentId: { userId, documentId: data.documentId } },
-        create: {
+  const patient = extracted.patient;
+  const canProvision = cached.success && existing?.processingStatus === "pending_identification"
+    && !cached.data.pendingProcessingStatus;
+  const record = await transact(async tx => {
+    await lockAccount(tx, userId);
+    const current = await tx.healthDocument.findFirst({ where: { userId, documentId: data.documentId } });
+    if (current?.memberId) return current;
+
+    let assignedMemberId = data.memberId;
+    if (assignedMemberId) await assertMember(userId, assignedMemberId, tx);
+    else if (data.newMember) assignedMemberId = (await createConfirmedHealthMember(tx, userId, data.newMember, documentDate)).id;
+    else {
+      const profiles = await tx.healthMember.findMany({ where: { userId } });
+      const resolution = matchHealthPatient(extracted.patient, profiles, extracted.documentDate);
+      if (resolution.status === "matched") {
+        matchedMember = resolution.member;
+        assignedMemberId = resolution.member.id;
+      } else if (canProvision && resolution.status === "unmatched") {
+        // Potential matches are left for confirmation to avoid duplicate profiles.
+        const relation = patient?.relation?.trim();
+        const age = patient?.age;
+        const validAge = age != null && Number.isInteger(age) && age >= 0 && age <= 120 ? age : null;
+        createdMember = await tx.healthMember.create({ data: {
           userId,
-          documentId: data.documentId,
+          name: patient?.name?.trim().slice(0, 120) || "Unknown patient",
+          relation: relation && !/^(myself|self)$/i.test(relation) ? relation : "Unknown",
+          dateOfBirth: parseDate(validPatientDob(patient?.dateOfBirth)),
+          age: validAge,
+          ageRecordedAt: validAge == null ? null : documentDate,
+          gender: patient?.gender?.trim().slice(0, 80) || null,
+          bloodGroup: patient?.bloodGroup ?? null,
+          conditions: patient?.conditions ?? null,
+          allergies: patient?.allergies ?? null,
+        } });
+        assignedMemberId = createdMember.id;
+      } else {
+        const pending = {
           type: recordType,
           documentDate,
           provider: extracted.provider ?? null,
           doctor: extracted.doctor ?? null,
           processingStatus: "awaiting_profile_match",
+          processingError: extractionError,
           patientName: extracted.patient?.name?.trim() || null,
-          patientDateOfBirth: parseDate(extracted.patient?.dateOfBirth),
-          pendingExtraction: extracted as Prisma.InputJsonValue,
+          patientDateOfBirth: parseDate(validPatientDob(extracted.patient?.dateOfBirth)),
+          pendingExtraction: { ...extracted, pendingProcessingStatus: processingStatus } as Prisma.InputJsonValue,
           processedAt: new Date(),
-        },
-        update: {
-          type: recordType,
-          documentDate,
-          provider: extracted.provider ?? null,
-          doctor: extracted.doctor ?? null,
-          processingStatus: "awaiting_profile_match",
-          processingError: null,
-          patientName: extracted.patient?.name?.trim() || null,
-          patientDateOfBirth: parseDate(extracted.patient?.dateOfBirth),
-          pendingExtraction: extracted as Prisma.InputJsonValue,
-          processedAt: new Date(),
-        },
-      });
-      return pendingProfileResponse(userId, pending);
-    }
-    memberId = resolution.member.id;
-    matchedMember = resolution.member;
-  }
-  if (!memberId) throw Object.assign(new Error("A health profile must be selected before this record can be saved."), { statusCode: 400 });
-  const assignedMemberId = memberId;
-  const record = await prisma.$transaction(async (tx) => {
-    const created = existing
-      ? await tx.healthDocument.update({
-          where: { id: existing.id },
-          data: {
-            memberId: assignedMemberId,
-            type: recordType,
-            documentDate,
-            provider: extracted.provider ?? null,
-            doctor: extracted.doctor ?? null,
-            processingStatus,
-            processingError: extractionError,
-            patientName: extracted.patient?.name?.trim() || null,
-            patientDateOfBirth: parseDate(extracted.patient?.dateOfBirth),
-            pendingExtraction: Prisma.JsonNull,
-            processedAt: new Date(),
-          },
-        })
-      : await tx.healthDocument.create({
-          data: {
-            userId,
-            memberId: assignedMemberId,
-            documentId: data.documentId,
-            type: recordType,
-            documentDate,
-            provider: extracted.provider ?? null,
-            doctor: extracted.doctor ?? null,
-            processingStatus,
-            processingError: extractionError,
-            patientName: extracted.patient?.name?.trim() || null,
-            patientDateOfBirth: parseDate(extracted.patient?.dateOfBirth),
-            processedAt: new Date(),
-          },
+        };
+        return tx.healthDocument.upsert({
+          where: { userId_documentId: { userId, documentId: data.documentId } },
+          create: { ...pending, userId, documentId: data.documentId },
+          update: pending,
         });
+      }
+    }
+    const memberId = assignedMemberId;
+    const recordData = {
+      memberId, type: recordType, documentDate,
+      provider: extracted.provider ?? null, doctor: extracted.doctor ?? null,
+      processingStatus, processingError: extractionError,
+      patientName: extracted.patient?.name?.trim() || null,
+      patientDateOfBirth: parseDate(validPatientDob(extracted.patient?.dateOfBirth)),
+      pendingExtraction: extracted as Prisma.InputJsonValue, processedAt: new Date(),
+    };
+    const created = current
+      ? await tx.healthDocument.update({ where: { id: current.id }, data: recordData })
+      : await tx.healthDocument.create({ data: { ...recordData, userId, documentId: data.documentId } });
     const validMeasurements = extracted.measurements.filter((item) => Number.isFinite(item.value) && item.name.trim() && item.unit.trim());
     if (validMeasurements.length) {
       await tx.healthMeasurement.createMany({
@@ -164,7 +127,7 @@ export async function createHealthRecord(userId: string, input: unknown) {
           const normalized = normalizeMetricName(item.metricKey || item.name);
           return {
             userId,
-            memberId: assignedMemberId,
+            memberId,
             sourceDocumentId: created.id,
             metricKey: normalized.metricKey,
             displayName: normalized.displayName,
@@ -187,7 +150,7 @@ export async function createHealthRecord(userId: string, input: unknown) {
       await tx.healthMedication.createMany({
         data: medications.map((item) => ({
           userId,
-          memberId: assignedMemberId,
+          memberId,
           sourceDocumentId: created.id,
           name: item.name.trim(),
           dose: item.dose ?? null,
@@ -205,7 +168,7 @@ export async function createHealthRecord(userId: string, input: unknown) {
       const followUp = await tx.healthFollowUp.create({
         data: {
           userId,
-          memberId: assignedMemberId,
+          memberId,
           sourceDocumentId: created.id,
           title: item.title.trim(),
           explicitDate,
@@ -219,7 +182,7 @@ export async function createHealthRecord(userId: string, input: unknown) {
         await tx.healthReminder.create({
           data: {
             userId,
-            memberId: assignedMemberId,
+            memberId,
             sourceDocumentId: created.id,
             sourceFollowUpId: followUp.id,
             title: item.title.trim(),
@@ -230,9 +193,11 @@ export async function createHealthRecord(userId: string, input: unknown) {
     }
     return created;
   });
+  if (!record.memberId) return pendingProfileResponse(userId, record, db);
   return {
-    ...(await getHealthRecord(userId, record.id)),
+    ...(await getHealthRecord(userId, record.id, db)),
     patient: extracted.patient ?? null,
     matchedMember: matchedMember ? memberDto(matchedMember) : null,
+    createdMember: createdMember ? memberDto(createdMember) : undefined,
   };
 }

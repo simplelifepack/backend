@@ -46,5 +46,32 @@ export function buildManualValidation(payload: z.infer<typeof saveSchema>, field
     warnings: [],
   };
 }
-export function warningCodeForAnalysisError(error: unknown) { const code = (error as { code?: unknown })?.code; if (code === "AI_PROCESSING_DISABLED") return "AI_PROCESSING_DISABLED"; const message = error instanceof Error ? error.message : ""; if (/OPENAI_API_KEY/.test(message)) return "OPENAI_API_KEY_MISSING"; if (/401|Incorrect API key/.test(message)) return "OPENAI_API_AUTH_FAILED"; if (/429|quota/i.test(message)) return "OPENAI_QUOTA_EXCEEDED"; return "AI_ANALYSIS_UNAVAILABLE"; }
+export function warningCodeForAnalysisError(error: unknown) {
+  const failure = error as { code?: unknown; status?: unknown } | null;
+  const message = error instanceof Error ? error.message : "";
+  const name = error instanceof Error ? error.name : "";
+  if (failure?.code === "AI_PROCESSING_DISABLED") return "AI_PROCESSING_DISABLED";
+  if (/OPENAI_API_KEY/.test(message)) return "OPENAI_API_KEY_MISSING";
+  if (failure?.status === 401 || /Incorrect API key/.test(message)) return "OPENAI_API_AUTH_FAILED";
+  if (failure?.code === "insufficient_quota" || /quota/i.test(message)) return "OPENAI_QUOTA_EXCEEDED";
+  if (failure?.status === 429) return "AI_ANALYSIS_RATE_LIMITED";
+  if (failure?.status === 408 || name === "TimeoutError" || name === "APIConnectionTimeoutError") return "AI_ANALYSIS_TIMED_OUT";
+  if (name === "APIConnectionError") return "AI_ANALYSIS_CONNECTION_FAILED";
+  if (message === "AI_DOCUMENT_RESPONSE_INVALID" || name === "ZodError") return "AI_ANALYSIS_INVALID_RESPONSE";
+  return "AI_ANALYSIS_UNAVAILABLE";
+}
+
+export function analysisWarningMessage(code: string) {
+  switch (code) {
+    case "AI_ANALYSIS_TIMED_OUT": return "The AI scan timed out.";
+    case "AI_ANALYSIS_RATE_LIMITED": return "The AI service is busy. Try again shortly.";
+    case "AI_ANALYSIS_CONNECTION_FAILED": return "Readiness could not connect to the AI service.";
+    case "AI_ANALYSIS_INVALID_RESPONSE": return "The AI service returned results that could not be used.";
+    case "OPENAI_API_KEY_MISSING":
+    case "OPENAI_API_AUTH_FAILED": return "The AI service credentials are missing or invalid.";
+    case "OPENAI_QUOTA_EXCEEDED": return "The AI service has reached its usage quota.";
+    default: return "Document analysis unavailable. Please review manually.";
+  }
+}
+
 export { fallbackDocumentAIResult };

@@ -95,6 +95,9 @@ export function decodePrivateRow(model: string, input: Record<string, unknown>, 
   for (const field of protectedFields(model)) {
     const column = cipherColumn(field.name);
     if (fields && !fields.has(field.name)) { delete result[column]; continue; }
+    if (((model === "HealthMember" && ["age", "gender", "ageRecordedAt"].includes(field.name)) || (model === "TemporaryUpload" && field.name === "analysis")) && input[column] == null && input[field.name] == null) {
+      result[field.name] = null; delete result[column]; continue;
+    }
     if (typeof input[column] !== "string") throw new Error("PRIVATE_DATA_MIGRATION_REQUIRED");
     let value = decryptPrivateValue<unknown>(input[column] as string, { model, recordId: identity.id, ownerId: identity.userId, field: field.name });
     if (field.type === "Json" && (value === Prisma.JsonNull || value === Prisma.DbNull)) value = null;

@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createDecipheriv } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
 
@@ -12,21 +12,10 @@ function key() {
   return raw;
 }
 
-export function encryptGmailToken(token: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv(ALGORITHM, key(), iv);
-  const data = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
-  return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
-}
-
-export function decryptGmailToken(encrypted: string) {
+export function decryptLegacyOAuthToken(encrypted: string) {
   const [version, iv, tag, data] = encrypted.split(".");
-  if (version !== "v1" || !iv || !tag || !data) throw new Error("Encrypted Gmail token is invalid.");
+  if (version !== "v1" || !iv || !tag || !data) throw new Error("Encrypted legacy OAuth token is invalid.");
   const decipher = createDecipheriv(ALGORITHM, key(), Buffer.from(iv, "base64url"));
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(data, "base64url")), decipher.final()]).toString("utf8");
-}
-
-export function assertGmailTokenEncryptionConfigured() {
-  key();
 }

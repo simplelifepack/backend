@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { decryptString, decryptJson, decryptDocumentBuffer } from "../../src/utils/documentEncryption";
 import { decryptHybridDocument, isHybridEncryptionMetadata } from "../../src/services/documentHybridEncryption";
-import { decryptGmailToken } from "../../src/services/gmail/tokenEncryption";
+import { decryptLegacyOAuthToken } from "./legacy-oauth-token";
 import { getStorageProvider } from "../../src/infrastructure/storage/createStorageProvider";
 import { assertPrivateDataKeysConfigured } from "../../src/privacy/fieldEncryption";
 import { productionTargetSummary } from "../../src/privacy/productionTargetSummary";
@@ -20,7 +20,7 @@ async function run() {
    for(const {data}of rows)for(const [field,value]of Object.entries(data)){
     if(typeof value==='string'&&value.startsWith('enc:v1:')){decryptString(value);strings++;}
     if(value&&typeof value==='object'&&'__lifepackEncrypted' in value){decryptJson(value,null);json++;}
-    if(name==='ExternalConnection'&&field==='encryptedRefreshToken'&&typeof value==='string'){decryptGmailToken(value);tokens++;}
+    if(name==='ExternalConnection'&&field==='encryptedRefreshToken'&&typeof value==='string'){decryptLegacyOAuthToken(value);tokens++;}
    }
    if(name==='Document'||name==='DocumentFile')for(const {data}of rows){
     const text=(key:string)=>typeof data[key]==='string'?decryptString(data[key] as string):null;

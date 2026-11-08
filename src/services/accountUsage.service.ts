@@ -56,9 +56,11 @@ export function enforceStorage(tier: "free" | "paid", usageBytes: number, incomi
 }
 
 export async function withStorageUpload<T>(userId: string, incomingBytes: number, replacementId: string | null,
-  save: (tx: Prisma.TransactionClient) => Promise<T>) {
+  save: (tx: Prisma.TransactionClient) => Promise<T>, replay?: (tx: Prisma.TransactionClient) => Promise<T | null>) {
   return prisma.$transaction(async tx => {
     const tier = await lockAccount(tx, userId);
+    const previous = await replay?.(tx);
+    if (previous) return previous;
     // Validate replacement ownership under the same lock as the allowance and save.
     if (replacementId) await tx.document.findFirstOrThrow({ where: { id: replacementId, ownerProfileId: userId } });
     const usedBytes = await storedBytes(userId, tx, replacementId);

@@ -1,3 +1,4 @@
+import { matchHealthPatient } from "./healthPatientIdentity";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
@@ -27,6 +28,8 @@ export const memberSchema = z
   .object({
     name: z.string().trim().min(1).max(120),
     relation: z.string().trim().min(1).max(80),
+    gender: z.string().trim().max(80).optional().nullable(),
+    age: z.number().int().min(0).max(120).optional().nullable(),
     bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "Unknown"]).optional().nullable(),
     dateOfBirth: z.string().trim().optional().nullable(),
     conditions: z.string().trim().max(2_000).optional().nullable(),
@@ -43,10 +46,12 @@ export const memberSchema = z
 export const recordCreateSchema = z
   .object({
     memberId: z.string().trim().min(1).optional(),
+    newMember: memberSchema.optional(),
     documentId: z.string().trim().min(1),
     type: z.enum(documentTypes).optional(),
   })
-  .strict();
+  .strict()
+  .refine(data => !(data.memberId && data.newMember), { message: "Choose an existing profile or confirm a new one." });
 
 
 export const recordUpdateSchema = z
@@ -56,8 +61,8 @@ export const recordUpdateSchema = z
   .strict();
 
 
-export async function aiProcessingEnabledForUser(userId: string) {
-  const user = await prisma.user.findUnique({
+export async function aiProcessingEnabledForUser(userId: string, db: Prisma.TransactionClient = prisma) {
+  const user = await db.user.findUnique({
     where: { id: userId },
     select: { aiProcessingEnabled: true },
   });
@@ -75,45 +80,10 @@ export function requireManualHealthType(type: HealthDocumentType | undefined) {
 }
 
 
-export function normalizePatientName(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9 ]/g, " ")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-
-export async function resolveHealthMember(userId: string, patient: HealthExtraction["patient"]) {
-  const name = patient?.name ? normalizePatientName(patient.name) : "";
-  if (!name)
-    return {
-      status: "missing" as const,
-      patient: patient ?? null,
-      candidates: [],
-    };
-  const members = await prisma.healthMember.findMany({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
-  });
-  const nameMatches = members.filter((member) => normalizePatientName(member.name) === name);
-  const patientDob = parseDate(patient?.dateOfBirth);
-  const exactDob = patientDob ? nameMatches.filter((member) => member.dateOfBirth?.getTime() === patientDob.getTime()) : [];
-  const candidates = exactDob.length ? exactDob : nameMatches;
-  if (candidates.length === 1)
-    return {
-      status: "matched" as const,
-      patient,
-      member: candidates[0]!,
-      candidates,
-    };
-  return {
-    status: candidates.length ? ("ambiguous" as const) : ("unmatched" as const),
-    patient,
-    candidates,
-  };
+export { normalizePatientName } from "./healthPatientIdentity";
+export async function resolveHealthMember(userId: string, patient: HealthExtraction["patient"], documentDate?: string | null, db: Prisma.TransactionClient = prisma) {
+  const members = await db.healthMember.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
+  return matchHealthPatient(patient, members, documentDate);
 }
 
 

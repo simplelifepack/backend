@@ -1,3 +1,4 @@
+import { normalizePatientName, validPatientDob } from "./healthPatientIdentity";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
@@ -23,7 +24,7 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
     });
   if (!record.memberId) throw Object.assign(new Error("Assign this health record to a profile before reprocessing."), { statusCode: 409 });
   const assignedMemberId = record.memberId;
-  await assertMember(userId, assignedMemberId);
+  const assignedMember = await assertMember(userId, assignedMemberId);
   const document = await prisma.document.findFirst({
     where: { id: record.documentId, ownerProfileId: userId, deletedAt: null },
     include: { files: true },
@@ -32,6 +33,16 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
     throw Object.assign(new Error("Original document not found."), {
       statusCode: 404,
     });
+
+  const startedAt = new Date();
+  const busy = () => Object.assign(new Error("This health record is already being reanalyzed."), { statusCode: 409 });
+  if (record.processingStatus === "processing" && record.processedAt && startedAt.getTime() - record.processedAt.getTime() < 180_000) throw busy();
+  const claimed = await prisma.healthDocument.updateMany({
+    where: { id: record.id, userId, processingStatus: record.processingStatus, processedAt: record.processedAt },
+    data: { processingStatus: "processing", processedAt: startedAt },
+  });
+  if (claimed.count !== 1) throw busy();
+  const claim = { id: record.id, userId, processingStatus: "processing", processedAt: startedAt };
 
   let extraction: HealthExtraction;
   let processingStatus = "processing";
@@ -59,13 +70,25 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
       processingError = "AI could not extract this health document. Retry or enter the information manually.";
     }
   } finally { originalFiles.forEach(file => file.bytes.fill(0)); }
-  // A failed/disabled retry must never delete previously stored clinical data.
-  if (processingStatus === "failed" || processingStatus === "ai_processing_disabled") {
-    await prisma.healthDocument.update({ where: { id: record.id }, data: { processingStatus, processingError, processedAt: new Date() } });
+  const patient = extraction.patient;
+  const dob = validPatientDob(patient?.dateOfBirth);
+  if (patient?.identityConflicting || (patient?.name && normalizePatientName(patient.name) !== normalizePatientName(assignedMember.name)) ||
+      (dob && assignedMember.dateOfBirth && dob !== assignedMember.dateOfBirth.toISOString().slice(0, 10))) {
+    processingStatus = "patient_identity_conflict";
+    processingError = "Patient information differs from this profile. Review the original document.";
+  }
+  if (["failed", "ai_processing_disabled", "patient_identity_conflict"].includes(processingStatus)) {
+    await prisma.healthDocument.updateMany({ where: claim, data: { processingStatus, processingError, processedAt: new Date() } });
     return getHealthRecord(userId, record.id);
   }
   const documentDate = parseDate(extraction.documentDate) ?? record.documentDate ?? document.createdAt;
   await prisma.$transaction(async (tx) => {
+    const completed = await tx.healthDocument.updateMany({
+      where: claim,
+      data: { documentDate, provider: extraction.provider ?? null, doctor: extraction.doctor ?? null, pendingExtraction: extraction as Prisma.InputJsonValue, processingStatus, processingError, processedAt: new Date() },
+    });
+    if (completed.count !== 1) throw busy();
+
     await tx.healthReminder.deleteMany({
       where: { sourceDocumentId: record.id },
     });
@@ -78,18 +101,6 @@ export async function reprocessHealthRecord(userId: string, recordId: string) {
     await tx.healthFollowUp.deleteMany({
       where: { sourceDocumentId: record.id },
     });
-    await tx.healthDocument.update({
-      where: { id: record.id },
-      data: {
-        documentDate,
-        provider: extraction.provider ?? null,
-        doctor: extraction.doctor ?? null,
-        processingStatus,
-        processingError,
-        processedAt: new Date(),
-      },
-    });
-    if (processingStatus === "failed" || processingStatus === "ai_processing_disabled") return;
     const validMeasurements = extraction.measurements.filter((item) => Number.isFinite(item.value) && item.name.trim() && item.unit.trim());
     if (validMeasurements.length)
       await tx.healthMeasurement.createMany({

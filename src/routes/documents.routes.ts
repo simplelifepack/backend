@@ -1,3 +1,8 @@
+import { encryptedCleanupLocator } from "../privacy/storageLocator";
+import { healthDocumentType } from "../services/healthDocumentTypes";
+import { savedUpload, boundUploadAnalysis, markUploadSaved, saveReviewedHealth, savedUploadHealth } from "../services/documentUploadReview";
+import { resolveHealthMember } from "../services/healthSchemas";
+import { memberDto } from "../services/healthDtos";
 import { assignDocumentsSchema, assignOwnedDocuments, documentAssignmentOptions, documentDetailsSchema, updateOwnedDocumentDetails } from "../services/documentAssignment.service";
 import { queueStorageCleanup, drainStorageCleanup } from "../services/storageCleanup.service";
 import { enforceStorage, storedBytes, withStorageUpload, lockAccount } from "../services/accountUsage.service";
@@ -13,7 +18,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
 import { uploadLimiter } from "../middleware/security";
 import { encryptedUpload } from "../middleware/upload";
-import { analyzeDocument, getDocumentAnalyzer } from "../services/documentAnalyzer";
+import { type DocumentAIResult, type UploadedFile, getDocumentAnalyzer } from "../services/documentAnalyzer";
 import {
   buildAnalyzeResponse,
   buildManualValidation,
@@ -21,6 +26,7 @@ import {
   fallbackDocumentAIResult,
   prepareManualFields,
   warningCodeForAnalysisError,
+  analysisWarningMessage,
 } from "./documents.analysis";
 import {
   buildExtractedKeyFields,
@@ -191,20 +197,13 @@ router.get("/encryption-key", (_req, res) => {
   return res.json(getPublicDocumentEncryptionKey());
 });
 
-async function analyzeEncryptedUpload(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-  statusCode: 200 | 202,
+async function analyzeDocumentEnvelopes(
+  authUser: AuthenticatedRequest["authUser"],
+  envelopes: ReturnType<typeof validateEncryptedDocumentEnvelopes>,
+  analyze?: (files: UploadedFile[]) => Promise<DocumentAIResult>,
 ) {
   const plaintexts: Buffer[] = [];
-  const controller = new AbortController();
-  const cancel = () => { if (!res.writableFinished) controller.abort(); };
-  res.once("close", cancel);
   try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
-    const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? (req.file ? [req.file] : undefined);
-    const envelopes = req.body.envelopes ? validateEncryptedDocumentEnvelopes(req.body, uploadedFiles) : [validateEncryptedDocumentEnvelope(req.body, req.file)];
     assertImageUploadBatchWithinLimit(envelopes);
     for (const envelope of envelopes) { const plaintext = verifyAndDecryptEnvelope(envelope); plaintexts.push(plaintext); await validateDecryptedDocument(plaintext, envelope); }
 
@@ -216,40 +215,128 @@ async function analyzeEncryptedUpload(
       },
     });
     if (duplicate) {
-      return res.status(409).json({
+      return { status: 409, body: {
         code: "DUPLICATE_DOCUMENT",
         message: "Already in Readiness",
         duplicateDocument: toDocumentResponseDto(duplicate),
-      });
+      } } as const;
     }
 
-    const analyzePaths = async (index: number, paths: string[]): Promise<{ result: Awaited<ReturnType<typeof analyzeDocument>> | Error }> => index === plaintexts.length
-      ? (async () => {
-        const analyzer = getDocumentAnalyzer();
-        return analyzer.analyzeDocument(paths.map((path, i) => ({ path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize })), controller.signal);
-      })().then((result) => ({ result })).catch((error) => ({ result: error as Error }))
-      : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), (path) => analyzePaths(index + 1, [...paths, path]));
-    let analysis: { result: Awaited<ReturnType<typeof analyzeDocument>> | Error } = { result: fallbackDocumentAIResult };
-    {
-      try {
-        await assertAIProcessingEnabled(authUser.id);
-        analysis = await analyzePaths(0, []);
-      } catch (error) {
-        if ((error as { code?: unknown })?.code !== "AI_PROCESSING_DISABLED") throw error;
-        analysis = { result: Object.assign(new Error("AI processing is disabled for this account."), { code: "AI_PROCESSING_DISABLED" }) };
+    // Ordered, verified content identifies this version of an owned analysis.
+    const key = userScopedDocumentHash(authUser.id, JSON.stringify(["upload-analysis-v1", ...envelopes.map(item => item.originalSha256)]))!;
+    const uploadId = `${key.slice(0, 8)}-${key.slice(8, 12)}-4${key.slice(13, 16)}-8${key.slice(17, 20)}-${key.slice(20, 32)}`;
+    const staged: Awaited<ReturnType<typeof createEncryptedTemporaryUpload>>[] = [];
+    type Receipt = {
+      tempFileIds: string[];
+      healthExtraction: DocumentAIResult["healthExtraction"];
+      status: "processing" | "analyzed" | "failed" | "ai_processing_disabled";
+      result?: DocumentAIResult;
+      warningCode?: string;
+      attemptId?: string;
+      startedAt?: number;
+    };
+    const startReceipt = (tempFileIds: string[]): Receipt => ({
+      tempFileIds, healthExtraction: null, status: "processing", attemptId: crypto.randomUUID(), startedAt: Date.now(),
+    });
+    const writeReceipt = (db: Prisma.TransactionClient, receipt: Receipt) =>
+      db.temporaryUpload.updateMany({
+        where: { ownerProfileId: authUser.id, id: { in: receipt.tempFileIds } },
+        data: { analysis: receipt as Prisma.InputJsonValue },
+      });
+    let replacedUploads: Array<{ storagePath: string }> = [];
+    const claim = await prisma.$transaction(async tx => {
+      await lockAccount(tx, authUser.id);
+      const existing = await tx.temporaryUpload.findFirst({ where: { id: uploadId, ownerProfileId: authUser.id } });
+      if (existing?.savedDocumentId) {
+        const saved = await tx.document.findFirst({ where: { id: existing.savedDocumentId, ownerProfileId: authUser.id, deletedAt: null } });
+        if (saved) return { duplicate: saved } as const;
+        return { unavailable: true } as const;
       }
+      if (existing) {
+        const receipt = existing.analysis as Receipt | null;
+        const expired = existing.expiresAt <= new Date();
+        if (!expired && existing.status !== "active") return { unavailable: true } as const;
+        if (!expired && receipt?.status === "processing" && Date.now() - (receipt.startedAt ?? existing.createdAt.getTime()) < 180_000) return null;
+
+        const oldUploads = {
+          id: { in: receipt?.tempFileIds ?? [uploadId] },
+          ownerProfileId: authUser.id,
+          savedDocumentId: null,
+        };
+        replacedUploads = await tx.temporaryUpload.findMany({ where: oldUploads, select: { storagePath: true } });
+        await tx.temporaryUpload.deleteMany({ where: oldUploads });
+      }
+      for (const [index, envelope] of envelopes.entries()) {
+        staged.push(await createEncryptedTemporaryUpload(authUser.id, envelope, tx, index === 0 ? uploadId : undefined));
+      }
+      const receipt = startReceipt(staged.map(item => item.id));
+      await writeReceipt(tx, receipt);
+      return { receipt, uploads: staged };
+    }, { timeout: 30_000 }).catch(async error => {
+      await Promise.all(staged.map(deleteTemporaryUploadFile));
+      throw error;
+    });
+    await Promise.all(replacedUploads.map(deleteTemporaryUploadFile));
+    if (!claim) return { status: 409, body: { code: "UPLOAD_ANALYSIS_PENDING", message: "An AI scan is already running for this file. Try again when it finishes." } } as const;
+    if ("duplicate" in claim && claim.duplicate) return { status: 409, body: {
+      code: "DUPLICATE_DOCUMENT",
+      message: "Already in Readiness",
+      duplicateDocument: toDocumentResponseDto(claim.duplicate),
+    } } as const;
+    if ("unavailable" in claim) return { status: 409, body: {
+      code: "TEMPORARY_UPLOAD_EXPIRED",
+      message: "This upload review is no longer available. Select the file again after the review expires.",
+    } } as const;
+
+    let receipt = claim.receipt;
+    const analyzePaths = async (index: number, paths: string[]): Promise<DocumentAIResult> => index === plaintexts.length
+      ? (analyze ?? (files => getDocumentAnalyzer().analyzeDocument(files, AbortSignal.timeout(100_000))))(paths.map((path, i) => ({
+        path, originalName: envelopes[i]!.originalFilename, mimeType: envelopes[i]!.originalMimeType, size: envelopes[i]!.originalSize,
+      })))
+      : withIsolatedPlaintextFile(plaintexts[index]!, extensionForMimeType(envelopes[index]!.originalMimeType), path => analyzePaths(index + 1, [...paths, path]));
+    let completed: Receipt;
+    try {
+      await assertAIProcessingEnabled(authUser.id);
+      const result = await analyzePaths(0, []);
+      completed = { ...receipt, result, healthExtraction: result.healthExtraction ?? null, status: "analyzed" };
+    } catch (error) {
+      const warningCode = warningCodeForAnalysisError(error);
+      completed = { ...receipt, result: fallbackDocumentAIResult, warningCode, status: warningCode === "AI_PROCESSING_DISABLED" ? "ai_processing_disabled" : "failed" };
     }
-    const temporaryUploads = await Promise.all(envelopes.map((envelope) => createEncryptedTemporaryUpload(authUser.id, envelope)));
-    const aiResult = analysis.result instanceof Error ? fallbackDocumentAIResult : analysis.result;
+    receipt = await prisma.$transaction(async tx => {
+      await lockAccount(tx, authUser.id);
+      const current = await tx.temporaryUpload.findFirstOrThrow({ where: { id: uploadId, ownerProfileId: authUser.id } });
+      const stored = current.analysis as Receipt;
+      if (stored.status !== "processing" || stored.attemptId !== completed.attemptId) return stored;
+      await writeReceipt(tx, completed);
+      return completed;
+    });
+    console.info({ event: "document_analysis_completed", outcome: receipt.status, warningCode: receipt.warningCode, fileCount: envelopes.length });
+    const aiResult = receipt.result ?? fallbackDocumentAIResult;
     const user = await prisma.user.findUnique({ where: { id: authUser.id }, select: { name: true } });
     const ownership = !aiResult.nameOnDocument ? "unknown" : user?.name && namesReasonablyMatch(user.name, aiResult.nameOnDocument) ? "mine" : "other";
-    const response = buildAnalyzeResponse({ analysis: aiResult, ownership, files: temporaryUploads.map((item) => ({ tempFileId: item.id, originalName: item.originalName, mimeType: item.detectedMimeType, size: item.size })), ...(analysis.result instanceof Error ? { warning: "Document analysis unavailable. Please review manually.", warningCode: warningCodeForAnalysisError(analysis.result) } : {}) });
-    return res.status(statusCode).json(response);
+    const response = buildAnalyzeResponse({ analysis: aiResult, ownership, files: claim.uploads.map((item) => ({ tempFileId: item.id, originalName: item.originalName, mimeType: item.detectedMimeType, size: item.size })), ...(receipt.warningCode ? { warning: analysisWarningMessage(receipt.warningCode), warningCode: receipt.warningCode } : {}) });
+    const match = aiResult.healthExtraction ? await resolveHealthMember(authUser.id, aiResult.healthExtraction.patient, aiResult.healthExtraction.documentDate) : null;
+    return { status: 200, body: { ...response, ...(match ? { healthProfileMatch: { status: match.status, candidates: match.candidates.map(memberDto) } } : {}) } } as const;
+  } finally {
+    plaintexts.forEach((plaintext) => plaintext.fill(0));
+  }
+}
+
+function uploadedDocumentEnvelopes(req: Request) {
+  const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? (req.file ? [req.file] : undefined);
+  return req.body.envelopes
+    ? validateEncryptedDocumentEnvelopes(req.body, uploadedFiles)
+    : [validateEncryptedDocumentEnvelope(req.body, req.file)];
+}
+
+async function analyzeEncryptedUpload(req: Request, res: Response, next: NextFunction, statusCode: 200 | 202) {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const result = await analyzeDocumentEnvelopes(authUser, uploadedDocumentEnvelopes(req));
+    return res.status(result.status === 200 ? statusCode : result.status).json(result.body);
   } catch (error) {
     return next(error);
-  } finally {
-    res.removeListener("close", cancel);
-    plaintexts.forEach((plaintext) => plaintext.fill(0));
   }
 }
 
@@ -257,6 +344,72 @@ function namesReasonablyMatch(left: string, right: string) { const a = normalize
 
 router.post("/analyze", uploadLimiter, encryptedUpload.array("encryptedFiles", 50), async (req, res, next) => {
   return analyzeEncryptedUpload(req, res, next, 200);
+});
+router.post("/analyze/batch", uploadLimiter, encryptedUpload.array("encryptedFiles", 50), async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const envelopes = uploadedDocumentEnvelopes(req);
+    const analyzedHashes = new Set<string>();
+    const prepared: Array<{
+      index: number;
+      file: UploadedFile;
+      resolve: (result: DocumentAIResult) => void;
+      reject: (error: unknown) => void;
+    }> = [];
+    const jobs = [];
+    // Stage files in order without holding a database transaction during AI processing.
+    for (const [index, envelope] of envelopes.entries()) {
+      let ready!: () => void;
+      const staged = new Promise<void>(resolve => { ready = resolve; });
+      const job = (async () => {
+        const fileName = envelope.originalFilename;
+        try {
+          if (analyzedHashes.has(envelope.originalSha256)) return { issue: { fileName, message: "This file is already in the batch." } };
+          analyzedHashes.add(envelope.originalSha256);
+          const result = await analyzeDocumentEnvelopes(authUser, [envelope], ([file]) =>
+            new Promise((resolve, reject) => {
+              prepared.push({ index, file: file!, resolve, reject });
+              ready();
+            }),
+          );
+          return result.status === 200 ? { analysis: result.body } : { issue: { fileName, message: result.body.message } };
+        } catch (error) {
+          const status = (error as { statusCode?: number } | null)?.statusCode;
+          const message = status && status >= 400 && status < 500 && error instanceof Error
+            ? error.message
+            : "This file could not be uploaded.";
+          return { issue: { fileName, message } };
+        } finally {
+          ready();
+        }
+      })();
+      jobs.push(job);
+      await staged;
+    }
+    if (prepared.length) {
+      try {
+        const analyzer = getDocumentAnalyzer();
+        if (!analyzer.analyzeDocuments) throw new Error("Batch analysis is unavailable.");
+        const results = await analyzer.analyzeDocuments(prepared.map(item => item.file), AbortSignal.timeout(100_000));
+        if (results.length !== prepared.length) throw new Error("AI_DOCUMENT_RESPONSE_INVALID");
+        for (const [index, item] of prepared.entries()) {
+          item.resolve(results[index]!);
+          await jobs[item.index];
+        }
+      } catch (error) {
+        for (const item of prepared) {
+          item.reject(error);
+          await jobs[item.index];
+        }
+      }
+    }
+    const results = await Promise.all(jobs);
+    const analyses = results.flatMap(result => result.analysis ? [result.analysis] : []);
+    const issues = results.flatMap(result => result.issue ? [result.issue] : []);
+    return res.json({ analyses, issues });
+  } catch (error) {
+    return next(error);
+  }
 });
 router.post("/", async (req, res, next) => {
   try {
@@ -272,8 +425,12 @@ router.post("/", async (req, res, next) => {
         return res.status(422).json({ code: "INVALID_EXPIRY_DATE", message: "Please enter a valid expiry date." });
       }
     }
+    const replay = await savedUpload(authUser.id, payload.tempFileIds);
+    if (replay) return res.status(200).json({ document: toDocumentResponseDto(replay), healthRecord: await savedUploadHealth(authUser.id, replay.id), replayed: true });
     const pendingTemporaryUploads = await Promise.all(payload.tempFileIds.map((id) => findOwnedTemporaryUpload(authUser.id, id)));
     if (pendingTemporaryUploads.some((item) => !item)) {
+      const completed = await savedUpload(authUser.id, payload.tempFileIds);
+      if (completed) return res.status(200).json({ document: toDocumentResponseDto(completed), healthRecord: await savedUploadHealth(authUser.id, completed.id), replayed: true });
       return res.status(404).json({
         code: "TEMPORARY_UPLOAD_EXPIRED",
         message: "This upload review has expired. Please select the file again.",
@@ -304,12 +461,19 @@ router.post("/", async (req, res, next) => {
         validation,
       });
     }
-    let duplicate = await findDuplicate(authUser.id, validation.normalizedType, validation.uniqueIdentifier);
+    // Medical reference numbers often identify a patient or visit, not a file.
+    // Distinct reports (including different patients) must reach identification.
+    // The independent content-hash check below still rejects identical uploads.
+    let duplicate = healthDocumentType({ documentType: validation.normalizedType, category: payload.category })
+      ? null
+      : await findDuplicate(authUser.id, validation.normalizedType, validation.uniqueIdentifier);
     const userScopedDedupHash = userScopedDocumentHash(authUser.id, activeUploads.map((item) => item.contentHash).sort().join(":"));
     const contentDuplicate = userScopedDedupHash
       ? await prisma.document.findFirst({ where: { ownerProfileId: authUser.id, userScopedDedupHash, deletedAt: null } })
       : null;
     if (contentDuplicate) {
+      const completed = await savedUpload(authUser.id, payload.tempFileIds);
+      if (completed) return res.status(200).json({ document: toDocumentResponseDto(completed), healthRecord: await savedUploadHealth(authUser.id, completed.id), replayed: true });
       return res.status(409).json({
         code: "DUPLICATE_DOCUMENT",
         message: "Already in Readiness",
@@ -357,13 +521,17 @@ router.post("/", async (req, res, next) => {
         duplicate && payload.duplicateAction === "replace" ? duplicate.id : null,
         async tx => {
     if (duplicate && payload.duplicateAction === "replace") duplicate = await tx.document.findUniqueOrThrow({ where: { id: duplicate.id } });
+    const concurrentDuplicate = await tx.document.findFirst({ where: { ownerProfileId: authUser.id, userScopedDedupHash, deletedAt: null } });
+    if (concurrentDuplicate) throw Object.assign(new Error("Already in Readiness"), { statusCode: 409, code: "DUPLICATE_DOCUMENT" });
     const consumedUploads = await Promise.all(payload.tempFileIds.map((id) => consumeTemporaryUpload(authUser.id, id, tx)));
     if (consumedUploads.some((item) => !item)) {
       throw Object.assign(new Error("This upload review has expired. Please select the file again."), { statusCode: 404, code: "TEMPORARY_UPLOAD_EXPIRED" });
     }
-    const storageObjectId = crypto.randomUUID();
+    // A retry after a crash before DB commit overwrites the same encrypted objects.
+    const storageObjectId = payload.tempFileIds[0]!;
     const documentId = duplicate && payload.duplicateAction === "replace" ? duplicate.id : storageObjectId;
     const temporaryUploads = consumedUploads.filter((item): item is NonNullable<typeof item> => Boolean(item));
+    const uploadAnalysis = boundUploadAnalysis(payload.tempFileIds, temporaryUploads);
     const temporaryUpload = temporaryUploads[0]!;
     const encryptedFiles: Array<Awaited<ReturnType<typeof saveEncryptedPermanentFile>>> = [];
     for (const [index, item] of temporaryUploads.entries()) {
@@ -479,9 +647,12 @@ router.post("/", async (req, res, next) => {
       const previousFiles = await tx.documentFile.findMany({ where: { documentId: duplicate.id } });
       await queueStorageCleanup(tx, authUser.id, [duplicate, ...previousFiles]);
       await replaceDocumentFiles(tx, savedDocument.id, temporaryUploads, encryptedFiles);
+      const healthRecord = await saveReviewedHealth(tx, authUser.id, savedDocument, uploadAnalysis, payload.healthReview);
+      await markUploadSaved(tx, authUser.id, savedDocument.id, payload.tempFileIds, uploadAnalysis?.status);
       const responseDocument = await tx.document.findUniqueOrThrow({ where: { id: savedDocument.id }, include: { files: true } });
       return { status: 200, body: {
         document: toDocumentResponseDto(responseDocument),
+        healthRecord,
         validation,
         replaced: true,
       } };
@@ -495,18 +666,24 @@ router.post("/", async (req, res, next) => {
       await Promise.all(encryptedFiles.map((file) => removePermanentFile(file.storageKey ?? file.path)));
       throw error;
     }
-    if (temporaryUpload.externalCandidateId) {
-      await tx.externalDocumentCandidate.updateMany({
-        where: { id: temporaryUpload.externalCandidateId, userId: authUser.id },
-        data: { status: "imported" },
-      });
-    }
     await replaceDocumentFiles(tx, savedDocument.id, temporaryUploads, encryptedFiles);
-    const responseDocument = await tx.document.findUniqueOrThrow({ where: { id: savedDocument.id }, include: { files: true } });
+    const healthRecord = await saveReviewedHealth(tx, authUser.id, savedDocument, uploadAnalysis, payload.healthReview);
+    await markUploadSaved(tx, authUser.id, savedDocument.id, payload.tempFileIds, uploadAnalysis?.status);
+      const responseDocument = await tx.document.findUniqueOrThrow({ where: { id: savedDocument.id }, include: { files: true } });
     return { status: 201, body: {
       document: toDocumentResponseDto(responseDocument),
+      healthRecord,
       validation,
     } };
+      }, async tx => {
+        const replay = await savedUpload(authUser.id, payload.tempFileIds, tx);
+        if (replay) return { status: 200, body: { document: toDocumentResponseDto(replay), healthRecord: await savedUploadHealth(authUser.id, replay.id, tx), validation, replayed: true } };
+        // Claim recovery objects under the account lock before quota calculation.
+        // The incoming allowance accounts for them once; cleanup must not delete
+        // an object after this retry has made it live again.
+        const recoveryKeys = payload.tempFileIds.map((_, index) => encryptedCleanupLocator(authUser.id, `${authUser.id}/${payload.tempFileIds[0]}/page-${index + 1}/v1.bin`).storageKey);
+        await tx.storageCleanup.deleteMany({ where: { ownerUserId: authUser.id, storageKey: { in: recoveryKeys } } });
+        return null;
       });
     } catch (error) {
       const cleanup = await Promise.allSettled(newStorageKeys.map(removePermanentFile));
@@ -516,6 +693,7 @@ router.post("/", async (req, res, next) => {
     }
     await Promise.allSettled(activeUploads.map(deleteTemporaryUploadFile));
     await drainStorageCleanup(authUser.id);
+    console.info({ event: "document_save_completed", fileCount: payload.tempFileIds.length });
     return res.status(result.status).json(result.body);
   } catch (error) {
     return next(error);

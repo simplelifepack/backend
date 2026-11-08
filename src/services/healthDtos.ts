@@ -111,11 +111,14 @@ export function parseBirthDate(value: string | null | undefined) {
 }
 
 
-export function memberDto(member: { id: string; name: string; relation: string; bloodGroup: string | null; dateOfBirth: Date | null; conditions: string | null; allergies: string | null; emergencyContactName: string | null; emergencyContactPhone: string | null; primaryDoctor: string | null; insuranceProvider: string | null; insurancePolicyNumber: string | null; createdAt: Date; updatedAt: Date }) {
+export function memberDto(member: { age?: number | null; gender?: string | null; ageRecordedAt?: Date | null; id: string; name: string; relation: string; bloodGroup: string | null; dateOfBirth: Date | null; conditions: string | null; allergies: string | null; emergencyContactName: string | null; emergencyContactPhone: string | null; primaryDoctor: string | null; insuranceProvider: string | null; insurancePolicyNumber: string | null; createdAt: Date; updatedAt: Date }) {
   return {
     id: member.id,
     name: member.name,
     relation: member.relation,
+    age: member.age ?? null,
+    gender: member.gender ?? null,
+    ageRecordedAt: iso(member.ageRecordedAt),
     bloodGroup: member.bloodGroup,
     dateOfBirth: iso(member.dateOfBirth),
     conditions: member.conditions,
@@ -198,9 +201,14 @@ export async function pendingProfileResponse(
     type: string;
     patientName: string | null;
     patientDateOfBirth: Date | null;
+    pendingExtraction?: unknown;
+    processingError?: string | null;
   },
+  db: Prisma.TransactionClient = prisma,
 ) {
-  const patient = record.patientName
+  const document = await db.document.findFirst({ where: { id: record.documentId, ownerProfileId: userId, deletedAt: null }, select: { title: true, originalName: true } });
+  const storedExtraction = extractionSchema.safeParse(record.pendingExtraction);
+  const patient = storedExtraction.success ? storedExtraction.data.patient ?? null : record.patientName
     ? {
         name: record.patientName,
         dateOfBirth: iso(record.patientDateOfBirth),
@@ -208,9 +216,10 @@ export async function pendingProfileResponse(
         gender: null,
       }
     : null;
-  const resolution = await resolveHealthMember(userId, patient);
+  const resolution = await resolveHealthMember(userId, patient, storedExtraction.success ? storedExtraction.data.documentDate : null, db);
   return {
     documentId: record.documentId,
+    documentName: decryptString(document?.originalName) || decryptString(document?.title) || "Saved health document",
     type: record.type as HealthDocumentType,
     processingStatus: "awaiting_profile_match" as const,
     patient,
@@ -218,13 +227,14 @@ export async function pendingProfileResponse(
       status: resolution.status,
       candidates: resolution.candidates.map(memberDto),
     },
+    processingError: record.processingError ?? null,
     measurements: [],
   };
 }
 
 
-export async function assertMember(userId: string, memberId: string) {
-  const member = await prisma.healthMember.findFirst({
+export async function assertMember(userId: string, memberId: string, db: Prisma.TransactionClient = prisma) {
+  const member = await db.healthMember.findFirst({
     where: { id: memberId, userId },
   });
   if (!member)

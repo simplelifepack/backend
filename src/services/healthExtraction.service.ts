@@ -11,12 +11,18 @@ import { z } from "zod";
 const extractionSchema = z
   .object({
     documentType: z.enum(documentTypes),
+    pendingProcessingStatus: z.string().optional(),
     patient: z
       .object({
         name: z.string().nullable().optional(),
         dateOfBirth: z.string().nullable().optional(),
         age: z.number().nullable().optional(),
         gender: z.string().nullable().optional(),
+        bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "Unknown"]).nullable().optional(),
+        relation: z.string().max(80).nullable().optional(),
+        identityConflicting: z.boolean().optional(),
+        conditions: z.string().max(2000).nullable().optional(),
+        allergies: z.string().max(2000).nullable().optional(),
       })
       .nullable()
       .optional(),
@@ -124,7 +130,7 @@ export async function extractHealthDocument(input: { type?: HealthDocumentType; 
 
 async function extractDocument(input: { type?: HealthDocumentType; files: OriginalDocumentFile[] }) {
   if (!input.files.length || (!testRequest && !process.env.OPENAI_API_KEY)) throw new Error("The stored health document could not be sent for extraction.");
-  const request = testRequest ?? ((body: ResponseCreateParamsNonStreaming) => new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 90_000, maxRetries: 1 }).responses.create(body));
+  const request = testRequest ?? ((body: ResponseCreateParamsNonStreaming) => new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 90_000, maxRetries: 0 }).responses.create(body));
   const response = await request({
     store: false,
     model: process.env.OPENAI_HEALTH_EXTRACTION_MODEL ?? process.env.OPENAI_ICR_MODEL ?? "gpt-5-mini",

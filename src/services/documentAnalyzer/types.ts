@@ -1,3 +1,4 @@
+import type { HealthExtraction } from "../healthExtraction.service";
 export const documentCategories = [
   "Identity",
   "Employment",
@@ -16,6 +17,7 @@ export const documentCategories = [
 export type DocumentCategory = (typeof documentCategories)[number];
 
 export type DocumentAIResult = {
+  healthExtraction?: HealthExtraction | null;
   extractedText?: string;
   fields?: Record<string, string>;
   category: DocumentCategory;

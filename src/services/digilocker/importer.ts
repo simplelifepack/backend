@@ -1,3 +1,4 @@
+import { saveReviewedHealth } from "../documentUploadReview";
 import { randomUUID, createHash } from "node:crypto";
 import { prisma } from "../../lib/prisma";
 import { createEncryptedTemporaryUpload, deleteTemporaryUploadFile, saveEncryptedPermanentFile, removePermanentFile } from "../documentFileStorage";
@@ -74,7 +75,7 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
         uniqueIdentifier: encryptString(analysis.validation.uniqueIdentifier), uniqueIdentifierHash: documentLookupHash(analysis.validation.uniqueIdentifier),
         extractedKeyFields: encryptJson(analysis.extractedFields), rawText: encryptString(analysis.extractedText),
         documentType: analysis.validation.normalizedType, normalizedType: analysis.validation.normalizedType,
-        documentTypeCode: analysis.validation.normalizedType, category: analysis.validation.category,
+        documentTypeCode: analysis.validation.normalizedType, category: analysis.suggestedCategory === "medical" ? "medical" : analysis.validation.category,
         analysisSource: analysis.analysisSource, confidence: analysis.confidence, fields: encryptJson(fields),
         userScopedDedupHash: hash, metadataIntegrityHash: documentMetadataIntegrityHash(fields),
         classificationStatus: analysis.confidence >= 70 ? "detected" : "pending", classificationConfidence: analysis.confidence,
@@ -93,6 +94,11 @@ export async function storeLockerDocument(userId: string, file: LockerDocument, 
         originalSha256: stored.originalSha256, encryptedSha256: stored.encryptedSha256,
         encryptedSize: stored.encryptedSize, ciphertextHash: stored.encryptedSha256,
       } });
+      await saveReviewedHealth(tx, userId, record, {
+        tempFileIds: [temporary.id],
+        healthExtraction: analysis.healthExtraction,
+        status: analysis.analysisSource === "ai" ? "analyzed" : analysis.warnings.some(warning => warning.code === "AI_PROCESSING_DISABLED") ? "ai_processing_disabled" : "failed",
+      });
       return { documentId: record.id, duplicate: false };
     }, { maxWait: 30_000, timeout: 60_000 });
     committed = !result.duplicate;

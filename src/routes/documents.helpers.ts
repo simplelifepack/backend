@@ -1,3 +1,4 @@
+import { healthReviewSchema } from "../services/documentUploadReview";
 import type { Document, DocumentFile } from "@prisma/client";
 import { z } from "zod";
 
@@ -16,6 +17,7 @@ export const idSchema = z.object({
 });
 
 const baseSaveSchema = z.object({
+  healthReview: healthReviewSchema.optional(),
   tempFileIds: z.array(z.string().uuid()).min(1).max(50).refine(ids => new Set(ids).size === ids.length, "Duplicate upload references."),
   originalName: z.string().min(1).optional(),
   mimeType: z.string().min(1).optional(),
