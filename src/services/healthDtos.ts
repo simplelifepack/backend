@@ -13,7 +13,7 @@ import { nextReminderDueDate, iso, resolveHealthMember } from "./healthSchemas";
 
 export function reminderDto(item: { id: string; title: string; type: string | null; dueDate: Date; frequency: string | null; recurrence: string | null; origin: string; status: string; memberId: string; member?: { name: string } }) {
   const frequency = item.frequency ?? (item.recurrence ? item.recurrence : "once");
-  const dueDate = nextReminderDueDate(item.dueDate, frequency);
+  const dueDate = item.status === "completed" ? item.dueDate : nextReminderDueDate(item.dueDate, frequency);
   return {
     id: item.id,
     title: item.title,

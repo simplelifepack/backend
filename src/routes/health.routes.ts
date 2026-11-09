@@ -1,4 +1,4 @@
-import { pendingProfileResponse } from "../services/healthDtos";
+import { assertMember, pendingProfileResponse, reminderDto } from "../services/healthDtos";
 import { prisma } from "../lib/prisma";
 import { Router } from "express";
 
@@ -26,7 +26,6 @@ import {
   searchAvailableMetrics,
   updateHealthMember,
   updateMedication,
-  updateHealthRecord,
 } from "../services/health.service";
 import { getHealthHomeAttention } from "../services/healthHome.service";
 
@@ -128,15 +127,6 @@ router.get("/records/:recordId", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.json(await getHealthRecord(authUser.id, req.params.recordId));
-  } catch (error) {
-    return next(error);
-  }
-});
-
-router.patch("/records/:recordId", async (req, res, next) => {
-  try {
-    const { authUser } = req as unknown as AuthenticatedRequest;
-    return res.json(await updateHealthRecord(authUser.id, req.params.recordId, req.body));
   } catch (error) {
     return next(error);
   }
@@ -266,6 +256,36 @@ router.post("/reminders", async (req, res, next) => {
   try {
     const { authUser } = req as unknown as AuthenticatedRequest;
     return res.status(201).json(await createManualReminder(authUser.id, req.body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/members/:memberId/reminders", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    await assertMember(authUser.id, req.params.memberId);
+    const reminders = await prisma.healthReminder.findMany({
+      where: { userId: authUser.id, memberId: req.params.memberId, status: { in: ["active", "completed"] } },
+      orderBy: { dueDate: "asc" },
+    });
+    return res.json(reminders.map(item => reminderDto(item)));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/reminders/:reminderId/status", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    const status = req.body?.status;
+    if (status !== "active" && status !== "completed") return res.status(400).json({ message: "Choose an active or completed status." });
+    const result = await prisma.healthReminder.updateMany({
+      where: { id: req.params.reminderId, userId: authUser.id, status: { in: ["active", "completed"] } },
+      data: { status },
+    });
+    if (!result.count) return res.status(404).json({ message: "Reminder not found." });
+    return res.status(204).send();
   } catch (error) {
     return next(error);
   }

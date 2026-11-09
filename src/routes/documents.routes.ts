@@ -730,12 +730,29 @@ router.get("/", async (_req, res, next) => {
     const { authUser } = _req as unknown as AuthenticatedRequest;
     const documents = await prisma.document.findMany({
       where: { ownerProfileId: authUser.id, deletedAt: null },
-      include: { files: true },
+      include: {
+        files: true,
+        healthDocuments: {
+          where: { userId: authUser.id },
+          select: { memberId: true },
+        },
+      },
       orderBy: {
         createdAt: "desc",
       },
     });
-    return res.json(documents.map(toDocumentResponseDto));
+    const memberIds = [...new Set(documents.flatMap(document =>
+      document.healthDocuments.flatMap(record => record.memberId ? [record.memberId] : []),
+    ))];
+    const members = memberIds.length ? await prisma.healthMember.findMany({
+      where: { userId: authUser.id, id: { in: memberIds } },
+      select: { id: true, name: true },
+    }) : [];
+    const names = new Map(members.map(member => [member.id, member.name]));
+    return res.json(documents.map(document => ({
+      ...toDocumentResponseDto(document),
+      healthPatientName: names.get(document.healthDocuments[0]?.memberId ?? ""),
+    })));
   } catch (error) {
     return next(error);
   }

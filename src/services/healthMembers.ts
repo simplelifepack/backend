@@ -10,7 +10,7 @@ import type { OriginalDocumentFile } from "./documentAnalyzer/fileInput";
 import { extractHealthDocument, extractionSchema, fallbackHealthExtraction, type HealthDocumentType, type HealthExtraction } from "./healthExtraction.service";
 import { metricSearchTerms, normalizeMetricName } from "./healthMetricRegistry";
 import { assertAIProcessingEnabled } from "./aiProcessing.service";
-import { memberSchema, iso, recordUpdateSchema } from "./healthSchemas";
+import { memberSchema, iso } from "./healthSchemas";
 import { memberDto, parseBirthDate, assertMember, metricIdentity, recordSummary, measurementDto, reminderDto } from "./healthDtos";
 
 
@@ -64,13 +64,17 @@ export async function updateHealthMember(userId: string, memberId: string, input
     await lockAccount(tx, userId);
     const member = await tx.healthMember.findFirst({ where: { id: memberId, userId } });
     if (!member) throw Object.assign(new Error("Health member not found."), { statusCode: 404 });
+    const relation = /^(myself|self)$/i.test(data.relation ?? "") ? "Myself" : data.relation;
+    if (relation !== undefined && (relation === "Myself") !== (member.relation === "Myself")) {
+      throw Object.assign(new Error("The account holder relationship cannot be changed."), { statusCode: 400 });
+    }
     return memberDto(await tx.healthMember.update({
       where: { id: memberId },
       data: {
         ...(data.gender !== undefined ? { gender: data.gender || null } : {}),
         ...(data.age !== undefined ? { age: data.age, ageRecordedAt: data.age != null ? new Date() : null } : {}),
         ...(data.name !== undefined ? { name: data.name } : {}),
-        ...(data.relation !== undefined ? { relation: data.relation } : {}),
+        ...(relation !== undefined ? { relation } : {}),
         ...(data.bloodGroup !== undefined ? { bloodGroup: data.bloodGroup || null } : {}),
         ...(data.dateOfBirth !== undefined
           ? {
@@ -147,23 +151,4 @@ export async function getHealthRecord(userId: string, recordId: string, db: Pris
     })),
     reminders: record.reminders.map((item) => reminderDto(item)),
   };
-}
-
-
-export async function updateHealthRecord(userId: string, recordId: string, input: unknown) {
-  const data = recordUpdateSchema.parse(input);
-  const record = await prisma.healthDocument.findFirst({
-    where: { id: recordId, userId },
-  });
-  if (!record)
-    throw Object.assign(new Error("Health record not found."), {
-      statusCode: 404,
-    });
-  if (data.type !== undefined) {
-    await prisma.healthDocument.update({
-      where: { id: record.id },
-      data: { type: data.type },
-    });
-  }
-  return getHealthRecord(userId, record.id);
 }

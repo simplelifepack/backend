@@ -17,7 +17,7 @@ export const medicationTimes = ["morning", "afternoon", "night"] as const;
 
 export const mealTimings = ["before_food", "after_food", "with_food", "any_time"] as const;
 
-export const reminderTypes = ["appointment", "medicine", "refill", "other"] as const;
+export const reminderTypes = ["appointment", "medicine", "refill", "vaccination", "test", "other"] as const;
 
 export const reminderFrequencies = ["once", "daily", "weekly", "monthly"] as const;
 
@@ -52,13 +52,6 @@ export const recordCreateSchema = z
   })
   .strict()
   .refine(data => !(data.memberId && data.newMember), { message: "Choose an existing profile or confirm a new one." });
-
-
-export const recordUpdateSchema = z
-  .object({
-    type: z.enum(documentTypes).optional(),
-  })
-  .strict();
 
 
 export async function aiProcessingEnabledForUser(userId: string, db: Prisma.TransactionClient = prisma) {
