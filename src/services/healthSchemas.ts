@@ -17,12 +17,43 @@ export const medicationTimes = ["morning", "afternoon", "night"] as const;
 
 export const mealTimings = ["before_food", "after_food", "with_food", "any_time"] as const;
 
-export const reminderTypes = ["appointment", "medicine", "refill", "vaccination", "test", "other"] as const;
+export const reminderTypes = ["appointment", "medicine", "refill", "vaccination", "test", "other", "reading"] as const;
 
 export const reminderFrequencies = ["once", "daily", "weekly", "monthly"] as const;
 
 export type MedicationTime = (typeof medicationTimes)[number];
 
+
+export const healthTimeZone = z.string().trim().refine(value => {
+  if (!/^[A-Za-z]/.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}, "Use an IANA time zone.").optional().nullable();
+
+export function parseHealthDate(value: string, timeZone: string | null | undefined, field: string) {
+  if (timeZone) {
+    const date = new Date(value);
+    if (z.string().datetime({ offset: true }).safeParse(value).success && Number.isFinite(date.getTime())) return date;
+    throw Object.assign(new Error(field + " must be an RFC 3339 timestamp with an offset."), { statusCode: 400 });
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return parseOptionalDate(value, field)!;
+  throw Object.assign(new Error(field + " must be YYYY-MM-DD or include a time zone with the timestamp."), { statusCode: 400 });
+}
+
+export const healthDateOnly = z.string().date().optional().nullable();
+
+const medicationDetails = {
+  route: z.string().trim().optional().nullable(),
+  instructions: z.string().trim().optional().nullable(),
+  courseStartDate: healthDateOnly,
+  courseEndDate: healthDateOnly,
+  prescribingDoctor: z.string().trim().optional().nullable(),
+  sourceDocumentId: z.string().trim().min(1).optional().nullable(),
+};
 
 export const memberSchema = z
   .object({
@@ -34,6 +65,7 @@ export const memberSchema = z
     dateOfBirth: z.string().trim().optional().nullable(),
     conditions: z.string().trim().max(2_000).optional().nullable(),
     allergies: z.string().trim().max(2_000).optional().nullable(),
+    emergencyContactRelationship: z.string().trim().max(80).optional().nullable(),
     emergencyContactName: z.string().trim().max(120).optional().nullable(),
     emergencyContactPhone: z.string().trim().max(40).optional().nullable(),
     primaryDoctor: z.string().trim().max(160).optional().nullable(),
@@ -98,13 +130,22 @@ export const reminderSchema = z
     dueDate: z.string().trim().min(1),
     frequency: z.enum(reminderFrequencies),
     recurrence: z.string().trim().max(80).optional().nullable(),
+    timeZone: healthTimeZone,
+    endDate: healthDateOnly,
+    notes: z.string().trim().optional().nullable(),
+    medicationId: z.string().trim().min(1).optional().nullable(),
+    trackedMetricId: z.string().trim().min(1).optional().nullable(),
   })
   .strict();
 
 
+export const reminderUpdateSchema = reminderSchema.omit({ memberId: true }).partial();
+
 export const manualMedicationSchema = z
   .object({
     name: z.string().trim().min(1).max(180),
+    ...medicationDetails,
+    frequency: z.string().trim().max(160).optional().nullable(),
     dose: z.string().trim().min(1).max(120),
     whenToTake: z.array(z.enum(medicationTimes)).min(1),
     mealTiming: z.enum(mealTimings),
@@ -116,6 +157,7 @@ export const manualMedicationSchema = z
 export const medicationUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(180).optional(),
+    ...medicationDetails,
     dose: z.string().trim().max(120).optional().nullable(),
     whenToTake: z.array(z.enum(medicationTimes)).min(1).optional(),
     mealTiming: z.enum(mealTimings).optional().nullable(),
@@ -148,6 +190,9 @@ export const manualMeasurementSchema = z
     referenceMax: z.number().finite().optional().nullable(),
     referenceText: z.string().trim().max(240).optional().nullable(),
     measuredAt: z.string().trim().min(1),
+    timeZone: healthTimeZone,
+    source: z.string().trim().optional().nullable(),
+    notes: z.string().trim().optional().nullable(),
   })
   .strict();
 
@@ -193,10 +238,34 @@ export function inferMealTiming(frequency: string | null | undefined) {
 }
 
 
-export function nextReminderDueDate(dueDate: Date, frequency: string | null | undefined) {
+export function reminderLocalDate(date: Date, timeZone?: string | null) {
+  return timeZone ? new Intl.DateTimeFormat("sv-SE", { timeZone, dateStyle: "short" }).format(date) : iso(date)!;
+}
+
+function wallTime(date: Date, formatter: Intl.DateTimeFormat) {
+  const parts = Object.fromEntries(formatter.formatToParts(date).map(part => [part.type, part.value]));
+  return new Date(parts.year + "-" + parts.month + "-" + parts.day + "T" + parts.hour + ":" + parts.minute + ":" + parts.second + "Z").getTime() + date.getUTCMilliseconds();
+}
+
+function instantFromWallTime(wall: Date, formatter: Intl.DateTimeFormat) {
+  const time = wall.getTime();
+  const before = time - 86_400_000;
+  const after = time + 86_400_000;
+  const first = new Date(time - (wallTime(new Date(before), formatter) - before));
+  if (wallTime(first, formatter) === time) return first;
+  const second = new Date(time - (wallTime(new Date(after), formatter) - after));
+  return wallTime(second, formatter) === time ? second : first;
+}
+
+export function nextReminderDueDate(dueDate: Date, frequency: string | null | undefined, timeZone?: string | null) {
   if (!frequency || frequency === "once") return dueDate;
   const now = new Date();
-  const next = new Date(dueDate);
+  const formatter = timeZone ? new Intl.DateTimeFormat("en-GB", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }) : null;
+  if (dueDate >= now) return dueDate;
+  const next = new Date(formatter ? wallTime(dueDate, formatter) : dueDate.getTime());
   const advance = () => {
     if (frequency === "daily") next.setUTCDate(next.getUTCDate() + 1);
     else if (frequency === "weekly") next.setUTCDate(next.getUTCDate() + 7);
@@ -204,8 +273,9 @@ export function nextReminderDueDate(dueDate: Date, frequency: string | null | un
     else return false;
     return true;
   };
-  while (next.getTime() < now.getTime()) {
+  const localNow = formatter ? wallTime(now, formatter) : now.getTime();
+  while (next.getTime() < localNow) {
     if (!advance()) break;
   }
-  return next;
+  return formatter ? instantFromWallTime(next, formatter) : next;
 }

@@ -9,7 +9,7 @@ import { decryptPrivateValue, encryptPrivateValue, privateLookup } from "./field
 // Keeping their Prisma-facing types preserves the existing application API.
 export const encryptedModels = new Set([
   "HealthMember", "HealthDocument", "HealthMeasurement", "TrackedHealthMetric",
-  "HealthMedication", "HealthFollowUp", "HealthReminder",
+  "HealthMedication", "HealthFollowUp", "HealthReminder", "HealthVisitPacket",
   "WealthRecord", "ExternalConnection", "ExternalDocumentCandidate", "UserIdentityProfile",
   "TemporaryUpload", "DigiLockerConsentSession", "PushSubscription", "AccountChangeOtp",
   "Document", "DocumentFile",
@@ -84,6 +84,13 @@ export function encodePrivatePatch(model: string, identity: { id: string; userId
   return result;
 }
 
+const optionalHealthFields: Record<string, string[]> = {
+  HealthMeasurement: ["timeZone", "source", "notes"],
+  HealthMedication: ["route", "instructions", "courseStartDate", "courseEndDate", "prescribingDoctor"],
+  HealthReminder: ["timeZone", "endDate", "notes"],
+  HealthMember: ["age", "gender", "ageRecordedAt", "emergencyContactRelationship"],
+};
+
 export function decodePrivateRow(model: string, input: Record<string, unknown>, fields?: Set<string>) {
   if (model === "ReadinessPack" && input.cataloguePrivacyVersion !== 2) throw new Error("PRIVATE_DATA_MIGRATION_REQUIRED");
   if (!encryptedModels.has(model) || isPublicDefinition(model, input)) return { ...input };
@@ -95,7 +102,7 @@ export function decodePrivateRow(model: string, input: Record<string, unknown>, 
   for (const field of protectedFields(model)) {
     const column = cipherColumn(field.name);
     if (fields && !fields.has(field.name)) { delete result[column]; continue; }
-    if (((model === "HealthMember" && ["age", "gender", "ageRecordedAt"].includes(field.name)) || (model === "TemporaryUpload" && field.name === "analysis")) && input[column] == null && input[field.name] == null) {
+    if ((optionalHealthFields[model]?.includes(field.name) || (model === "TemporaryUpload" && field.name === "analysis")) && input[column] == null && input[field.name] == null) {
       result[field.name] = null; delete result[column]; continue;
     }
     if (typeof input[column] !== "string") throw new Error("PRIVATE_DATA_MIGRATION_REQUIRED");

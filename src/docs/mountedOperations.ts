@@ -21,6 +21,34 @@ function operation(method: string, prefix: string, route: string) {
   return `${method.toUpperCase()} ${full.replace(/:([a-zA-Z0-9_]+)/g, "{$1}")}`;
 }
 
+function collectRouter(filePath: string, routerName: string, prefix: string, found: Set<string>) {
+  const file = source(filePath);
+  const imports = new Map<string, string>();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const name = statement.importClause?.name?.text;
+    if (name && statement.moduleSpecifier.text.startsWith(".")) imports.set(name, statement.moduleSpecifier.text);
+  }
+  walk(file, node => {
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
+    if (node.expression.expression.getText(file) !== routerName) return;
+    const method = node.expression.name.text;
+    const routePaths = paths(node.arguments[0]);
+    if (methods.has(method)) {
+      if (!routePaths.length) throw new Error("Unresolved route path in " + filePath);
+      for (const route of routePaths) found.add(operation(method, prefix, route));
+    } else if (method === "use" && routePaths.length) {
+      for (const handler of node.arguments.slice(1)) {
+        const moduleName = ts.isIdentifier(handler) ? imports.get(handler.text) : undefined;
+        if (!moduleName) continue;
+        for (const route of routePaths) {
+          collectRouter(path.resolve(path.dirname(filePath), moduleName + ".ts"), "router", prefix + route, found);
+        }
+      }
+    }
+  });
+}
+
 // Inspect source without importing the app: no environment, database, provider,
 // or route side effects. Comments and disabled mounts cannot enter the inventory.
 export function mountedApiOperations(appFile = path.resolve(__dirname, "../app.ts")) {
@@ -54,16 +82,7 @@ export function mountedApiOperations(appFile = path.resolve(__dirname, "../app.t
           routerName = paths(handler.arguments[1])[0] ?? routerName;
         }
         if (!moduleName) continue;
-        const file = source(path.resolve(path.dirname(appFile), `${moduleName}.ts`));
-        // Factory routers (billing) and default exports use the local `router`;
-        // named admin exports register their operations on their named router.
-        walk(file, child => {
-          if (!ts.isCallExpression(child) || !ts.isPropertyAccessExpression(child.expression)) return;
-          if (child.expression.expression.getText(file) !== routerName || !methods.has(child.expression.name.text)) return;
-          const routePaths = paths(child.arguments[0]);
-          if (!routePaths.length) throw new Error(`Unresolved route path in ${file.fileName}`);
-          for (const route of routePaths) found.add(operation(child.expression.name.text, prefix, route));
-        });
+        collectRouter(path.resolve(path.dirname(appFile), moduleName + ".ts"), routerName, prefix, found);
       }
     }
   });

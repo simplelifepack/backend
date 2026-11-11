@@ -8,7 +8,7 @@ import type { OriginalDocumentFile } from "./documentAnalyzer/fileInput";
 import { extractHealthDocument, extractionSchema, fallbackHealthExtraction, type HealthDocumentType, type HealthExtraction } from "./healthExtraction.service";
 import { metricSearchTerms, normalizeMetricName } from "./healthMetricRegistry";
 import { assertAIProcessingEnabled } from "./aiProcessing.service";
-import { trackedMetricSchema, iso, manualMeasurementSchema, parseDate } from "./healthSchemas";
+import { trackedMetricSchema, iso, manualMeasurementSchema, parseHealthDate } from "./healthSchemas";
 import { assertMember, memberDto, reminderDto, measurementDto } from "./healthDtos";
 import { trackedKeySet, listHealthRecords } from "./healthMembers";
 import { listTrackedMetrics, listMeasurements } from "./healthRecordReprocessing";
@@ -117,6 +117,7 @@ export async function getOverview(userId: string, memberId: string) {
     member: memberDto(member),
     upcoming: reminders
       .map((item) => reminderDto(item))
+      .filter(item => item.dueDate !== null)
       .sort((a, b) => new Date(a.dueDate ?? "").getTime() - new Date(b.dueDate ?? "").getTime())
       .slice(0, 5),
     trackedMetrics,
@@ -134,6 +135,7 @@ export async function listActiveHealthReminders(userId: string) {
   });
   return reminders
     .map((item) => reminderDto(item))
+    .filter(item => item.dueDate !== null)
     .sort((a, b) => new Date(a.dueDate ?? "").getTime() - new Date(b.dueDate ?? "").getTime())
     .slice(0, 20);
 }
@@ -151,6 +153,7 @@ export async function getTimeline(userId: string, memberId: string) {
       where: { userId, memberId },
       include: {
         sourceDocument: { select: { documentDate: true, type: true } },
+        linkedReminders: { select: { id: true } },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -160,12 +163,14 @@ export async function getTimeline(userId: string, memberId: string) {
       id: item.id,
       eventType: "measurement" as const,
       recordId: item.sourceDocumentId,
-      occurredAt: iso(item.measuredAt),
+      occurredAt: item.timeZone ? item.measuredAt.toISOString() : iso(item.measuredAt),
+      timeZone: item.timeZone,
+      notes: item.notes,
       title: item.displayName,
       value: item.value,
       secondaryValue: item.secondaryValue,
       unit: item.unit,
-      source: item.sourceDocument ? "Lab result" : "Manual reading",
+      source: item.source ?? (item.sourceDocument ? "Lab result" : "Manual reading"),
       sourceType: item.sourceDocument?.type ?? "manual",
     })),
     ...medications.map((item) => ({
@@ -178,6 +183,13 @@ export async function getTimeline(userId: string, memberId: string) {
       source: item.sourceDocument ? "Medication recorded" : "Manual medication",
       sourceType: item.sourceDocument?.type ?? "manual",
       medication: {
+        route: item.route,
+        instructions: item.instructions,
+        courseStartDate: iso(item.courseStartDate),
+        courseEndDate: iso(item.courseEndDate),
+        prescribingDoctor: item.prescribingDoctor,
+        sourceDocumentId: item.sourceDocumentId,
+        reminderIds: item.linkedReminders.map(reminder => reminder.id),
         name: item.name,
         dose: item.dose,
         frequency: item.frequency,
@@ -199,16 +211,15 @@ export async function getTimeline(userId: string, memberId: string) {
 export async function createManualMeasurement(userId: string, memberId: string, input: unknown) {
   await assertMember(userId, memberId);
   const data = manualMeasurementSchema.parse(input);
-  const measuredAt = parseDate(data.measuredAt);
-  if (!measuredAt)
-    throw Object.assign(new Error("Enter a valid reading date."), {
-      statusCode: 400,
-    });
+  const measuredAt = parseHealthDate(data.measuredAt, data.timeZone, "measuredAt");
   const measurement = await prisma.healthMeasurement.create({
     data: {
       userId,
       memberId,
       sourceDocumentId: null,
+      timeZone: data.timeZone,
+      source: data.source,
+      notes: data.notes,
       metricKey: data.metricKey,
       displayName: data.displayName,
       originalName: data.originalName || data.displayName,
@@ -226,4 +237,20 @@ export async function createManualMeasurement(userId: string, memberId: string, 
   });
   const tracked = await trackedKeySet(userId, memberId);
   return measurementDto(measurement, tracked);
+}
+
+export async function updateManualMeasurement(userId: string, measurementId: string, input: unknown) {
+  const { measuredAt, ...data } = manualMeasurementSchema.partial().parse(input);
+  const reading = await prisma.healthMeasurement.findFirst({ where: { id: measurementId, userId, sourceDocumentId: null } });
+  if (!reading) throw Object.assign(new Error("Manual reading not found."), { statusCode: 404 });
+  const timeZone = data.timeZone === undefined ? reading.timeZone : data.timeZone;
+  const date = measuredAt !== undefined || data.timeZone !== undefined
+    ? parseHealthDate(measuredAt ?? (reading.timeZone ? reading.measuredAt.toISOString() : iso(reading.measuredAt)!), timeZone, "measuredAt")
+    : undefined;
+  const updated = await prisma.healthMeasurement.update({
+    where: { id: reading.id, userId },
+    data: { ...data, measuredAt: date },
+    include: { sourceDocument: true },
+  });
+  return measurementDto(updated, await trackedKeySet(userId, reading.memberId));
 }

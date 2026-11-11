@@ -8,17 +8,24 @@ import type { OriginalDocumentFile } from "./documentAnalyzer/fileInput";
 import { extractHealthDocument, extractionSchema, fallbackHealthExtraction, type HealthDocumentType, type HealthExtraction } from "./healthExtraction.service";
 import { metricSearchTerms, normalizeMetricName } from "./healthMetricRegistry";
 import { assertAIProcessingEnabled } from "./aiProcessing.service";
-import { nextReminderDueDate, iso, resolveHealthMember } from "./healthSchemas";
+import { nextReminderDueDate, reminderLocalDate, iso, resolveHealthMember } from "./healthSchemas";
 
 
-export function reminderDto(item: { id: string; title: string; type: string | null; dueDate: Date; frequency: string | null; recurrence: string | null; origin: string; status: string; memberId: string; member?: { name: string } }) {
+export function reminderDto(item: { id: string; title: string; type: string | null; dueDate: Date; frequency: string | null; recurrence: string | null; origin: string; status: string; memberId: string; timeZone?: string | null; endDate?: Date | null; notes?: string | null; medicationId?: string | null; trackedMetricId?: string | null; member?: { name: string } }) {
   const frequency = item.frequency ?? (item.recurrence ? item.recurrence : "once");
-  const dueDate = item.status === "completed" ? item.dueDate : nextReminderDueDate(item.dueDate, frequency);
+  const dueDate = item.status === "completed" ? item.dueDate : nextReminderDueDate(item.dueDate, frequency, item.timeZone);
+  const expired = item.status === "active" && item.endDate && reminderLocalDate(dueDate, item.timeZone) > iso(item.endDate)!;
   return {
     id: item.id,
     title: item.title,
     type: item.type ?? "other",
-    dueDate: iso(dueDate),
+    dueDate: expired ? null : item.timeZone ? dueDate.toISOString() : iso(dueDate),
+    scheduledAt: item.timeZone ? item.dueDate.toISOString() : iso(item.dueDate),
+    timeZone: item.timeZone ?? null,
+    endDate: iso(item.endDate),
+    notes: item.notes ?? null,
+    medicationId: item.medicationId ?? null,
+    trackedMetricId: item.trackedMetricId ?? null,
     frequency,
     memberId: item.memberId,
     memberName: item.member?.name,
@@ -111,7 +118,7 @@ export function parseBirthDate(value: string | null | undefined) {
 }
 
 
-export function memberDto(member: { age?: number | null; gender?: string | null; ageRecordedAt?: Date | null; id: string; name: string; relation: string; bloodGroup: string | null; dateOfBirth: Date | null; conditions: string | null; allergies: string | null; emergencyContactName: string | null; emergencyContactPhone: string | null; primaryDoctor: string | null; insuranceProvider: string | null; insurancePolicyNumber: string | null; createdAt: Date; updatedAt: Date }) {
+export function memberDto(member: { age?: number | null; gender?: string | null; ageRecordedAt?: Date | null; id: string; name: string; relation: string; bloodGroup: string | null; dateOfBirth: Date | null; conditions: string | null; allergies: string | null; emergencyContactRelationship?: string | null; emergencyContactName: string | null; emergencyContactPhone: string | null; primaryDoctor: string | null; insuranceProvider: string | null; insurancePolicyNumber: string | null; createdAt: Date; updatedAt: Date }) {
   return {
     id: member.id,
     name: member.name,
@@ -123,6 +130,7 @@ export function memberDto(member: { age?: number | null; gender?: string | null;
     dateOfBirth: iso(member.dateOfBirth),
     conditions: member.conditions,
     allergies: member.allergies,
+    emergencyContactRelationship: member.emergencyContactRelationship ?? null,
     emergencyContactName: member.emergencyContactName,
     emergencyContactPhone: member.emergencyContactPhone,
     primaryDoctor: member.primaryDoctor,
@@ -160,7 +168,10 @@ export function measurementDto(
     referenceMin: item.referenceMin,
     referenceMax: item.referenceMax,
     referenceText: item.referenceText,
-    measuredAt: iso(item.measuredAt),
+    measuredAt: item.timeZone ? item.measuredAt.toISOString() : iso(item.measuredAt),
+    timeZone: item.timeZone,
+    source: item.source,
+    notes: item.notes,
     sourceType: item.sourceDocument?.type ?? "manual",
     isTracked: tracked?.has(metricIdentity(item)) ?? false,
     aliases: metricSearchTerms(item.metricKey, item.displayName),

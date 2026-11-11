@@ -1,5 +1,7 @@
 import { assertMember, pendingProfileResponse, reminderDto } from "../services/healthDtos";
 import { prisma } from "../lib/prisma";
+import { updateManualMeasurement } from "../services/healthMetrics";
+import { updateReminder } from "../services/healthMedication";
 import { Router } from "express";
 
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
@@ -29,8 +31,11 @@ import {
 } from "../services/health.service";
 import { getHealthHomeAttention } from "../services/healthHome.service";
 
+import visitPacketRoutes from "./healthVisitPackets.routes";
+
 const router = Router();
 router.use(requireAuth);
+router.use("/visit-packets", visitPacketRoutes);
 
 router.get("/home-attention", async (req, res, next) => {
   try {
@@ -286,6 +291,24 @@ router.patch("/reminders/:reminderId/status", async (req, res, next) => {
     });
     if (!result.count) return res.status(404).json({ message: "Reminder not found." });
     return res.status(204).send();
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/measurements/:measurementId", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.json(await updateManualMeasurement(authUser.id, req.params.measurementId, req.body));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/reminders/:reminderId", async (req, res, next) => {
+  try {
+    const { authUser } = req as unknown as AuthenticatedRequest;
+    return res.json(await updateReminder(authUser.id, req.params.reminderId, req.body));
   } catch (error) {
     return next(error);
   }

@@ -25,6 +25,7 @@ model UserAIUsage {
 }
 
 model User {
+  healthVisitPackets HealthVisitPacket[]
   private_name String?
   private_email String?
   private_country String?
@@ -442,6 +443,9 @@ model Document {
 }
 
 model HealthMember {
+  visitPackets HealthVisitPacket[]
+  emergencyContactRelationship String?
+  private_emergencyContactRelationship String?
   gender String?
   age Int?
   ageRecordedAt DateTime?
@@ -526,6 +530,12 @@ model HealthDocument {
 }
 
 model HealthMeasurement {
+  timeZone String?
+  private_timeZone String?
+  source String?
+  private_source String?
+  notes String?
+  private_notes String?
   private_metricKey String?
   private_displayName String?
   private_originalName String?
@@ -565,6 +575,7 @@ model HealthMeasurement {
 }
 
 model TrackedHealthMetric {
+  linkedReminders HealthReminder[]
   private_metricKey String?
   private_displayName String?
   private_context String?
@@ -589,6 +600,17 @@ model TrackedHealthMetric {
 }
 
 model HealthMedication {
+  linkedReminders HealthReminder[]
+  route String?
+  private_route String?
+  instructions String?
+  private_instructions String?
+  courseStartDate DateTime?
+  private_courseStartDate String?
+  courseEndDate DateTime?
+  private_courseEndDate String?
+  prescribingDoctor String?
+  private_prescribingDoctor String?
   private_name String?
   private_dose String?
   private_frequency String?
@@ -657,7 +679,40 @@ model HealthFollowUp {
   @@map("health_follow_ups")
 }
 
+model HealthVisitPacket {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId String
+  member HealthMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  recordIds String[]
+  private_recordIds String?
+  doctor String?
+  private_doctor String?
+  clinic String?
+  private_clinic String?
+  visitDate DateTime?
+  private_visitDate String?
+  fileDocumentId String
+  private_fileDocumentId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, memberId])
+  @@map("health_visit_packets")
+}
+
 model HealthReminder {
+  medicationId String?
+  medication HealthMedication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
+  trackedMetricId String?
+  trackedMetric TrackedHealthMetric? @relation(fields: [trackedMetricId], references: [id], onDelete: SetNull)
+  timeZone String?
+  private_timeZone String?
+  endDate DateTime?
+  private_endDate String?
+  notes String?
+  private_notes String?
   private_title String?
   private_type String?
   private_dueDate String?

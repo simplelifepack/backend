@@ -83,6 +83,7 @@ export async function updateHealthMember(userId: string, memberId: string, input
           : {}),
         ...(data.conditions !== undefined ? { conditions: data.conditions || null } : {}),
         ...(data.allergies !== undefined ? { allergies: data.allergies || null } : {}),
+        emergencyContactRelationship: data.emergencyContactRelationship,
         ...(data.emergencyContactName !== undefined ? { emergencyContactName: data.emergencyContactName || null } : {}),
         ...(data.emergencyContactPhone !== undefined ? { emergencyContactPhone: data.emergencyContactPhone || null } : {}),
         ...(data.primaryDoctor !== undefined ? { primaryDoctor: data.primaryDoctor || null } : {}),
@@ -129,7 +130,7 @@ export async function getHealthRecord(userId: string, recordId: string, db: Pris
         include: { sourceDocument: true },
         orderBy: { displayName: "asc" },
       },
-      medications: true,
+      medications: { include: { linkedReminders: { select: { id: true } } } },
       followUps: true,
       reminders: true,
     },
@@ -143,7 +144,7 @@ export async function getHealthRecord(userId: string, recordId: string, db: Pris
   return {
     ...recordSummary(record, tracked),
     measurements: record.measurements.map((item) => measurementDto(item, tracked)),
-    medications: record.medications,
+    medications: record.medications.map(({ linkedReminders, ...medication }) => ({ ...medication, reminderIds: linkedReminders.map(reminder => reminder.id) })),
     followUps: record.followUps.map((item) => ({
       ...item,
       explicitDate: iso(item.explicitDate),

@@ -43,6 +43,8 @@ const job = object({
   queueWaitMs: { type: "integer" }, aiMs: { type: "integer" }, processingMs: { type: "integer" }, retryCount: { type: "integer" }, provider429Count: { type: "integer" }, hasVerifiedOfficialSource: { type: "boolean" }, confidence: string, disclaimer: string,
 }, ["id", "status", "statusMessage", "queuedAt", "retryCount", "provider429Count", "hasVerifiedOfficialSource"]);
 
+const healthReadingFields = { metricKey: { ...string, minLength: 1, maxLength: 160 }, displayName: { ...string, minLength: 1, maxLength: 160 }, originalName: { ...string, minLength: 1, maxLength: 160 }, value: { type: "number" }, secondaryValue: nullable({ type: "number" }), unit: { ...string, minLength: 1, maxLength: 40 }, context: nullable({ ...string, maxLength: 120 }), bodySite: nullable({ ...string, maxLength: 120 }), referenceMin: nullable({ type: "number" }), referenceMax: nullable({ type: "number" }), referenceText: nullable({ ...string, maxLength: 240 }), measuredAt: { oneOf: [{ ...string, format: "date" }, dateTime] }, timeZone: nullable({ ...string, example: "Asia/Kolkata" }), source: nullable(string), notes: nullable(string) };
+
 export const latestOperations: Operation[] = [
   {
     method: "get", path: "/api/integrations/digilocker/worker", tags: ["DigiLocker"], operationId: "processDigiLockerQueue",
@@ -57,9 +59,14 @@ export const latestOperations: Operation[] = [
   },
   {
     method: "post", path: "/api/health/members/{memberId}/measurements", tags: ["Health"], operationId: "createManualHealthMeasurement", summary: "Record a manual health measurement", security: secured,
-    description: "Creates a reading for an owned health profile without a source document. Returns sourceType=manual and null sourceDocumentId/recordId.", parameters: [param("memberId")],
-    requestBody: body(object({ metricKey: { ...string, minLength: 1, maxLength: 160 }, displayName: { ...string, minLength: 1, maxLength: 160 }, originalName: { ...string, minLength: 1, maxLength: 160 }, value: { type: "number" }, secondaryValue: nullable({ type: "number" }), unit: { ...string, minLength: 1, maxLength: 40 }, context: nullable({ ...string, maxLength: 120 }), bodySite: nullable({ ...string, maxLength: 120 }), referenceMin: nullable({ type: "number" }), referenceMax: nullable({ type: "number" }), referenceText: nullable({ ...string, maxLength: 240 }), measuredAt: { ...string, format: "date" } }, ["metricKey", "displayName", "value", "unit", "measuredAt"], true), { metricKey: "weight", displayName: "Weight", value: 70, unit: "kg", measuredAt: "2026-10-24" }),
+    description: "Creates a reading for an owned health profile without a source document. Returns sourceType=manual and null sourceDocumentId/recordId. Send YYYY-MM-DD for a date-only reading. For a timed reading, send an RFC 3339 timestamp with an offset or Z and an IANA timeZone such as Asia/Kolkata.", parameters: [param("memberId")],
+    requestBody: body(object(healthReadingFields, ["metricKey", "displayName", "value", "unit", "measuredAt"], true), { metricKey: "weight", displayName: "Weight", value: 70, unit: "kg", measuredAt: "2026-11-11T08:30:00+05:30", timeZone: "Asia/Kolkata", source: "Home scale", notes: "Before breakfast" }),
     responses: { 201: response("Created measurement", ref("HealthMeasurement")), ...errors(400, 401, 403, 404) },
+  },
+  {
+    method: "patch", path: "/api/health/measurements/{measurementId}", tags: ["Health"], operationId: "updateManualHealthMeasurement", summary: "Update a manual health reading", description: "Changes selected fields of an owned manual reading. Omit fields to keep them. Use null to clear source or notes. To change a timed reading to date-only, send YYYY-MM-DD and timeZone: null.", security: secured,
+    parameters: [param("measurementId")], requestBody: body(object(healthReadingFields, [], true), { source: "Home scale", notes: null }),
+    responses: { 200: response("Updated measurement", ref("HealthMeasurement")), ...errors(400, 401, 404) },
   },
 ];
 
